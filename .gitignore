@@ -1,0 +1,6 @@
+# Buck2
+.buck-out/
+buck-out/
+
+# Cargo (local dev convenience, buck2 is primary)
+**/target/
