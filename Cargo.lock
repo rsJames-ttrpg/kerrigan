@@ -233,6 +233,7 @@ dependencies = [
  "anyhow",
  "axum",
  "base64",
+ "libsqlite3-sys",
  "rmcp",
  "schemars",
  "serde",
