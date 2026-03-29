@@ -4,6 +4,7 @@ pub mod jobs;
 pub mod memory;
 
 use sqlx::SqlitePool;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::embedding::EmbeddingProvider;
@@ -16,12 +17,16 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(pool: SqlitePool, embedder: Arc<dyn EmbeddingProvider>) -> Self {
+    pub fn new(
+        pool: SqlitePool,
+        embedder: Arc<dyn EmbeddingProvider>,
+        artifact_path: PathBuf,
+    ) -> Self {
         Self {
             memory: memory::MemoryService::new(pool.clone(), embedder),
             jobs: jobs::JobService::new(pool.clone()),
             decisions: decisions::DecisionService::new(pool.clone()),
-            artifacts: artifacts::ArtifactService::new(pool),
+            artifacts: artifacts::ArtifactService::new(pool, artifact_path),
         }
     }
 }

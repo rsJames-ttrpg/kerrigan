@@ -54,12 +54,19 @@ pub async fn open(path: &str) -> Result<SqlitePool, CortexError> {
 
 /// Open an in-memory SQLite database (useful for tests).
 pub async fn open_in_memory() -> Result<SqlitePool, CortexError> {
+    open_in_memory_named("cortex_test").await
+}
+
+/// Open a named in-memory SQLite database. Each unique name gets its own
+/// isolated in-memory database, which is useful for test isolation.
+pub async fn open_in_memory_named(name: &str) -> Result<SqlitePool, CortexError> {
     // For an in-memory database shared across pool connections we use a named
     // in-memory URI with cache=shared so all connections see the same data.
-    let opts = SqliteConnectOptions::from_str("sqlite:file:cortex_test?mode=memory&cache=shared")
-        .map_err(CortexError::Storage)?
-        .pragma("journal_mode", "WAL")
-        .pragma("foreign_keys", "ON");
+    let opts =
+        SqliteConnectOptions::from_str(&format!("sqlite:file:{name}?mode=memory&cache=shared"))
+            .map_err(CortexError::Storage)?
+            .pragma("journal_mode", "WAL")
+            .pragma("foreign_keys", "ON");
 
     init_pool(opts).await
 }
