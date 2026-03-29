@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::error::{CortexError, Result};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Decision {
     pub id: String,
     pub agent: String,

@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::error::{CortexError, Result};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ArtifactMetadata {
     pub id: String,
     pub name: String,

@@ -4,7 +4,7 @@ use zerocopy::IntoBytes;
 
 use crate::error::{CortexError, Result};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Memory {
     pub id: String,
     pub content: String,
@@ -16,7 +16,7 @@ pub struct Memory {
     pub updated_at: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct MemorySearchResult {
     pub memory: Memory,
     pub distance: f64,

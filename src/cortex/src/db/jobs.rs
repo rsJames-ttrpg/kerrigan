@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::error::{CortexError, Result};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct JobDefinition {
     pub id: String,
     pub name: String,
@@ -13,7 +13,7 @@ pub struct JobDefinition {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct JobRun {
     pub id: String,
     pub definition_id: String,
@@ -26,7 +26,7 @@ pub struct JobRun {
     pub completed_at: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Task {
     pub id: String,
     pub run_id: Option<String>,
