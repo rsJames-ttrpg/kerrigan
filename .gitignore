@@ -2,5 +2,8 @@
 .buck-out/
 buck-out/
 
-# Cargo (local dev convenience, buck2 is primary)
+# Cargo
 **/target/
+
+# Reindeer generated (regenerate with `buck2 run root//tools:reindeer -- --third-party-dir third-party buckify`)
+third-party/BUCK

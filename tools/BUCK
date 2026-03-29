@@ -1,0 +1,76 @@
+# -- prek (pre-commit replacement) ---------------------------------------------
+# Usage: `buck2 run root//tools:prek -- run --all-files`
+
+PREK_VERSION = "v0.3.8"
+PREK_HOST = "x86_64-unknown-linux-gnu"
+PREK_SHA256 = "80ec6adb9f1883344de52cb943d371ecfd25340c4a6b5b81e2600d27e246cfa1"
+
+http_archive(
+    name = "prek-archive",
+    urls = ["https://github.com/j178/prek/releases/download/{}/prek-{}.tar.gz".format(PREK_VERSION, PREK_HOST)],
+    sha256 = PREK_SHA256,
+    strip_prefix = "prek-{}".format(PREK_HOST),
+    sub_targets = {
+        "prek": ["prek"],
+    },
+)
+
+genrule(
+    name = "prek",
+    srcs = [":prek-archive"],
+    out = "prek",
+    bash = "cp $(location :prek-archive)/prek $OUT && chmod +x $OUT",
+    executable = True,
+    visibility = ["PUBLIC"],
+)
+
+# -- rustfmt (hermetic formatter) -----------------------------------------------
+# Usage: `buck2 run root//tools:rustfmt -- --check src/cortex/src/main.rs`
+
+genrule(
+    name = "rustfmt",
+    srcs = [
+        "toolchains//:rustfmt-x86_64-linux",
+        "toolchains//:rustc-x86_64-linux",
+    ],
+    out = "rustfmt",
+    bash = """
+        RUSTFMT_DIR="$PWD/$(location toolchains//:rustfmt-x86_64-linux)"
+        RUSTC_DIR="$PWD/$(location toolchains//:rustc-x86_64-linux)"
+        cat > $OUT <<WRAPPER
+#!/usr/bin/env bash
+export LD_LIBRARY_PATH="$RUSTC_DIR/lib"
+exec "$RUSTFMT_DIR/bin/rustfmt" "\\$@"
+WRAPPER
+        chmod +x $OUT
+    """,
+    executable = True,
+    visibility = ["PUBLIC"],
+)
+
+# -- reindeer (Cargo dep management) -------------------------------------------
+# Usage: `buck2 run root//tools:reindeer -- buckify`
+
+REINDEER_VERSION = "v2026.03.23.00"
+REINDEER_HOST = "x86_64-unknown-linux-gnu"
+REINDEER_SHA256 = "6f688f3aad478eb323c8054186dfd7d6b0f7e5698d653efc98cf833de4dae578"
+
+genrule(
+    name = "reindeer",
+    out = "reindeer",
+    bash = """
+        set -euo pipefail
+        TMPF="$BUCK_SCRATCH_PATH/reindeer.zst"
+        curl -sL "https://github.com/facebookincubator/reindeer/releases/download/{version}/reindeer-{host}.zst" -o "$TMPF"
+        echo "{sha256}  $TMPF" | sha256sum -c -
+        zstd -d "$TMPF" -o "$OUT"
+        rm "$TMPF"
+        chmod +x "$OUT"
+    """.format(
+        version = REINDEER_VERSION,
+        host = REINDEER_HOST,
+        sha256 = REINDEER_SHA256,
+    ),
+    executable = True,
+    visibility = ["PUBLIC"],
+)

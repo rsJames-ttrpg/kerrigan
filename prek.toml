@@ -1,0 +1,34 @@
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+  { id = "check-toml" },
+  { id = "check-merge-conflict" },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "rustfmt"
+name = "rustfmt (hermetic)"
+entry = "buck2 run root//tools:rustfmt -- --check"
+language = "system"
+types = ["rust"]
+
+[[repos.hooks]]
+id = "reindeer-check"
+name = "reindeer in sync"
+entry = "bash -c 'buck2 run root//tools:reindeer -- buckify && git diff --exit-code third-party/BUCK'"
+language = "system"
+files = "Cargo\\.(toml|lock)$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "buck2-build"
+name = "buck2 build"
+entry = "buck2 build root//..."
+language = "system"
+pass_filenames = false
+stages = ["pre-push"]

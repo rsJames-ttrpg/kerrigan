@@ -2,6 +2,7 @@
   root = .
   prelude = prelude
   toolchains = toolchains
+  platforms = platforms
   none = none
 
 [cell_aliases]
@@ -18,9 +19,9 @@
   prelude = bundled
 
 [parser]
-  target_platform_detector_spec = target:root//...->prelude//platforms:default \
-    target:prelude//...->prelude//platforms:default \
-    target:toolchains//...->prelude//platforms:default
+  target_platform_detector_spec = target:root//...->platforms//:default \
+    target:prelude//...->platforms//:default \
+    target:toolchains//...->platforms//:default
 
 [build]
-  execution_platforms = prelude//platforms:default
+  execution_platforms = platforms//:default

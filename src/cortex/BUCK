@@ -2,6 +2,9 @@ rust_binary(
     name = "cortex",
     srcs = glob(["src/**/*.rs"]),
     crate_root = "src/main.rs",
-    edition = "2024",
+
+    deps = [
+        "//third-party:serde",
+    ],
     visibility = ["PUBLIC"],
 )
