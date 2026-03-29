@@ -1,0 +1,7 @@
+[server]
+http_port = 3100
+mcp_transport = "http"
+
+[storage]
+database_path = "data/cortex.db"
+artifact_path = "data/artifacts"
