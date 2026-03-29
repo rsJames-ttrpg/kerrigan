@@ -2,6 +2,7 @@ mod config;
 mod db;
 mod embedding;
 mod error;
+mod services;
 
 use config::Config;
 use std::path::PathBuf;
