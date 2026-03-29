@@ -3,6 +3,7 @@ mod config;
 mod db;
 mod embedding;
 mod error;
+mod mcp;
 mod services;
 
 use config::Config;
