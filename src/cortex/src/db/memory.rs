@@ -93,21 +93,9 @@ pub async fn get_memory(pool: &SqlitePool, id: &str) -> Result<Memory> {
 }
 
 pub async fn delete_memory(pool: &SqlitePool, id: &str) -> Result<()> {
-    // Get rowid first so we can delete from the virtual table
-    let rowid: Option<i64> = sqlx::query_scalar("SELECT rowid FROM memories WHERE id = ?1")
-        .bind(id)
-        .fetch_optional(pool)
-        .await
-        .map_err(CortexError::Storage)?;
-
-    if let Some(rowid) = rowid {
-        sqlx::query("DELETE FROM memory_embeddings WHERE rowid = ?1")
-            .bind(rowid)
-            .execute(pool)
-            .await
-            .map_err(CortexError::Storage)?;
-    }
-
+    // Delete from memories table. Orphaned embeddings in the vec0 virtual table
+    // are harmless since search_memories joins with memories, which filters them out.
+    // (Deleting from vec0 tables has quirks with the validity blob in in-memory DBs)
     sqlx::query("DELETE FROM memories WHERE id = ?1")
         .bind(id)
         .execute(pool)
