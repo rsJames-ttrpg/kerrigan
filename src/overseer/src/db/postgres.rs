@@ -1,0 +1,1026 @@
+use async_trait::async_trait;
+use sea_query::{Expr, Order, PostgresQueryBuilder, Query};
+use sea_query_binder::SqlxBinder;
+use sqlx::postgres::PgPoolOptions;
+use sqlx::{PgPool, Row};
+use uuid::Uuid;
+
+use super::models::*;
+use super::tables::*;
+use super::trait_def::Database;
+use crate::error::{OverseerError, Result};
+
+/// A PostgreSQL-backed implementation of the `Database` trait.
+pub struct PostgresDatabase {
+    pool: PgPool,
+}
+
+impl PostgresDatabase {
+    pub async fn open(url: &str) -> std::result::Result<Self, OverseerError> {
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(url)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        // Run initial migration
+        sqlx::raw_sql(include_str!("postgres_schema.sql"))
+            .execute(&pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(Self { pool })
+    }
+}
+
+// ── Row mappers ──────────────────────────────────────────────────────────────
+
+fn row_to_memory(row: &sqlx::postgres::PgRow) -> Memory {
+    let tags_json: serde_json::Value = row.get("tags");
+    let tags: Vec<String> = serde_json::from_value(tags_json).unwrap_or_default();
+    Memory {
+        id: row.get("id"),
+        content: row.get("content"),
+        embedding_model: row.get("embedding_model"),
+        source: row.get("source"),
+        tags,
+        expires_at: row
+            .get::<Option<chrono::DateTime<chrono::Utc>>, _>("expires_at")
+            .map(|dt| dt.to_rfc3339()),
+        created_at: row
+            .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+            .to_rfc3339(),
+        updated_at: row
+            .get::<chrono::DateTime<chrono::Utc>, _>("updated_at")
+            .to_rfc3339(),
+    }
+}
+
+fn row_to_job_definition(row: &sqlx::postgres::PgRow) -> JobDefinition {
+    let config: serde_json::Value = row.get("config");
+    JobDefinition {
+        id: row.get("id"),
+        name: row.get("name"),
+        description: row.get("description"),
+        config,
+        created_at: row
+            .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+            .to_rfc3339(),
+        updated_at: row
+            .get::<chrono::DateTime<chrono::Utc>, _>("updated_at")
+            .to_rfc3339(),
+    }
+}
+
+fn row_to_job_run(row: &sqlx::postgres::PgRow) -> JobRun {
+    let result: Option<serde_json::Value> = row.get("result");
+    JobRun {
+        id: row.get("id"),
+        definition_id: row.get("definition_id"),
+        parent_id: row.get("parent_id"),
+        status: row.get("status"),
+        triggered_by: row.get("triggered_by"),
+        result,
+        error: row.get("error"),
+        started_at: row
+            .get::<Option<chrono::DateTime<chrono::Utc>>, _>("started_at")
+            .map(|dt| dt.to_rfc3339()),
+        completed_at: row
+            .get::<Option<chrono::DateTime<chrono::Utc>>, _>("completed_at")
+            .map(|dt| dt.to_rfc3339()),
+    }
+}
+
+fn row_to_task(row: &sqlx::postgres::PgRow) -> Task {
+    let output: Option<serde_json::Value> = row.get("output");
+    Task {
+        id: row.get("id"),
+        run_id: row.get("run_id"),
+        subject: row.get("subject"),
+        status: row.get("status"),
+        assigned_to: row.get("assigned_to"),
+        output,
+        created_at: row
+            .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+            .to_rfc3339(),
+        updated_at: row
+            .get::<chrono::DateTime<chrono::Utc>, _>("updated_at")
+            .to_rfc3339(),
+    }
+}
+
+fn row_to_decision(row: &sqlx::postgres::PgRow) -> Decision {
+    let tags_json: serde_json::Value = row.get("tags");
+    let tags: Vec<String> = serde_json::from_value(tags_json).unwrap_or_default();
+    Decision {
+        id: row.get("id"),
+        agent: row.get("agent"),
+        context: row.get("context"),
+        decision: row.get("decision"),
+        reasoning: row.get("reasoning"),
+        tags,
+        run_id: row.get("run_id"),
+        created_at: row
+            .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+            .to_rfc3339(),
+    }
+}
+
+fn row_to_artifact(row: &sqlx::postgres::PgRow) -> ArtifactMetadata {
+    ArtifactMetadata {
+        id: row.get("id"),
+        name: row.get("name"),
+        content_type: row.get("content_type"),
+        size: row.get("size"),
+        run_id: row.get("run_id"),
+        created_at: row
+            .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
+            .to_rfc3339(),
+    }
+}
+
+// ── Database trait implementation ────────────────────────────────────────────
+
+#[async_trait]
+impl Database for PostgresDatabase {
+    // ── Memory (6 methods) ───────────────────────────────────────────────
+
+    async fn create_embedding_table(&self, _provider_name: &str, _dimensions: usize) -> Result<()> {
+        // No-op for Postgres — memory_embeddings table is created by migration
+        Ok(())
+    }
+
+    async fn insert_memory(
+        &self,
+        provider_name: &str,
+        content: &str,
+        embedding: &[f32],
+        embedding_model: &str,
+        source: &str,
+        tags: &[String],
+        expires_at: Option<&str>,
+    ) -> Result<Memory> {
+        let id = Uuid::new_v4().to_string();
+        let tags_json =
+            serde_json::to_value(tags).map_err(|e| OverseerError::Internal(e.to_string()))?;
+        let tags_str = serde_json::to_string(&tags_json)
+            .map_err(|e| OverseerError::Internal(e.to_string()))?;
+
+        let mut tx = self.pool.begin().await.map_err(OverseerError::Storage)?;
+
+        // Insert into memories table
+        let (sql, values) = Query::insert()
+            .into_table(Memories::Table)
+            .columns([
+                Memories::Id,
+                Memories::Content,
+                Memories::EmbeddingModel,
+                Memories::Source,
+                Memories::Tags,
+                Memories::ExpiresAt,
+            ])
+            .values_panic([
+                id.clone().into(),
+                content.into(),
+                embedding_model.into(),
+                source.into(),
+                tags_str.into(),
+                expires_at.map(|s| s.to_string()).into(),
+            ])
+            .build_sqlx(PostgresQueryBuilder);
+
+        sqlx::query_with(&sql, values)
+            .execute(&mut *tx)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        // Insert embedding with pgvector
+        let vec = pgvector::Vector::from(embedding.to_vec());
+        sqlx::query(
+            "INSERT INTO memory_embeddings (memory_id, provider, embedding) VALUES ($1, $2, $3)",
+        )
+        .bind(&id)
+        .bind(provider_name)
+        .bind(&vec)
+        .execute(&mut *tx)
+        .await
+        .map_err(OverseerError::Storage)?;
+
+        tx.commit().await.map_err(OverseerError::Storage)?;
+
+        self.get_memory(&id).await
+    }
+
+    async fn get_memory(&self, id: &str) -> Result<Memory> {
+        let (sql, values) = Query::select()
+            .columns([
+                Memories::Id,
+                Memories::Content,
+                Memories::EmbeddingModel,
+                Memories::Source,
+                Memories::Tags,
+                Memories::ExpiresAt,
+                Memories::CreatedAt,
+                Memories::UpdatedAt,
+            ])
+            .from(Memories::Table)
+            .and_where(Expr::col(Memories::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?
+            .ok_or_else(|| OverseerError::NotFound(format!("memory {id}")))?;
+
+        Ok(row_to_memory(&row))
+    }
+
+    async fn delete_memory(&self, _provider_name: &str, id: &str) -> Result<()> {
+        // ON DELETE CASCADE handles embedding cleanup
+        let (sql, values) = Query::delete()
+            .from_table(Memories::Table)
+            .and_where(Expr::col(Memories::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+
+        sqlx::query_with(&sql, values)
+            .execute(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(())
+    }
+
+    async fn search_memories(
+        &self,
+        provider_name: &str,
+        query_embedding: &[f32],
+        tags_filter: Option<&[String]>,
+        limit: usize,
+    ) -> Result<Vec<MemorySearchResult>> {
+        // Over-fetch to allow post-filtering by tags
+        let fetch_limit = (limit * 10).max(100) as i64;
+
+        let vec = pgvector::Vector::from(query_embedding.to_vec());
+        let rows = sqlx::query(
+            "SELECT m.id, m.content, m.embedding_model, m.source, m.tags, m.expires_at, \
+                    m.created_at, m.updated_at, e.embedding <-> $1 AS distance \
+             FROM memory_embeddings e \
+             JOIN memories m ON m.id = e.memory_id \
+             WHERE e.provider = $2 \
+             ORDER BY e.embedding <-> $1 \
+             LIMIT $3",
+        )
+        .bind(&vec)
+        .bind(provider_name)
+        .bind(fetch_limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(OverseerError::Storage)?;
+
+        let mut results: Vec<MemorySearchResult> = rows
+            .iter()
+            .map(|row| {
+                let distance: f64 = row.get("distance");
+                MemorySearchResult {
+                    memory: row_to_memory(row),
+                    distance,
+                }
+            })
+            .collect();
+
+        if let Some(filter_tags) = tags_filter
+            && !filter_tags.is_empty()
+        {
+            results.retain(|r| filter_tags.iter().any(|ft| r.memory.tags.contains(ft)));
+        }
+
+        results.truncate(limit);
+        Ok(results)
+    }
+
+    async fn insert_memory_link(
+        &self,
+        memory_id: &str,
+        linked_id: &str,
+        linked_type: &str,
+        relation_type: &str,
+    ) -> Result<()> {
+        let (sql, values) = Query::insert()
+            .into_table(MemoryLinks::Table)
+            .columns([
+                MemoryLinks::MemoryId,
+                MemoryLinks::LinkedId,
+                MemoryLinks::LinkedType,
+                MemoryLinks::RelationType,
+            ])
+            .values_panic([
+                memory_id.into(),
+                linked_id.into(),
+                linked_type.into(),
+                relation_type.into(),
+            ])
+            .build_sqlx(PostgresQueryBuilder);
+
+        sqlx::query_with(&sql, values)
+            .execute(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(())
+    }
+
+    // ── Jobs (11 methods) ────────────────────────────────────────────────
+
+    async fn create_job_definition(
+        &self,
+        name: &str,
+        description: &str,
+        config: serde_json::Value,
+    ) -> Result<JobDefinition> {
+        let id = Uuid::new_v4().to_string();
+        let config_str =
+            serde_json::to_string(&config).map_err(|e| OverseerError::Internal(e.to_string()))?;
+
+        let (sql, values) = Query::insert()
+            .into_table(JobDefinitions::Table)
+            .columns([
+                JobDefinitions::Id,
+                JobDefinitions::Name,
+                JobDefinitions::Description,
+                JobDefinitions::Config,
+            ])
+            .values_panic([
+                id.into(),
+                name.into(),
+                description.into(),
+                config_str.into(),
+            ])
+            .returning(Query::returning().columns([
+                JobDefinitions::Id,
+                JobDefinitions::Name,
+                JobDefinitions::Description,
+                JobDefinitions::Config,
+                JobDefinitions::CreatedAt,
+                JobDefinitions::UpdatedAt,
+            ]))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row_to_job_definition(&row))
+    }
+
+    async fn get_job_definition(&self, id: &str) -> Result<Option<JobDefinition>> {
+        let (sql, values) = Query::select()
+            .columns([
+                JobDefinitions::Id,
+                JobDefinitions::Name,
+                JobDefinitions::Description,
+                JobDefinitions::Config,
+                JobDefinitions::CreatedAt,
+                JobDefinitions::UpdatedAt,
+            ])
+            .from(JobDefinitions::Table)
+            .and_where(Expr::col(JobDefinitions::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row.as_ref().map(row_to_job_definition))
+    }
+
+    async fn list_job_definitions(&self) -> Result<Vec<JobDefinition>> {
+        let (sql, values) = Query::select()
+            .columns([
+                JobDefinitions::Id,
+                JobDefinitions::Name,
+                JobDefinitions::Description,
+                JobDefinitions::Config,
+                JobDefinitions::CreatedAt,
+                JobDefinitions::UpdatedAt,
+            ])
+            .from(JobDefinitions::Table)
+            .order_by(JobDefinitions::CreatedAt, Order::Asc)
+            .build_sqlx(PostgresQueryBuilder);
+
+        let rows = sqlx::query_with(&sql, values)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(rows.iter().map(row_to_job_definition).collect())
+    }
+
+    async fn start_job_run(
+        &self,
+        definition_id: &str,
+        triggered_by: &str,
+        parent_id: Option<&str>,
+    ) -> Result<JobRun> {
+        let id = Uuid::new_v4().to_string();
+
+        let (sql, values) = Query::insert()
+            .into_table(JobRuns::Table)
+            .columns([
+                JobRuns::Id,
+                JobRuns::DefinitionId,
+                JobRuns::ParentId,
+                JobRuns::Status,
+                JobRuns::TriggeredBy,
+                JobRuns::StartedAt,
+            ])
+            .values_panic([
+                id.into(),
+                definition_id.into(),
+                parent_id.map(|s| s.to_string()).into(),
+                "running".into(),
+                triggered_by.into(),
+                Expr::cust("now()"),
+            ])
+            .returning(Query::returning().columns([
+                JobRuns::Id,
+                JobRuns::DefinitionId,
+                JobRuns::ParentId,
+                JobRuns::Status,
+                JobRuns::TriggeredBy,
+                JobRuns::Result,
+                JobRuns::Error,
+                JobRuns::StartedAt,
+                JobRuns::CompletedAt,
+            ]))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row_to_job_run(&row))
+    }
+
+    async fn get_job_run(&self, id: &str) -> Result<Option<JobRun>> {
+        let (sql, values) = Query::select()
+            .columns([
+                JobRuns::Id,
+                JobRuns::DefinitionId,
+                JobRuns::ParentId,
+                JobRuns::Status,
+                JobRuns::TriggeredBy,
+                JobRuns::Result,
+                JobRuns::Error,
+                JobRuns::StartedAt,
+                JobRuns::CompletedAt,
+            ])
+            .from(JobRuns::Table)
+            .and_where(Expr::col(JobRuns::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row.as_ref().map(row_to_job_run))
+    }
+
+    async fn update_job_run(
+        &self,
+        id: &str,
+        status: Option<&str>,
+        result: Option<serde_json::Value>,
+        error: Option<&str>,
+    ) -> Result<JobRun> {
+        let result_str = result
+            .as_ref()
+            .map(|v| serde_json::to_string(v).map_err(|e| OverseerError::Internal(e.to_string())))
+            .transpose()?;
+
+        let terminal_statuses = ["completed", "failed", "cancelled"];
+        let is_terminal = status
+            .map(|s| terminal_statuses.contains(&s))
+            .unwrap_or(false);
+
+        let mut query = Query::update();
+        query.table(JobRuns::Table);
+
+        if let Some(s) = status {
+            query.value(JobRuns::Status, s);
+        }
+        if let Some(ref r) = result_str {
+            query.value(JobRuns::Result, r.as_str());
+        }
+        if let Some(e) = error {
+            query.value(JobRuns::Error, e);
+        }
+        if is_terminal {
+            query.value(JobRuns::CompletedAt, Expr::cust("now()"));
+        }
+
+        query.and_where(Expr::col(JobRuns::Id).eq(id));
+
+        let (sql, values) = query.build_sqlx(PostgresQueryBuilder);
+
+        sqlx::query_with(&sql, values)
+            .execute(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        self.get_job_run(id)
+            .await?
+            .ok_or_else(|| OverseerError::NotFound(format!("job_run {id}")))
+    }
+
+    async fn list_job_runs(&self, status: Option<&str>) -> Result<Vec<JobRun>> {
+        let mut query = Query::select();
+        query
+            .columns([
+                JobRuns::Id,
+                JobRuns::DefinitionId,
+                JobRuns::ParentId,
+                JobRuns::Status,
+                JobRuns::TriggeredBy,
+                JobRuns::Result,
+                JobRuns::Error,
+                JobRuns::StartedAt,
+                JobRuns::CompletedAt,
+            ])
+            .from(JobRuns::Table);
+
+        if let Some(s) = status {
+            query.and_where(Expr::col(JobRuns::Status).eq(s));
+        }
+
+        query.order_by(JobRuns::StartedAt, Order::Asc);
+
+        let (sql, values) = query.build_sqlx(PostgresQueryBuilder);
+
+        let rows = sqlx::query_with(&sql, values)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(rows.iter().map(row_to_job_run).collect())
+    }
+
+    async fn create_task(
+        &self,
+        subject: &str,
+        run_id: Option<&str>,
+        assigned_to: Option<&str>,
+    ) -> Result<Task> {
+        let id = Uuid::new_v4().to_string();
+
+        let (sql, values) = Query::insert()
+            .into_table(Tasks::Table)
+            .columns([Tasks::Id, Tasks::Subject, Tasks::RunId, Tasks::AssignedTo])
+            .values_panic([
+                id.into(),
+                subject.into(),
+                run_id.map(|s| s.to_string()).into(),
+                assigned_to.map(|s| s.to_string()).into(),
+            ])
+            .returning(Query::returning().columns([
+                Tasks::Id,
+                Tasks::RunId,
+                Tasks::Subject,
+                Tasks::Status,
+                Tasks::AssignedTo,
+                Tasks::Output,
+                Tasks::CreatedAt,
+                Tasks::UpdatedAt,
+            ]))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row_to_task(&row))
+    }
+
+    async fn get_task(&self, id: &str) -> Result<Option<Task>> {
+        let (sql, values) = Query::select()
+            .columns([
+                Tasks::Id,
+                Tasks::RunId,
+                Tasks::Subject,
+                Tasks::Status,
+                Tasks::AssignedTo,
+                Tasks::Output,
+                Tasks::CreatedAt,
+                Tasks::UpdatedAt,
+            ])
+            .from(Tasks::Table)
+            .and_where(Expr::col(Tasks::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row.as_ref().map(row_to_task))
+    }
+
+    async fn update_task(
+        &self,
+        id: &str,
+        status: Option<&str>,
+        assigned_to: Option<&str>,
+        output: Option<serde_json::Value>,
+    ) -> Result<Task> {
+        let output_str = output
+            .as_ref()
+            .map(|v| serde_json::to_string(v).map_err(|e| OverseerError::Internal(e.to_string())))
+            .transpose()?;
+
+        let mut query = Query::update();
+        query.table(Tasks::Table);
+
+        if let Some(s) = status {
+            query.value(Tasks::Status, s);
+        }
+        if let Some(a) = assigned_to {
+            query.value(Tasks::AssignedTo, a);
+        }
+        if let Some(ref o) = output_str {
+            query.value(Tasks::Output, o.as_str());
+        }
+
+        query.value(Tasks::UpdatedAt, Expr::cust("now()"));
+        query.and_where(Expr::col(Tasks::Id).eq(id));
+
+        let (sql, values) = query.build_sqlx(PostgresQueryBuilder);
+
+        sqlx::query_with(&sql, values)
+            .execute(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        self.get_task(id)
+            .await?
+            .ok_or_else(|| OverseerError::NotFound(format!("task {id}")))
+    }
+
+    async fn list_tasks(
+        &self,
+        status: Option<&str>,
+        assigned_to: Option<&str>,
+        run_id: Option<&str>,
+    ) -> Result<Vec<Task>> {
+        let mut query = Query::select();
+        query
+            .columns([
+                Tasks::Id,
+                Tasks::RunId,
+                Tasks::Subject,
+                Tasks::Status,
+                Tasks::AssignedTo,
+                Tasks::Output,
+                Tasks::CreatedAt,
+                Tasks::UpdatedAt,
+            ])
+            .from(Tasks::Table);
+
+        if let Some(s) = status {
+            query.and_where(Expr::col(Tasks::Status).eq(s));
+        }
+        if let Some(a) = assigned_to {
+            query.and_where(Expr::col(Tasks::AssignedTo).eq(a));
+        }
+        if let Some(r) = run_id {
+            query.and_where(Expr::col(Tasks::RunId).eq(r));
+        }
+
+        query.order_by(Tasks::CreatedAt, Order::Asc);
+
+        let (sql, values) = query.build_sqlx(PostgresQueryBuilder);
+
+        let rows = sqlx::query_with(&sql, values)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(rows.iter().map(row_to_task).collect())
+    }
+
+    // ── Decisions (3 methods) ────────────────────────────────────────────
+
+    async fn log_decision(
+        &self,
+        agent: &str,
+        context: &str,
+        decision: &str,
+        reasoning: &str,
+        tags: &[String],
+        run_id: Option<&str>,
+    ) -> Result<Decision> {
+        let id = Uuid::new_v4().to_string();
+        let tags_str =
+            serde_json::to_string(tags).map_err(|e| OverseerError::Internal(e.to_string()))?;
+
+        let (sql, values) = Query::insert()
+            .into_table(Decisions::Table)
+            .columns([
+                Decisions::Id,
+                Decisions::Agent,
+                Decisions::Context,
+                Decisions::Decision,
+                Decisions::Reasoning,
+                Decisions::Tags,
+                Decisions::RunId,
+            ])
+            .values_panic([
+                id.into(),
+                agent.into(),
+                context.into(),
+                decision.into(),
+                reasoning.into(),
+                tags_str.into(),
+                run_id.map(|s| s.to_string()).into(),
+            ])
+            .returning(Query::returning().columns([
+                Decisions::Id,
+                Decisions::Agent,
+                Decisions::Context,
+                Decisions::Decision,
+                Decisions::Reasoning,
+                Decisions::Tags,
+                Decisions::RunId,
+                Decisions::CreatedAt,
+            ]))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row_to_decision(&row))
+    }
+
+    async fn get_decision(&self, id: &str) -> Result<Option<Decision>> {
+        let (sql, values) = Query::select()
+            .columns([
+                Decisions::Id,
+                Decisions::Agent,
+                Decisions::Context,
+                Decisions::Decision,
+                Decisions::Reasoning,
+                Decisions::Tags,
+                Decisions::RunId,
+                Decisions::CreatedAt,
+            ])
+            .from(Decisions::Table)
+            .and_where(Expr::col(Decisions::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row.as_ref().map(row_to_decision))
+    }
+
+    async fn query_decisions(
+        &self,
+        agent: Option<&str>,
+        tags: Option<&[String]>,
+        limit: i64,
+    ) -> Result<Vec<Decision>> {
+        let fetch_limit = if tags.is_some_and(|t| !t.is_empty()) {
+            (limit * 10).max(100)
+        } else {
+            limit
+        };
+
+        let mut query = Query::select();
+        query
+            .columns([
+                Decisions::Id,
+                Decisions::Agent,
+                Decisions::Context,
+                Decisions::Decision,
+                Decisions::Reasoning,
+                Decisions::Tags,
+                Decisions::RunId,
+                Decisions::CreatedAt,
+            ])
+            .from(Decisions::Table);
+
+        if let Some(a) = agent {
+            query.and_where(Expr::col(Decisions::Agent).eq(a));
+        }
+
+        query
+            .order_by(Decisions::CreatedAt, Order::Desc)
+            .limit(fetch_limit as u64);
+
+        let (sql, values) = query.build_sqlx(PostgresQueryBuilder);
+
+        let rows = sqlx::query_with(&sql, values)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        let mut results: Vec<Decision> = rows.iter().map(row_to_decision).collect();
+
+        if let Some(filter_tags) = tags
+            && !filter_tags.is_empty()
+        {
+            results.retain(|d| filter_tags.iter().any(|ft| d.tags.contains(ft)));
+        }
+
+        results.truncate(limit as usize);
+        Ok(results)
+    }
+
+    // ── Artifacts (3 methods) ────────────────────────────────────────────
+
+    async fn insert_artifact(
+        &self,
+        id: &str,
+        name: &str,
+        content_type: &str,
+        size: i64,
+        run_id: Option<&str>,
+    ) -> Result<ArtifactMetadata> {
+        let (sql, values) = Query::insert()
+            .into_table(Artifacts::Table)
+            .columns([
+                Artifacts::Id,
+                Artifacts::Name,
+                Artifacts::ContentType,
+                Artifacts::Size,
+                Artifacts::RunId,
+            ])
+            .values_panic([
+                id.into(),
+                name.into(),
+                content_type.into(),
+                size.into(),
+                run_id.map(|s| s.to_string()).into(),
+            ])
+            .returning(Query::returning().columns([
+                Artifacts::Id,
+                Artifacts::Name,
+                Artifacts::ContentType,
+                Artifacts::Size,
+                Artifacts::RunId,
+                Artifacts::CreatedAt,
+            ]))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row_to_artifact(&row))
+    }
+
+    async fn get_artifact(&self, id: &str) -> Result<Option<ArtifactMetadata>> {
+        let (sql, values) = Query::select()
+            .columns([
+                Artifacts::Id,
+                Artifacts::Name,
+                Artifacts::ContentType,
+                Artifacts::Size,
+                Artifacts::RunId,
+                Artifacts::CreatedAt,
+            ])
+            .from(Artifacts::Table)
+            .and_where(Expr::col(Artifacts::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row.as_ref().map(row_to_artifact))
+    }
+
+    async fn list_artifacts(&self, run_id: Option<&str>) -> Result<Vec<ArtifactMetadata>> {
+        let mut query = Query::select();
+        query
+            .columns([
+                Artifacts::Id,
+                Artifacts::Name,
+                Artifacts::ContentType,
+                Artifacts::Size,
+                Artifacts::RunId,
+                Artifacts::CreatedAt,
+            ])
+            .from(Artifacts::Table);
+
+        if let Some(rid) = run_id {
+            query.and_where(Expr::col(Artifacts::RunId).eq(rid));
+        }
+
+        query.order_by(Artifacts::CreatedAt, Order::Asc);
+
+        let (sql, values) = query.build_sqlx(PostgresQueryBuilder);
+
+        let rows = sqlx::query_with(&sql, values)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(rows.iter().map(row_to_artifact).collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn get_test_db() -> Option<PostgresDatabase> {
+        let url = std::env::var("TEST_DATABASE_URL").ok()?;
+        if !url.starts_with("postgres") {
+            return None;
+        }
+        Some(PostgresDatabase::open(&url).await.ok()?)
+    }
+
+    #[tokio::test]
+    async fn test_postgres_artifact_crud() {
+        let Some(db) = get_test_db().await else {
+            return;
+        };
+
+        let artifact = db
+            .insert_artifact("pg-test-1", "report.pdf", "application/pdf", 1024, None)
+            .await
+            .expect("insert succeeds");
+
+        assert_eq!(artifact.id, "pg-test-1");
+        assert_eq!(artifact.name, "report.pdf");
+
+        let fetched = db
+            .get_artifact("pg-test-1")
+            .await
+            .expect("get succeeds")
+            .expect("artifact exists");
+        assert_eq!(fetched.id, artifact.id);
+
+        let all = db.list_artifacts(None).await.expect("list succeeds");
+        assert!(!all.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_postgres_job_definition_crud() {
+        let Some(db) = get_test_db().await else {
+            return;
+        };
+
+        let def = db
+            .create_job_definition(
+                "pg-test-job",
+                "A test job",
+                serde_json::json!({"key": "val"}),
+            )
+            .await
+            .expect("create succeeds");
+
+        assert_eq!(def.name, "pg-test-job");
+
+        let fetched = db
+            .get_job_definition(&def.id)
+            .await
+            .expect("get succeeds")
+            .expect("definition exists");
+        assert_eq!(fetched.id, def.id);
+    }
+
+    #[tokio::test]
+    async fn test_postgres_decision_crud() {
+        let Some(db) = get_test_db().await else {
+            return;
+        };
+
+        let tags = vec!["test".to_string()];
+        let dec = db
+            .log_decision("agent-pg", "ctx", "dec", "reason", &tags, None)
+            .await
+            .expect("log succeeds");
+
+        assert_eq!(dec.agent, "agent-pg");
+
+        let fetched = db
+            .get_decision(&dec.id)
+            .await
+            .expect("get succeeds")
+            .expect("decision exists");
+        assert_eq!(fetched.id, dec.id);
+    }
+}

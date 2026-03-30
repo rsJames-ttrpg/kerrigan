@@ -3,9 +3,11 @@ pub mod decisions;
 pub mod jobs;
 pub mod memory;
 pub mod models;
+pub mod postgres;
 pub mod sqlite;
 pub mod tables;
 mod trait_def;
+pub use postgres::PostgresDatabase;
 pub use sqlite::SqliteDatabase;
 #[allow(unused_imports)]
 pub use trait_def::Database;
@@ -39,9 +41,7 @@ pub async fn open_from_url(url: &str) -> std::result::Result<Arc<dyn Database>, 
     if let Some(path) = url.strip_prefix("sqlite://") {
         Ok(Arc::new(SqliteDatabase::open(path).await?))
     } else if url.starts_with("postgres://") || url.starts_with("postgresql://") {
-        Err(OverseerError::Validation(
-            "postgres support not yet implemented".to_string(),
-        ))
+        Ok(Arc::new(PostgresDatabase::open(url).await?))
     } else {
         Err(OverseerError::Validation(format!(
             "unsupported database URL scheme: {url}"
