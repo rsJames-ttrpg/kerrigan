@@ -23,11 +23,10 @@ impl PostgresDatabase {
             .await
             .map_err(OverseerError::Storage)?;
 
-        // Run initial migration
-        sqlx::raw_sql(include_str!("postgres_schema.sql"))
-            .execute(&pool)
+        sqlx::migrate!("migrations/postgres")
+            .run(&pool)
             .await
-            .map_err(OverseerError::Storage)?;
+            .map_err(|e| OverseerError::Storage(e.into()))?;
 
         Ok(Self { pool })
     }

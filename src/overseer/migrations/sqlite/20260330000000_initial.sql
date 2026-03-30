@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS memories (
+CREATE TABLE memories (
     id TEXT PRIMARY KEY,
     content TEXT NOT NULL,
     embedding_model TEXT NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS memories (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS memory_links (
+CREATE TABLE memory_links (
     memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     linked_id TEXT NOT NULL,
     linked_type TEXT NOT NULL CHECK (linked_type IN ('memory', 'decision')),
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS memory_links (
     PRIMARY KEY (memory_id, linked_id)
 );
 
-CREATE TABLE IF NOT EXISTS job_definitions (
+CREATE TABLE job_definitions (
     id TEXT PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS job_definitions (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS job_runs (
+CREATE TABLE job_runs (
     id TEXT PRIMARY KEY,
     definition_id TEXT NOT NULL REFERENCES job_definitions(id),
     parent_id TEXT REFERENCES job_runs(id),
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS job_runs (
     completed_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS tasks (
+CREATE TABLE tasks (
     id TEXT PRIMARY KEY,
     run_id TEXT REFERENCES job_runs(id),
     subject TEXT NOT NULL,
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS decisions (
+CREATE TABLE decisions (
     id TEXT PRIMARY KEY,
     agent TEXT NOT NULL,
     context TEXT NOT NULL,
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS decisions (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS artifacts (
+CREATE TABLE artifacts (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     content_type TEXT NOT NULL,

@@ -34,10 +34,10 @@ async fn init_pool(opts: SqliteConnectOptions) -> std::result::Result<SqlitePool
         .await
         .map_err(OverseerError::Storage)?;
 
-    sqlx::raw_sql(include_str!("schema.sql"))
-        .execute(&pool as &SqlitePool)
+    sqlx::migrate!("migrations/sqlite")
+        .run(&pool)
         .await
-        .map_err(OverseerError::Storage)?;
+        .map_err(|e| OverseerError::Storage(e.into()))?;
 
     Ok(pool)
 }

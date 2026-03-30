@@ -108,7 +108,8 @@ src/overseer/               # Overseer crate (see src/overseer/CLAUDE.md for det
   src/db/postgres.rs      # PostgreSQL + pgvector implementation
   src/db/models.rs        # Shared domain model types
   src/db/tables.rs        # sea-query table/column enums
-  src/db/postgres_schema.sql # Postgres DDL (applied at startup)
+  migrations/sqlite/        # SQLite migrations (applied via sqlx::migrate!())
+  migrations/postgres/      # PostgreSQL migrations (applied via sqlx::migrate!())
   src/storage.rs          # ObjectStore wrapper (local filesystem / S3)
 docs/specs/               # Design specs
 docs/plans/               # Implementation plans

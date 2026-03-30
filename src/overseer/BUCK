@@ -1,4 +1,4 @@
-OVERSEER_SRCS = glob(["src/**/*.rs", "src/**/*.sql"])
+OVERSEER_SRCS = glob(["src/**/*.rs", "src/**/*.sql", "migrations/**/*.sql"])
 
 OVERSEER_DEPS = [
     "//third-party:anyhow",
@@ -34,6 +34,7 @@ rust_binary(
     srcs = OVERSEER_SRCS,
     crate_root = "src/main.rs",
     deps = OVERSEER_DEPS,
+    env = {"CARGO_MANIFEST_DIR": "."},
     visibility = ["PUBLIC"],
 )
 
@@ -44,5 +45,6 @@ rust_test(
     deps = OVERSEER_DEPS + [
         "//third-party:tempfile",
     ],
+    env = {"CARGO_MANIFEST_DIR": "."},
     visibility = ["PUBLIC"],
 )

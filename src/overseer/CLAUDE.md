@@ -71,11 +71,11 @@ database_url = "sqlite://data/overseer.db"   # or postgres://user:pass@host/db
 artifact_url = "file://data/artifacts"       # or s3://bucket/prefix
 ```
 
-Backend is selected at startup based on the URL scheme. Postgres schema is applied automatically from `db/postgres_schema.sql`.
+Backend is selected at startup based on the URL scheme. Migrations are applied automatically via `sqlx::migrate!()`.
 
 ## Adding a New Feature
 
-1. **New table** → add to `db/sqlite_schema.sql` and `db/postgres_schema.sql`, add methods to `Database` trait and both impls
+1. **New table** → add a new migration to `migrations/sqlite/` and `migrations/postgres/`, add methods to `Database` trait and both impls
 2. **New service** → create `services/<feature>.rs`, add to `AppState`
 3. **HTTP endpoint** → create `api/<feature>.rs`, nest in `api/mod.rs` router
 4. **MCP tool** → add `#[tool]` method to `OverseerMcp` in `mcp/mod.rs`
