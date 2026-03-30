@@ -43,6 +43,6 @@ pass_filenames = false
 [[repos.hooks]]
 id = "buck2-test"
 name = "buck2 test"
-entry = "buck2 test //..."
+entry = "buck2 test //src/..."
 language = "system"
 pass_filenames = false

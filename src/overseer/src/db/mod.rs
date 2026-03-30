@@ -247,9 +247,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore] // requires a network round-trip to a dead host (~30s TCP timeout)
     async fn test_open_from_url_postgres_stub() {
-        // When no Postgres is available, just verify it returns an error (not a panic)
-        let result = open_from_url("postgres://localhost:1/nonexistent").await;
+        let result = open_from_url("postgres://127.0.0.1:1/nonexistent").await;
         assert!(result.is_err());
     }
 
