@@ -145,8 +145,22 @@ fn row_to_artifact(row: &sqlx::postgres::PgRow) -> ArtifactMetadata {
 impl Database for PostgresDatabase {
     // ── Memory (6 methods) ───────────────────────────────────────────────
 
-    async fn create_embedding_table(&self, _provider_name: &str, _dimensions: usize) -> Result<()> {
-        // No-op for Postgres — memory_embeddings table is created by migration
+    async fn create_embedding_table(&self, provider_name: &str, _dimensions: usize) -> Result<()> {
+        // The memory_embeddings table is created by migration; create a partial HNSW index
+        // for this provider to accelerate vector search. If creation fails (e.g. mixed
+        // dimensions in existing data), warn and fall back to sequential scan.
+        let index_sql = format!(
+            "CREATE INDEX IF NOT EXISTS idx_embeddings_{provider_name} \
+             ON memory_embeddings USING hnsw (embedding vector_l2_ops) \
+             WHERE provider = '{provider_name}'"
+        );
+        if let Err(e) = sqlx::raw_sql(&index_sql).execute(&self.pool).await {
+            tracing::warn!(
+                provider = %provider_name,
+                error = %e,
+                "failed to create HNSW index — vector search will use sequential scan"
+            );
+        }
         Ok(())
     }
 
