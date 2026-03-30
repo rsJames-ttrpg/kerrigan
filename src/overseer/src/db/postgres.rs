@@ -47,15 +47,9 @@ fn row_to_memory(row: &sqlx::postgres::PgRow) -> Memory {
         embedding_model: row.get("embedding_model"),
         source: row.get("source"),
         tags,
-        expires_at: row
-            .get::<Option<chrono::DateTime<chrono::Utc>>, _>("expires_at")
-            .map(|dt| dt.to_rfc3339()),
-        created_at: row
-            .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
-            .to_rfc3339(),
-        updated_at: row
-            .get::<chrono::DateTime<chrono::Utc>, _>("updated_at")
-            .to_rfc3339(),
+        expires_at: row.get("expires_at"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
     }
 }
 
@@ -66,12 +60,8 @@ fn row_to_job_definition(row: &sqlx::postgres::PgRow) -> JobDefinition {
         name: row.get("name"),
         description: row.get("description"),
         config,
-        created_at: row
-            .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
-            .to_rfc3339(),
-        updated_at: row
-            .get::<chrono::DateTime<chrono::Utc>, _>("updated_at")
-            .to_rfc3339(),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
     }
 }
 
@@ -88,12 +78,8 @@ fn row_to_job_run(row: &sqlx::postgres::PgRow) -> JobRun {
         triggered_by: row.get("triggered_by"),
         result,
         error: row.get("error"),
-        started_at: row
-            .get::<Option<chrono::DateTime<chrono::Utc>>, _>("started_at")
-            .map(|dt| dt.to_rfc3339()),
-        completed_at: row
-            .get::<Option<chrono::DateTime<chrono::Utc>>, _>("completed_at")
-            .map(|dt| dt.to_rfc3339()),
+        started_at: row.get("started_at"),
+        completed_at: row.get("completed_at"),
     }
 }
 
@@ -109,12 +95,8 @@ fn row_to_task(row: &sqlx::postgres::PgRow) -> Task {
             .unwrap_or(TaskStatus::Pending),
         assigned_to: row.get("assigned_to"),
         output,
-        created_at: row
-            .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
-            .to_rfc3339(),
-        updated_at: row
-            .get::<chrono::DateTime<chrono::Utc>, _>("updated_at")
-            .to_rfc3339(),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
     }
 }
 
@@ -132,9 +114,7 @@ fn row_to_decision(row: &sqlx::postgres::PgRow) -> Decision {
         reasoning: row.get("reasoning"),
         tags,
         run_id: row.get("run_id"),
-        created_at: row
-            .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
-            .to_rfc3339(),
+        created_at: row.get("created_at"),
     }
 }
 
@@ -145,9 +125,7 @@ fn row_to_artifact(row: &sqlx::postgres::PgRow) -> ArtifactMetadata {
         content_type: row.get("content_type"),
         size: row.get("size"),
         run_id: row.get("run_id"),
-        created_at: row
-            .get::<chrono::DateTime<chrono::Utc>, _>("created_at")
-            .to_rfc3339(),
+        created_at: row.get("created_at"),
     }
 }
 

@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use sea_query::{Expr, Order, Query, SqliteQueryBuilder};
 use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
@@ -13,7 +14,7 @@ fn row_to_artifact(row: &sqlx::sqlite::SqliteRow) -> ArtifactMetadata {
         content_type: row.get("content_type"),
         size: row.get("size"),
         run_id: row.get("run_id"),
-        created_at: row.get("created_at"),
+        created_at: row.get::<NaiveDateTime, _>("created_at").and_utc(),
     }
 }
 

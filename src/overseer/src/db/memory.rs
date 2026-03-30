@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use sea_query::{Expr, Query, SqliteQueryBuilder};
 use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
@@ -20,9 +21,11 @@ fn row_to_memory(row: &sqlx::sqlite::SqliteRow) -> Memory {
         embedding_model: row.get("embedding_model"),
         source: row.get("source"),
         tags,
-        expires_at: row.get("expires_at"),
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
+        expires_at: row
+            .get::<Option<NaiveDateTime>, _>("expires_at")
+            .map(|ndt| ndt.and_utc()),
+        created_at: row.get::<NaiveDateTime, _>("created_at").and_utc(),
+        updated_at: row.get::<NaiveDateTime, _>("updated_at").and_utc(),
     }
 }
 

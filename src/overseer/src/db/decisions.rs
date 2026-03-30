@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use sea_query::{Expr, Order, Query, SqliteQueryBuilder};
 use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
@@ -21,7 +22,7 @@ fn row_to_decision(row: &sqlx::sqlite::SqliteRow) -> Decision {
         reasoning: row.get("reasoning"),
         tags,
         run_id: row.get("run_id"),
-        created_at: row.get("created_at"),
+        created_at: row.get::<NaiveDateTime, _>("created_at").and_utc(),
     }
 }
 

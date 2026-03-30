@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use sea_query::{Expr, Order, Query, SqliteQueryBuilder};
 use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
@@ -18,8 +19,8 @@ fn row_to_job_definition(row: &sqlx::sqlite::SqliteRow) -> JobDefinition {
         name: row.get("name"),
         description: row.get("description"),
         config,
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
+        created_at: row.get::<NaiveDateTime, _>("created_at").and_utc(),
+        updated_at: row.get::<NaiveDateTime, _>("updated_at").and_utc(),
     }
 }
 
@@ -42,8 +43,12 @@ fn row_to_job_run(row: &sqlx::sqlite::SqliteRow) -> JobRun {
         triggered_by: row.get("triggered_by"),
         result,
         error: row.get("error"),
-        started_at: row.get("started_at"),
-        completed_at: row.get("completed_at"),
+        started_at: row
+            .get::<Option<NaiveDateTime>, _>("started_at")
+            .map(|ndt| ndt.and_utc()),
+        completed_at: row
+            .get::<Option<NaiveDateTime>, _>("completed_at")
+            .map(|ndt| ndt.and_utc()),
     }
 }
 
@@ -65,8 +70,8 @@ fn row_to_task(row: &sqlx::sqlite::SqliteRow) -> Task {
             .unwrap_or(TaskStatus::Pending),
         assigned_to: row.get("assigned_to"),
         output,
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
+        created_at: row.get::<NaiveDateTime, _>("created_at").and_utc(),
+        updated_at: row.get::<NaiveDateTime, _>("updated_at").and_utc(),
     }
 }
 

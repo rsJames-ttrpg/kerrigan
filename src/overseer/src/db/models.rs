@@ -5,6 +5,8 @@
 use std::fmt;
 use std::str::FromStr;
 
+use chrono::{DateTime, Utc};
+
 // ── Status enums ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -89,9 +91,9 @@ pub struct Memory {
     pub embedding_model: String,
     pub source: String,
     pub tags: Vec<String>,
-    pub expires_at: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -106,8 +108,8 @@ pub struct JobDefinition {
     pub name: String,
     pub description: String,
     pub config: serde_json::Value,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -119,8 +121,8 @@ pub struct JobRun {
     pub triggered_by: String,
     pub result: Option<serde_json::Value>,
     pub error: Option<String>,
-    pub started_at: Option<String>,
-    pub completed_at: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -131,8 +133,8 @@ pub struct Task {
     pub status: TaskStatus,
     pub assigned_to: Option<String>,
     pub output: Option<serde_json::Value>,
-    pub created_at: String,
-    pub updated_at: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -144,7 +146,7 @@ pub struct Decision {
     pub reasoning: String,
     pub tags: Vec<String>,
     pub run_id: Option<String>,
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -154,5 +156,5 @@ pub struct ArtifactMetadata {
     pub content_type: String,
     pub size: i64,
     pub run_id: Option<String>,
-    pub created_at: String,
+    pub created_at: DateTime<Utc>,
 }
