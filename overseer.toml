@@ -3,8 +3,8 @@ http_port = 3100
 mcp_transport = "http"
 
 [storage]
-database_path = "data/overseer.db"
-artifact_path = "data/artifacts"
+database_url = "sqlite://data/overseer.db"
+artifact_url = "file://data/artifacts"
 
 [embedding]
 default = "stub"

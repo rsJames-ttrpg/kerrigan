@@ -34,10 +34,8 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("overseer starting");
 
-    let db_path = config.storage.database_path.to_string_lossy();
-    let sqlite_db = db::SqliteDatabase::open(&db_path).await?;
-    let db: std::sync::Arc<dyn db::Database> = std::sync::Arc::new(sqlite_db);
-    tracing::info!("database opened at {:?}", db_path);
+    let db = db::open_from_url(&config.storage.database_url).await?;
+    tracing::info!("database opened: {}", config.storage.database_url);
 
     config.embedding.validate()?;
 
@@ -80,11 +78,14 @@ async fn main() -> anyhow::Result<()> {
     let registry = embedding::EmbeddingRegistry::new(providers, config.embedding.default.clone())?;
     tracing::info!("default embedding provider: {}", config.embedding.default);
 
-    let state = Arc::new(AppState::new(
-        db,
-        registry,
-        config.storage.artifact_path.clone(),
-    ));
+    let artifact_path = config
+        .storage
+        .artifact_url
+        .strip_prefix("file://")
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow::anyhow!("only file:// artifact URLs supported currently"))?;
+
+    let state = Arc::new(AppState::new(db, registry, artifact_path));
 
     // HTTP server
     let http_router = api::router(state.clone());

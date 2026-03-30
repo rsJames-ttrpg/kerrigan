@@ -13,6 +13,8 @@ pub use trait_def::Database;
 #[allow(unused_imports)]
 pub use models::*;
 
+use std::sync::Arc;
+
 use sqlx::SqlitePool;
 
 use crate::error::OverseerError;
@@ -30,6 +32,21 @@ pub async fn create_embedding_table(
         .await
         .map_err(OverseerError::Storage)?;
     Ok(())
+}
+
+/// Open a database from a URL, dispatching on the scheme.
+pub async fn open_from_url(url: &str) -> std::result::Result<Arc<dyn Database>, OverseerError> {
+    if let Some(path) = url.strip_prefix("sqlite://") {
+        Ok(Arc::new(SqliteDatabase::open(path).await?))
+    } else if url.starts_with("postgres://") || url.starts_with("postgresql://") {
+        Err(OverseerError::Validation(
+            "postgres support not yet implemented".to_string(),
+        ))
+    } else {
+        Err(OverseerError::Validation(format!(
+            "unsupported database URL scheme: {url}"
+        )))
+    }
 }
 
 /// Open (or create) a SQLite database at the given file path.

@@ -1,6 +1,5 @@
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -40,26 +39,37 @@ fn default_mcp_transport() -> String {
 
 #[derive(Debug, Deserialize)]
 pub struct StorageConfig {
-    #[serde(default = "default_db_path")]
-    pub database_path: PathBuf,
-    #[serde(default = "default_artifact_path")]
-    pub artifact_path: PathBuf,
+    #[serde(default = "default_database_url")]
+    pub database_url: String,
+    #[serde(default = "default_artifact_url")]
+    pub artifact_url: String,
+    #[serde(default)]
+    pub s3: Option<S3Config>,
 }
 
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            database_path: default_db_path(),
-            artifact_path: default_artifact_path(),
+            database_url: default_database_url(),
+            artifact_url: default_artifact_url(),
+            s3: None,
         }
     }
 }
 
-fn default_db_path() -> PathBuf {
-    PathBuf::from("data/overseer.db")
+fn default_database_url() -> String {
+    "sqlite://data/overseer.db".to_string()
 }
-fn default_artifact_path() -> PathBuf {
-    PathBuf::from("data/artifacts")
+fn default_artifact_url() -> String {
+    "file://data/artifacts".to_string()
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct S3Config {
+    pub region: Option<String>,
+    pub endpoint: Option<String>,
+    pub access_key_env: Option<String>,
+    pub secret_key_env: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -163,14 +173,8 @@ mod tests {
             .expect("should fall back to defaults");
         assert_eq!(config.server.http_port, 3100);
         assert_eq!(config.server.mcp_transport, "stdio");
-        assert_eq!(
-            config.storage.database_path,
-            PathBuf::from("data/overseer.db")
-        );
-        assert_eq!(
-            config.storage.artifact_path,
-            PathBuf::from("data/artifacts")
-        );
+        assert_eq!(config.storage.database_url, "sqlite://data/overseer.db");
+        assert_eq!(config.storage.artifact_url, "file://data/artifacts");
         assert_eq!(config.embedding.default, "stub");
         assert_eq!(config.embedding.providers.len(), 1);
         assert!(config.embedding.providers.contains_key("stub"));
@@ -198,8 +202,8 @@ http_port = 8080
 mcp_transport = "http"
 
 [storage]
-database_path = "/tmp/test.db"
-artifact_path = "/tmp/arts"
+database_url = "sqlite:///tmp/test.db"
+artifact_url = "file:///tmp/arts"
 
 [embedding]
 default = "local"
@@ -216,7 +220,8 @@ level = "debug"
         let config = Config::load(f.path()).expect("should parse");
         assert_eq!(config.server.http_port, 8080);
         assert_eq!(config.server.mcp_transport, "http");
-        assert_eq!(config.storage.database_path, PathBuf::from("/tmp/test.db"));
+        assert_eq!(config.storage.database_url, "sqlite:///tmp/test.db");
+        assert_eq!(config.storage.artifact_url, "file:///tmp/arts");
         assert_eq!(config.embedding.default, "local");
         assert_eq!(config.logging.level, "debug");
     }
