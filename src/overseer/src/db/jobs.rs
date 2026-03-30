@@ -74,12 +74,13 @@ pub async fn create_job_definition(
             JobDefinitions::Description,
             JobDefinitions::Config,
         ])
-        .values_panic([
+        .values([
             id.into(),
             name.into(),
             description.into(),
             config_json.into(),
         ])
+        .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
         .returning(Query::returning().columns([
             JobDefinitions::Id,
             JobDefinitions::Name,
@@ -160,7 +161,7 @@ pub async fn start_job_run(
             JobRuns::TriggeredBy,
             JobRuns::StartedAt,
         ])
-        .values_panic([
+        .values([
             id.into(),
             definition_id.into(),
             parent_id.map(|s| s.to_string()).into(),
@@ -168,6 +169,7 @@ pub async fn start_job_run(
             triggered_by.into(),
             Expr::cust("datetime('now')"),
         ])
+        .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
         .returning(Query::returning().columns([
             JobRuns::Id,
             JobRuns::DefinitionId,
@@ -230,6 +232,13 @@ pub async fn update_job_run(
     let is_terminal = status
         .map(|s| terminal_statuses.contains(&s))
         .unwrap_or(false);
+
+    if status.is_none() && result.is_none() && error.is_none() {
+        // Nothing to update — just return the current state
+        return get_job_run(pool, id)
+            .await?
+            .ok_or_else(|| OverseerError::NotFound(format!("job_run {id}")));
+    }
 
     let mut query = Query::update();
     query.table(JobRuns::Table);
@@ -304,12 +313,13 @@ pub async fn create_task(
     let (sql, values) = Query::insert()
         .into_table(Tasks::Table)
         .columns([Tasks::Id, Tasks::Subject, Tasks::RunId, Tasks::AssignedTo])
-        .values_panic([
+        .values([
             id.into(),
             subject.into(),
             run_id.map(|s| s.to_string()).into(),
             assigned_to.map(|s| s.to_string()).into(),
         ])
+        .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
         .returning(Query::returning().columns([
             Tasks::Id,
             Tasks::RunId,

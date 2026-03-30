@@ -179,7 +179,7 @@ impl Database for PostgresDatabase {
                 Memories::Tags,
                 Memories::ExpiresAt,
             ])
-            .values_panic([
+            .values([
                 id.clone().into(),
                 content.into(),
                 embedding_model.into(),
@@ -187,6 +187,7 @@ impl Database for PostgresDatabase {
                 tags_str.into(),
                 expires_at.map(|s| s.to_string()).into(),
             ])
+            .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
             .build_sqlx(PostgresQueryBuilder);
 
         sqlx::query_with(&sql, values)
@@ -314,12 +315,13 @@ impl Database for PostgresDatabase {
                 MemoryLinks::LinkedType,
                 MemoryLinks::RelationType,
             ])
-            .values_panic([
+            .values([
                 memory_id.into(),
                 linked_id.into(),
                 linked_type.into(),
                 relation_type.into(),
             ])
+            .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
             .build_sqlx(PostgresQueryBuilder);
 
         sqlx::query_with(&sql, values)
@@ -350,12 +352,13 @@ impl Database for PostgresDatabase {
                 JobDefinitions::Description,
                 JobDefinitions::Config,
             ])
-            .values_panic([
+            .values([
                 id.into(),
                 name.into(),
                 description.into(),
                 config_str.into(),
             ])
+            .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
             .returning(Query::returning().columns([
                 JobDefinitions::Id,
                 JobDefinitions::Name,
@@ -436,7 +439,7 @@ impl Database for PostgresDatabase {
                 JobRuns::TriggeredBy,
                 JobRuns::StartedAt,
             ])
-            .values_panic([
+            .values([
                 id.into(),
                 definition_id.into(),
                 parent_id.map(|s| s.to_string()).into(),
@@ -444,6 +447,7 @@ impl Database for PostgresDatabase {
                 triggered_by.into(),
                 Expr::cust("now()"),
             ])
+            .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
             .returning(Query::returning().columns([
                 JobRuns::Id,
                 JobRuns::DefinitionId,
@@ -506,6 +510,14 @@ impl Database for PostgresDatabase {
         let is_terminal = status
             .map(|s| terminal_statuses.contains(&s))
             .unwrap_or(false);
+
+        if status.is_none() && result.is_none() && error.is_none() {
+            // Nothing to update — just return the current state
+            return self
+                .get_job_run(id)
+                .await?
+                .ok_or_else(|| OverseerError::NotFound(format!("job_run {id}")));
+        }
 
         let mut query = Query::update();
         query.table(JobRuns::Table);
@@ -580,12 +592,13 @@ impl Database for PostgresDatabase {
         let (sql, values) = Query::insert()
             .into_table(Tasks::Table)
             .columns([Tasks::Id, Tasks::Subject, Tasks::RunId, Tasks::AssignedTo])
-            .values_panic([
+            .values([
                 id.into(),
                 subject.into(),
                 run_id.map(|s| s.to_string()).into(),
                 assigned_to.map(|s| s.to_string()).into(),
             ])
+            .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
             .returning(Query::returning().columns([
                 Tasks::Id,
                 Tasks::RunId,
@@ -738,7 +751,7 @@ impl Database for PostgresDatabase {
                 Decisions::Tags,
                 Decisions::RunId,
             ])
-            .values_panic([
+            .values([
                 id.into(),
                 agent.into(),
                 context.into(),
@@ -747,6 +760,7 @@ impl Database for PostgresDatabase {
                 tags_str.into(),
                 run_id.map(|s| s.to_string()).into(),
             ])
+            .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
             .returning(Query::returning().columns([
                 Decisions::Id,
                 Decisions::Agent,
@@ -863,13 +877,14 @@ impl Database for PostgresDatabase {
                 Artifacts::Size,
                 Artifacts::RunId,
             ])
-            .values_panic([
+            .values([
                 id.into(),
                 name.into(),
                 content_type.into(),
                 size.into(),
                 run_id.map(|s| s.to_string()).into(),
             ])
+            .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
             .returning(Query::returning().columns([
                 Artifacts::Id,
                 Artifacts::Name,
