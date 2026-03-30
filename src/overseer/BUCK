@@ -20,6 +20,8 @@ OVERSEER_DEPS = [
     "//third-party:toml",
     "//third-party:tracing",
     "//third-party:tracing-subscriber",
+    "//third-party:sea-query",
+    "//third-party:sea-query-binder",
     "//third-party:uuid",
     "//third-party:zerocopy",
 ]
