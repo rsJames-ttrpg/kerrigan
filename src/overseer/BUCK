@@ -1,10 +1,13 @@
-CORTEX_SRCS = glob(["src/**/*.rs", "src/**/*.sql"])
+OVERSEER_SRCS = glob(["src/**/*.rs", "src/**/*.sql"])
 
-CORTEX_DEPS = [
+OVERSEER_DEPS = [
     "//third-party:anyhow",
+    "//third-party:async-trait",
     "//third-party:axum",
     "//third-party:base64",
     "//third-party:libsqlite3-sys",
+    "//third-party:regex-lite",
+    "//third-party:ureq",
     "//third-party:rmcp",
     "//third-party:schemars",
     "//third-party:serde",
@@ -17,22 +20,29 @@ CORTEX_DEPS = [
     "//third-party:toml",
     "//third-party:tracing",
     "//third-party:tracing-subscriber",
+    "//third-party:chrono",
+    "//third-party:pgvector",
+    "//third-party:sea-query",
+    "//third-party:sea-query-binder",
     "//third-party:uuid",
     "//third-party:zerocopy",
+    "//third-party:object_store",
 ]
 
 rust_binary(
     name = "overseer",
-    srcs = CORTEX_SRCS,
+    srcs = OVERSEER_SRCS,
     crate_root = "src/main.rs",
-    deps = CORTEX_DEPS,
+    deps = OVERSEER_DEPS,
     visibility = ["PUBLIC"],
 )
 
 rust_test(
     name = "overseer-test",
-    srcs = CORTEX_SRCS,
+    srcs = OVERSEER_SRCS,
     crate_root = "src/main.rs",
-    deps = CORTEX_DEPS,
+    deps = OVERSEER_DEPS + [
+        "//third-party:tempfile",
+    ],
     visibility = ["PUBLIC"],
 )

@@ -1,89 +1,77 @@
+use chrono::NaiveDateTime;
+use sea_query::{Expr, Order, Query, SqliteQueryBuilder};
+use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+pub use super::models::{JobDefinition, JobRun, JobRunStatus, Task, TaskStatus};
+use super::tables::{JobDefinitions, JobRuns, Tasks};
 use crate::error::{OverseerError, Result};
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct JobDefinition {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub config: serde_json::Value,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct JobRun {
-    pub id: String,
-    pub definition_id: String,
-    pub parent_id: Option<String>,
-    pub status: String,
-    pub triggered_by: String,
-    pub result: Option<serde_json::Value>,
-    pub error: Option<String>,
-    pub started_at: Option<String>,
-    pub completed_at: Option<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct Task {
-    pub id: String,
-    pub run_id: Option<String>,
-    pub subject: String,
-    pub status: String,
-    pub assigned_to: Option<String>,
-    pub output: Option<serde_json::Value>,
-    pub created_at: String,
-    pub updated_at: String,
-}
 
 fn row_to_job_definition(row: &sqlx::sqlite::SqliteRow) -> JobDefinition {
     let config_json: String = row.get("config");
-    let config: serde_json::Value =
-        serde_json::from_str(&config_json).unwrap_or(serde_json::Value::Null);
+    let config: serde_json::Value = serde_json::from_str(&config_json).unwrap_or_else(|e| {
+        tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "failed to deserialize config, defaulting to null");
+        serde_json::Value::Null
+    });
     JobDefinition {
         id: row.get("id"),
         name: row.get("name"),
         description: row.get("description"),
         config,
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
+        created_at: row.get::<NaiveDateTime, _>("created_at").and_utc(),
+        updated_at: row.get::<NaiveDateTime, _>("updated_at").and_utc(),
     }
 }
 
 fn row_to_job_run(row: &sqlx::sqlite::SqliteRow) -> JobRun {
     let result_json: Option<String> = row.get("result");
-    let result = result_json
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok());
+    let result = result_json.as_deref().and_then(|s| {
+        serde_json::from_str(s).unwrap_or_else(|e| {
+            tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "failed to deserialize result, defaulting to null");
+            None
+        })
+    });
     JobRun {
         id: row.get("id"),
         definition_id: row.get("definition_id"),
         parent_id: row.get("parent_id"),
-        status: row.get("status"),
+        status: row
+            .get::<String, _>("status")
+            .parse()
+            .unwrap_or(JobRunStatus::Pending),
         triggered_by: row.get("triggered_by"),
         result,
         error: row.get("error"),
-        started_at: row.get("started_at"),
-        completed_at: row.get("completed_at"),
+        started_at: row
+            .get::<Option<NaiveDateTime>, _>("started_at")
+            .map(|ndt| ndt.and_utc()),
+        completed_at: row
+            .get::<Option<NaiveDateTime>, _>("completed_at")
+            .map(|ndt| ndt.and_utc()),
     }
 }
 
 fn row_to_task(row: &sqlx::sqlite::SqliteRow) -> Task {
     let output_json: Option<String> = row.get("output");
-    let output = output_json
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok());
+    let output = output_json.as_deref().and_then(|s| {
+        serde_json::from_str(s).unwrap_or_else(|e| {
+            tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "failed to deserialize output, defaulting to null");
+            None
+        })
+    });
     Task {
         id: row.get("id"),
         run_id: row.get("run_id"),
         subject: row.get("subject"),
-        status: row.get("status"),
+        status: row
+            .get::<String, _>("status")
+            .parse()
+            .unwrap_or(TaskStatus::Pending),
         assigned_to: row.get("assigned_to"),
         output,
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
+        created_at: row.get::<NaiveDateTime, _>("created_at").and_utc(),
+        updated_at: row.get::<NaiveDateTime, _>("updated_at").and_utc(),
     }
 }
 
@@ -97,43 +85,79 @@ pub async fn create_job_definition(
     let config_json =
         serde_json::to_string(&config).map_err(|e| OverseerError::Internal(e.to_string()))?;
 
-    sqlx::query(
-        "INSERT INTO job_definitions (id, name, description, config) VALUES (?1, ?2, ?3, ?4)",
-    )
-    .bind(&id)
-    .bind(name)
-    .bind(description)
-    .bind(&config_json)
-    .execute(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::insert()
+        .into_table(JobDefinitions::Table)
+        .columns([
+            JobDefinitions::Id,
+            JobDefinitions::Name,
+            JobDefinitions::Description,
+            JobDefinitions::Config,
+        ])
+        .values([
+            id.into(),
+            name.into(),
+            description.into(),
+            config_json.into(),
+        ])
+        .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
+        .returning(Query::returning().columns([
+            JobDefinitions::Id,
+            JobDefinitions::Name,
+            JobDefinitions::Description,
+            JobDefinitions::Config,
+            JobDefinitions::CreatedAt,
+            JobDefinitions::UpdatedAt,
+        ]))
+        .build_sqlx(SqliteQueryBuilder);
 
-    get_job_definition(pool, &id)
-        .await?
-        .ok_or_else(|| OverseerError::NotFound(format!("job_definition {id}")))
+    let row = sqlx::query_with(&sql, values)
+        .fetch_one(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
+
+    Ok(row_to_job_definition(&row))
 }
 
 pub async fn get_job_definition(pool: &SqlitePool, id: &str) -> Result<Option<JobDefinition>> {
-    let row = sqlx::query(
-        "SELECT id, name, description, config, created_at, updated_at \
-         FROM job_definitions WHERE id = ?1",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::select()
+        .columns([
+            JobDefinitions::Id,
+            JobDefinitions::Name,
+            JobDefinitions::Description,
+            JobDefinitions::Config,
+            JobDefinitions::CreatedAt,
+            JobDefinitions::UpdatedAt,
+        ])
+        .from(JobDefinitions::Table)
+        .and_where(Expr::col(JobDefinitions::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_optional(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_job_definition))
 }
 
 pub async fn list_job_definitions(pool: &SqlitePool) -> Result<Vec<JobDefinition>> {
-    let rows = sqlx::query(
-        "SELECT id, name, description, config, created_at, updated_at \
-         FROM job_definitions ORDER BY created_at",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::select()
+        .columns([
+            JobDefinitions::Id,
+            JobDefinitions::Name,
+            JobDefinitions::Description,
+            JobDefinitions::Config,
+            JobDefinitions::CreatedAt,
+            JobDefinitions::UpdatedAt,
+        ])
+        .from(JobDefinitions::Table)
+        .order_by(JobDefinitions::CreatedAt, Order::Asc)
+        .build_sqlx(SqliteQueryBuilder);
+
+    let rows = sqlx::query_with(&sql, values)
+        .fetch_all(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(rows.iter().map(row_to_job_definition).collect())
 }
@@ -146,32 +170,67 @@ pub async fn start_job_run(
 ) -> Result<JobRun> {
     let id = Uuid::new_v4().to_string();
 
-    sqlx::query(
-        "INSERT INTO job_runs (id, definition_id, parent_id, status, triggered_by, started_at) \
-         VALUES (?1, ?2, ?3, 'running', ?4, datetime('now'))",
-    )
-    .bind(&id)
-    .bind(definition_id)
-    .bind(parent_id)
-    .bind(triggered_by)
-    .execute(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::insert()
+        .into_table(JobRuns::Table)
+        .columns([
+            JobRuns::Id,
+            JobRuns::DefinitionId,
+            JobRuns::ParentId,
+            JobRuns::Status,
+            JobRuns::TriggeredBy,
+            JobRuns::StartedAt,
+        ])
+        .values([
+            id.into(),
+            definition_id.into(),
+            parent_id.map(|s| s.to_string()).into(),
+            "running".into(),
+            triggered_by.into(),
+            Expr::cust("datetime('now')"),
+        ])
+        .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
+        .returning(Query::returning().columns([
+            JobRuns::Id,
+            JobRuns::DefinitionId,
+            JobRuns::ParentId,
+            JobRuns::Status,
+            JobRuns::TriggeredBy,
+            JobRuns::Result,
+            JobRuns::Error,
+            JobRuns::StartedAt,
+            JobRuns::CompletedAt,
+        ]))
+        .build_sqlx(SqliteQueryBuilder);
 
-    get_job_run(pool, &id)
-        .await?
-        .ok_or_else(|| OverseerError::NotFound(format!("job_run {id}")))
+    let row = sqlx::query_with(&sql, values)
+        .fetch_one(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
+
+    Ok(row_to_job_run(&row))
 }
 
 pub async fn get_job_run(pool: &SqlitePool, id: &str) -> Result<Option<JobRun>> {
-    let row = sqlx::query(
-        "SELECT id, definition_id, parent_id, status, triggered_by, result, error, \
-         started_at, completed_at FROM job_runs WHERE id = ?1",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::select()
+        .columns([
+            JobRuns::Id,
+            JobRuns::DefinitionId,
+            JobRuns::ParentId,
+            JobRuns::Status,
+            JobRuns::TriggeredBy,
+            JobRuns::Result,
+            JobRuns::Error,
+            JobRuns::StartedAt,
+            JobRuns::CompletedAt,
+        ])
+        .from(JobRuns::Table)
+        .and_where(Expr::col(JobRuns::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_optional(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_job_run))
 }
@@ -188,43 +247,46 @@ pub async fn update_job_run(
         .map(|v| serde_json::to_string(v).map_err(|e| OverseerError::Internal(e.to_string())))
         .transpose()?;
 
-    let terminal_statuses = ["completed", "failed", "cancelled"];
-    let is_terminal = status
-        .map(|s| terminal_statuses.contains(&s))
+    let parsed_status = status
+        .map(|s| s.parse::<JobRunStatus>())
+        .transpose()
+        .map_err(OverseerError::Validation)?;
+    let is_terminal = parsed_status
+        .as_ref()
+        .map(|s| s.is_terminal())
         .unwrap_or(false);
 
-    if is_terminal {
-        sqlx::query(
-            "UPDATE job_runs SET \
-             status = COALESCE(?1, status), \
-             result = COALESCE(?2, result), \
-             error = COALESCE(?3, error), \
-             completed_at = datetime('now') \
-             WHERE id = ?4",
-        )
-        .bind(status)
-        .bind(result_json.as_deref())
-        .bind(error)
-        .bind(id)
-        .execute(pool)
-        .await
-        .map_err(OverseerError::Storage)?;
-    } else {
-        sqlx::query(
-            "UPDATE job_runs SET \
-             status = COALESCE(?1, status), \
-             result = COALESCE(?2, result), \
-             error = COALESCE(?3, error) \
-             WHERE id = ?4",
-        )
-        .bind(status)
-        .bind(result_json.as_deref())
-        .bind(error)
-        .bind(id)
-        .execute(pool)
-        .await
-        .map_err(OverseerError::Storage)?;
+    if status.is_none() && result.is_none() && error.is_none() {
+        // Nothing to update — just return the current state
+        return get_job_run(pool, id)
+            .await?
+            .ok_or_else(|| OverseerError::NotFound(format!("job_run {id}")));
     }
+
+    let mut query = Query::update();
+    query.table(JobRuns::Table);
+
+    if let Some(ref s) = parsed_status {
+        query.value(JobRuns::Status, s.to_string());
+    }
+    if let Some(ref r) = result_json {
+        query.value(JobRuns::Result, r.as_str());
+    }
+    if let Some(e) = error {
+        query.value(JobRuns::Error, e);
+    }
+    if is_terminal {
+        query.value(JobRuns::CompletedAt, Expr::cust("datetime('now')"));
+    }
+
+    query.and_where(Expr::col(JobRuns::Id).eq(id));
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    sqlx::query_with(&sql, values)
+        .execute(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     get_job_run(pool, id)
         .await?
@@ -232,16 +294,33 @@ pub async fn update_job_run(
 }
 
 pub async fn list_job_runs(pool: &SqlitePool, status: Option<&str>) -> Result<Vec<JobRun>> {
-    let rows = sqlx::query(
-        "SELECT id, definition_id, parent_id, status, triggered_by, result, error, \
-         started_at, completed_at FROM job_runs \
-         WHERE (?1 IS NULL OR status = ?1) \
-         ORDER BY started_at",
-    )
-    .bind(status)
-    .fetch_all(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let mut query = Query::select();
+    query
+        .columns([
+            JobRuns::Id,
+            JobRuns::DefinitionId,
+            JobRuns::ParentId,
+            JobRuns::Status,
+            JobRuns::TriggeredBy,
+            JobRuns::Result,
+            JobRuns::Error,
+            JobRuns::StartedAt,
+            JobRuns::CompletedAt,
+        ])
+        .from(JobRuns::Table);
+
+    if let Some(s) = status {
+        query.and_where(Expr::col(JobRuns::Status).eq(s));
+    }
+
+    query.order_by(JobRuns::StartedAt, Order::Asc);
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    let rows = sqlx::query_with(&sql, values)
+        .fetch_all(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(rows.iter().map(row_to_job_run).collect())
 }
@@ -254,29 +333,56 @@ pub async fn create_task(
 ) -> Result<Task> {
     let id = Uuid::new_v4().to_string();
 
-    sqlx::query("INSERT INTO tasks (id, subject, run_id, assigned_to) VALUES (?1, ?2, ?3, ?4)")
-        .bind(&id)
-        .bind(subject)
-        .bind(run_id)
-        .bind(assigned_to)
-        .execute(pool)
+    let (sql, values) = Query::insert()
+        .into_table(Tasks::Table)
+        .columns([Tasks::Id, Tasks::Subject, Tasks::RunId, Tasks::AssignedTo])
+        .values([
+            id.into(),
+            subject.into(),
+            run_id.map(|s| s.to_string()).into(),
+            assigned_to.map(|s| s.to_string()).into(),
+        ])
+        .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
+        .returning(Query::returning().columns([
+            Tasks::Id,
+            Tasks::RunId,
+            Tasks::Subject,
+            Tasks::Status,
+            Tasks::AssignedTo,
+            Tasks::Output,
+            Tasks::CreatedAt,
+            Tasks::UpdatedAt,
+        ]))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_one(pool)
         .await
         .map_err(OverseerError::Storage)?;
 
-    get_task(pool, &id)
-        .await?
-        .ok_or_else(|| OverseerError::NotFound(format!("task {id}")))
+    Ok(row_to_task(&row))
 }
 
 pub async fn get_task(pool: &SqlitePool, id: &str) -> Result<Option<Task>> {
-    let row = sqlx::query(
-        "SELECT id, run_id, subject, status, assigned_to, output, created_at, updated_at \
-         FROM tasks WHERE id = ?1",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::select()
+        .columns([
+            Tasks::Id,
+            Tasks::RunId,
+            Tasks::Subject,
+            Tasks::Status,
+            Tasks::AssignedTo,
+            Tasks::Output,
+            Tasks::CreatedAt,
+            Tasks::UpdatedAt,
+        ])
+        .from(Tasks::Table)
+        .and_where(Expr::col(Tasks::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_optional(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_task))
 }
@@ -293,21 +399,28 @@ pub async fn update_task(
         .map(|v| serde_json::to_string(v).map_err(|e| OverseerError::Internal(e.to_string())))
         .transpose()?;
 
-    sqlx::query(
-        "UPDATE tasks SET \
-         status = COALESCE(?1, status), \
-         assigned_to = COALESCE(?2, assigned_to), \
-         output = COALESCE(?3, output), \
-         updated_at = datetime('now') \
-         WHERE id = ?4",
-    )
-    .bind(status)
-    .bind(assigned_to)
-    .bind(output_json.as_deref())
-    .bind(id)
-    .execute(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let mut query = Query::update();
+    query.table(Tasks::Table);
+
+    if let Some(s) = status {
+        query.value(Tasks::Status, s);
+    }
+    if let Some(a) = assigned_to {
+        query.value(Tasks::AssignedTo, a);
+    }
+    if let Some(ref o) = output_json {
+        query.value(Tasks::Output, o.as_str());
+    }
+
+    query.value(Tasks::UpdatedAt, Expr::cust("datetime('now')"));
+    query.and_where(Expr::col(Tasks::Id).eq(id));
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    sqlx::query_with(&sql, values)
+        .execute(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     get_task(pool, id)
         .await?
@@ -320,20 +433,38 @@ pub async fn list_tasks(
     assigned_to: Option<&str>,
     run_id: Option<&str>,
 ) -> Result<Vec<Task>> {
-    let rows = sqlx::query(
-        "SELECT id, run_id, subject, status, assigned_to, output, created_at, updated_at \
-         FROM tasks \
-         WHERE (?1 IS NULL OR status = ?1) \
-         AND (?2 IS NULL OR assigned_to = ?2) \
-         AND (?3 IS NULL OR run_id = ?3) \
-         ORDER BY created_at",
-    )
-    .bind(status)
-    .bind(assigned_to)
-    .bind(run_id)
-    .fetch_all(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let mut query = Query::select();
+    query
+        .columns([
+            Tasks::Id,
+            Tasks::RunId,
+            Tasks::Subject,
+            Tasks::Status,
+            Tasks::AssignedTo,
+            Tasks::Output,
+            Tasks::CreatedAt,
+            Tasks::UpdatedAt,
+        ])
+        .from(Tasks::Table);
+
+    if let Some(s) = status {
+        query.and_where(Expr::col(Tasks::Status).eq(s));
+    }
+    if let Some(a) = assigned_to {
+        query.and_where(Expr::col(Tasks::AssignedTo).eq(a));
+    }
+    if let Some(r) = run_id {
+        query.and_where(Expr::col(Tasks::RunId).eq(r));
+    }
+
+    query.order_by(Tasks::CreatedAt, Order::Asc);
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    let rows = sqlx::query_with(&sql, values)
+        .fetch_all(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(rows.iter().map(row_to_task).collect())
 }
@@ -388,7 +519,7 @@ mod tests {
         let run = start_job_run(&pool, &def.id, "agent-1", None)
             .await
             .expect("start run");
-        assert_eq!(run.status, "running");
+        assert_eq!(run.status, JobRunStatus::Running);
         assert!(run.started_at.is_some());
         assert!(run.completed_at.is_none());
 
@@ -401,7 +532,7 @@ mod tests {
         )
         .await
         .expect("update run");
-        assert_eq!(updated.status, "completed");
+        assert_eq!(updated.status, JobRunStatus::Completed);
         assert!(updated.completed_at.is_some());
         assert_eq!(updated.result.as_ref().unwrap()["items"], 42);
 
@@ -449,7 +580,7 @@ mod tests {
         .await
         .expect("create task");
         assert_eq!(task.subject, "do something");
-        assert_eq!(task.status, "pending");
+        assert_eq!(task.status, TaskStatus::Pending);
         assert_eq!(task.run_id.as_deref(), Some(run.id.as_str()));
 
         let fetched = get_task(&pool, &task.id)
@@ -467,7 +598,7 @@ mod tests {
         )
         .await
         .expect("update task");
-        assert_eq!(updated.status, "completed");
+        assert_eq!(updated.status, TaskStatus::Completed);
         assert_eq!(updated.output.as_ref().unwrap()["done"], true);
 
         let tasks_by_run = list_tasks(&pool, None, None, Some(&run.id))
@@ -484,5 +615,57 @@ mod tests {
             .await
             .expect("list by agent");
         assert_eq!(tasks_by_agent.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_update_job_run_nonexistent() {
+        let pool = make_pool("jobs_test_update_run_notfound").await;
+        let result = update_job_run(&pool, "no-such-id", Some("completed"), None, None).await;
+        assert!(matches!(result, Err(OverseerError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_update_task_nonexistent() {
+        let pool = make_pool("jobs_test_update_task_notfound").await;
+        let result = update_task(&pool, "no-such-id", Some("completed"), None, None).await;
+        assert!(matches!(result, Err(OverseerError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_terminal_statuses_set_completed_at() {
+        let pool = make_pool("jobs_test_terminal_statuses").await;
+        let def = make_definition(&pool, "test-terminal").await;
+
+        for status in ["failed", "cancelled"] {
+            let run = start_job_run(&pool, &def.id, "agent", None)
+                .await
+                .expect("start run");
+            assert!(run.completed_at.is_none());
+
+            let updated = update_job_run(&pool, &run.id, Some(status), None, None)
+                .await
+                .expect("update run");
+            assert_eq!(updated.status, status.parse::<JobRunStatus>().unwrap());
+            assert!(
+                updated.completed_at.is_some(),
+                "{status} should set completed_at"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_non_terminal_status_no_completed_at() {
+        let pool = make_pool("jobs_test_non_terminal").await;
+        let def = make_definition(&pool, "test-non-terminal").await;
+
+        let run = start_job_run(&pool, &def.id, "agent", None)
+            .await
+            .expect("start run");
+
+        let updated = update_job_run(&pool, &run.id, Some("pending"), None, None)
+            .await
+            .expect("update run");
+        assert_eq!(updated.status, JobRunStatus::Pending);
+        assert!(updated.completed_at.is_none());
     }
 }

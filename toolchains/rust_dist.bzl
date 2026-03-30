@@ -9,10 +9,11 @@ def _hermetic_rust_toolchain_impl(ctx: AnalysisContext) -> list[Provider]:
 
     rustc = cmd_args(rustc_dist, format = "{}/bin/rustc")
     rustdoc = cmd_args(rustc_dist, format = "{}/bin/rustdoc")
-    clippy_driver = cmd_args(clippy_dist, format = "{}/bin/clippy-driver")
 
     # Assemble sysroot: rustc expects lib/rustlib/<triple>/lib/ under --sysroot
     # The rustc dist already has the right layout, and we symlink std into it.
+    # We also create a clippy-driver wrapper that sets LD_LIBRARY_PATH to the
+    # sysroot libs, since clippy is downloaded separately from rustc.
     sysroot = ctx.actions.declare_output("sysroot", dir = True)
     target = ctx.attrs.rustc_target_triple
 
@@ -21,13 +22,17 @@ def _hermetic_rust_toolchain_impl(ctx: AnalysisContext) -> list[Provider]:
             "bash", "-c",
             cmd_args(
                 "set -euo pipefail;",
-                "SYSROOT=\"$1\"; RUSTC_DIST=\"$2\"; STD_DIST=\"$3\"; TARGET=\"$4\";",
+                "SYSROOT=\"$1\"; RUSTC_DIST=\"$2\"; STD_DIST=\"$3\"; TARGET=\"$4\"; CLIPPY_DIST=\"$5\";",
                 "mkdir -p \"$SYSROOT\"/lib/rustlib;",
                 # Copy rustc's own libs (codegen backends, etc.)
                 "cp -rL \"$RUSTC_DIST\"/lib/* \"$SYSROOT\"/lib/ 2>/dev/null || true;",
                 # Copy std libs for the target (merge contents, not the directory itself)
                 "mkdir -p \"$SYSROOT\"/lib/rustlib/\"$TARGET\";",
                 "cp -rL \"$STD_DIST\"/lib/rustlib/\"$TARGET\"/* \"$SYSROOT\"/lib/rustlib/\"$TARGET\"/;",
+                # Create clippy-driver wrapper with LD_LIBRARY_PATH
+                "mkdir -p \"$SYSROOT\"/bin;",
+                "printf '#!/usr/bin/env bash\\nexport LD_LIBRARY_PATH=\"%s/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\\nexec \"%s/bin/clippy-driver\" \"$@\"\\n' \"$(cd \"$SYSROOT\" && pwd)\" \"$CLIPPY_DIST\" > \"$SYSROOT\"/bin/clippy-driver;",
+                "chmod +x \"$SYSROOT\"/bin/clippy-driver;",
                 delimiter = " ",
             ),
             "_",  # dummy $0
@@ -35,10 +40,13 @@ def _hermetic_rust_toolchain_impl(ctx: AnalysisContext) -> list[Provider]:
             rustc_dist,
             std_dist,
             target,
+            clippy_dist,
         ),
         category = "assemble_sysroot",
         local_only = True,
     )
+
+    clippy_driver = cmd_args(sysroot, format = "{}/bin/clippy-driver")
 
     rustc_flags = list(ctx.attrs.rustc_flags)
 

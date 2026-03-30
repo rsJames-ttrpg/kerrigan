@@ -1,15 +1,16 @@
-use sqlx::SqlitePool;
+use std::sync::Arc;
 
-use crate::db::jobs as db;
+use crate::db::Database;
+use crate::db::models::{JobDefinition, JobRun, Task};
 use crate::error::Result;
 
 pub struct JobService {
-    pool: SqlitePool,
+    db: Arc<dyn Database>,
 }
 
 impl JobService {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(db: Arc<dyn Database>) -> Self {
+        Self { db }
     }
 
     pub async fn create_job_definition(
@@ -17,16 +18,18 @@ impl JobService {
         name: &str,
         description: &str,
         config: serde_json::Value,
-    ) -> Result<db::JobDefinition> {
-        db::create_job_definition(&self.pool, name, description, config).await
+    ) -> Result<JobDefinition> {
+        self.db
+            .create_job_definition(name, description, config)
+            .await
     }
 
-    pub async fn get_job_definition(&self, id: &str) -> Result<Option<db::JobDefinition>> {
-        db::get_job_definition(&self.pool, id).await
+    pub async fn get_job_definition(&self, id: &str) -> Result<Option<JobDefinition>> {
+        self.db.get_job_definition(id).await
     }
 
-    pub async fn list_job_definitions(&self) -> Result<Vec<db::JobDefinition>> {
-        db::list_job_definitions(&self.pool).await
+    pub async fn list_job_definitions(&self) -> Result<Vec<JobDefinition>> {
+        self.db.list_job_definitions().await
     }
 
     pub async fn start_job_run(
@@ -34,12 +37,14 @@ impl JobService {
         definition_id: &str,
         triggered_by: &str,
         parent_id: Option<&str>,
-    ) -> Result<db::JobRun> {
-        db::start_job_run(&self.pool, definition_id, triggered_by, parent_id).await
+    ) -> Result<JobRun> {
+        self.db
+            .start_job_run(definition_id, triggered_by, parent_id)
+            .await
     }
 
-    pub async fn get_job_run(&self, id: &str) -> Result<Option<db::JobRun>> {
-        db::get_job_run(&self.pool, id).await
+    pub async fn get_job_run(&self, id: &str) -> Result<Option<JobRun>> {
+        self.db.get_job_run(id).await
     }
 
     pub async fn update_job_run(
@@ -48,12 +53,12 @@ impl JobService {
         status: Option<&str>,
         result: Option<serde_json::Value>,
         error: Option<&str>,
-    ) -> Result<db::JobRun> {
-        db::update_job_run(&self.pool, id, status, result, error).await
+    ) -> Result<JobRun> {
+        self.db.update_job_run(id, status, result, error).await
     }
 
-    pub async fn list_job_runs(&self, status: Option<&str>) -> Result<Vec<db::JobRun>> {
-        db::list_job_runs(&self.pool, status).await
+    pub async fn list_job_runs(&self, status: Option<&str>) -> Result<Vec<JobRun>> {
+        self.db.list_job_runs(status).await
     }
 
     pub async fn create_task(
@@ -61,12 +66,12 @@ impl JobService {
         subject: &str,
         run_id: Option<&str>,
         assigned_to: Option<&str>,
-    ) -> Result<db::Task> {
-        db::create_task(&self.pool, subject, run_id, assigned_to).await
+    ) -> Result<Task> {
+        self.db.create_task(subject, run_id, assigned_to).await
     }
 
-    pub async fn get_task(&self, id: &str) -> Result<Option<db::Task>> {
-        db::get_task(&self.pool, id).await
+    pub async fn get_task(&self, id: &str) -> Result<Option<Task>> {
+        self.db.get_task(id).await
     }
 
     pub async fn update_task(
@@ -75,8 +80,8 @@ impl JobService {
         status: Option<&str>,
         assigned_to: Option<&str>,
         output: Option<serde_json::Value>,
-    ) -> Result<db::Task> {
-        db::update_task(&self.pool, id, status, assigned_to, output).await
+    ) -> Result<Task> {
+        self.db.update_task(id, status, assigned_to, output).await
     }
 
     pub async fn list_tasks(
@@ -84,22 +89,22 @@ impl JobService {
         status: Option<&str>,
         assigned_to: Option<&str>,
         run_id: Option<&str>,
-    ) -> Result<Vec<db::Task>> {
-        db::list_tasks(&self.pool, status, assigned_to, run_id).await
+    ) -> Result<Vec<Task>> {
+        self.db.list_tasks(status, assigned_to, run_id).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::open_in_memory_named;
+    use crate::db::SqliteDatabase;
 
     #[tokio::test]
     async fn test_job_service_definition_lifecycle() {
-        let pool = open_in_memory_named("svc_jobs_test_def")
+        let sqlite_db = SqliteDatabase::open_in_memory_named("svc_jobs_test_def")
             .await
-            .expect("pool opens");
-        let svc = JobService::new(pool);
+            .expect("db opens");
+        let svc = JobService::new(Arc::new(sqlite_db));
 
         let def = svc
             .create_job_definition("my-job-svc-def", "desc", serde_json::json!({}))
@@ -119,10 +124,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_job_service_run_lifecycle() {
-        let pool = open_in_memory_named("svc_jobs_test_run")
+        let sqlite_db = SqliteDatabase::open_in_memory_named("svc_jobs_test_run")
             .await
-            .expect("pool opens");
-        let svc = JobService::new(pool);
+            .expect("db opens");
+        let svc = JobService::new(Arc::new(sqlite_db));
 
         let def = svc
             .create_job_definition("run-job-svc", "desc", serde_json::json!({}))
@@ -133,7 +138,7 @@ mod tests {
             .start_job_run(&def.id, "agent-1", None)
             .await
             .expect("start run");
-        assert_eq!(run.status, "running");
+        assert_eq!(run.status, crate::db::models::JobRunStatus::Running);
 
         let updated = svc
             .update_job_run(
@@ -144,7 +149,7 @@ mod tests {
             )
             .await
             .expect("update run");
-        assert_eq!(updated.status, "completed");
+        assert_eq!(updated.status, crate::db::models::JobRunStatus::Completed);
         assert!(updated.completed_at.is_some());
 
         let runs = svc
@@ -156,10 +161,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_job_service_task_lifecycle() {
-        let pool = open_in_memory_named("svc_jobs_test_task")
+        let sqlite_db = SqliteDatabase::open_in_memory_named("svc_jobs_test_task")
             .await
-            .expect("pool opens");
-        let svc = JobService::new(pool);
+            .expect("db opens");
+        let svc = JobService::new(Arc::new(sqlite_db));
 
         let def = svc
             .create_job_definition("task-job-svc", "desc", serde_json::json!({}))
@@ -174,7 +179,7 @@ mod tests {
             .create_task("do the thing", Some(&run.id), Some("agent-svc-task"))
             .await
             .expect("create task");
-        assert_eq!(task.status, "pending");
+        assert_eq!(task.status, crate::db::models::TaskStatus::Pending);
 
         let updated = svc
             .update_task(
@@ -185,7 +190,7 @@ mod tests {
             )
             .await
             .expect("update task");
-        assert_eq!(updated.status, "completed");
+        assert_eq!(updated.status, crate::db::models::TaskStatus::Completed);
 
         let tasks = svc
             .list_tasks(None, None, Some(&run.id))

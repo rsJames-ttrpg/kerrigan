@@ -1,18 +1,18 @@
-use sqlx::SqlitePool;
 use std::sync::Arc;
 
-use crate::db::memory as db;
-use crate::embedding::EmbeddingProvider;
+use crate::db::Database;
+use crate::db::models::{Memory, MemorySearchResult};
+use crate::embedding::EmbeddingRegistry;
 use crate::error::Result;
 
 pub struct MemoryService {
-    pool: SqlitePool,
-    embedder: Arc<dyn EmbeddingProvider>,
+    db: Arc<dyn Database>,
+    registry: EmbeddingRegistry,
 }
 
 impl MemoryService {
-    pub fn new(pool: SqlitePool, embedder: Arc<dyn EmbeddingProvider>) -> Self {
-        Self { pool, embedder }
+    pub fn new(db: Arc<dyn Database>, registry: EmbeddingRegistry) -> Self {
+        Self { db, registry }
     }
 
     pub async fn store(
@@ -21,13 +21,21 @@ impl MemoryService {
         source: &str,
         tags: &[String],
         expires_at: Option<&str>,
-    ) -> Result<db::Memory> {
-        let embedding = self.embedder.embed(content)?;
-        let model = self.embedder.model_name().to_string();
-        db::insert_memory(
-            &self.pool, content, &embedding, &model, source, tags, expires_at,
-        )
-        .await
+    ) -> Result<Memory> {
+        let provider = self.registry.get_default();
+        let provider_name = self.registry.default_name();
+        let embedding = provider.embed(content).await?;
+        self.db
+            .insert_memory(
+                provider_name,
+                content,
+                &embedding,
+                provider_name,
+                source,
+                tags,
+                expires_at,
+            )
+            .await
     }
 
     pub async fn recall(
@@ -35,31 +43,51 @@ impl MemoryService {
         query: &str,
         tags_filter: Option<&[String]>,
         limit: usize,
-    ) -> Result<Vec<db::MemorySearchResult>> {
-        let embedding = self.embedder.embed(query)?;
-        db::search_memories(&self.pool, &embedding, tags_filter, limit).await
+    ) -> Result<Vec<MemorySearchResult>> {
+        let provider = self.registry.get_default();
+        let provider_name = self.registry.default_name();
+        let embedding = provider.embed(query).await?;
+        self.db
+            .search_memories(provider_name, &embedding, tags_filter, limit)
+            .await
     }
 
     pub async fn delete(&self, id: &str) -> Result<()> {
-        db::delete_memory(&self.pool, id).await
+        let memory = self
+            .db
+            .get_memory(id)
+            .await?
+            .ok_or_else(|| crate::error::OverseerError::NotFound(format!("memory {id}")))?;
+        self.db.delete_memory(&memory.embedding_model, id).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::open_in_memory;
+    use crate::db::{Database, SqliteDatabase};
+    use crate::embedding::EmbeddingProvider;
     use crate::embedding::stub::StubEmbedding;
+    use std::collections::HashMap;
+    use std::sync::Arc;
 
-    async fn make_service() -> MemoryService {
-        let pool = open_in_memory().await.expect("pool opens");
-        let embedder = Arc::new(StubEmbedding::new(384));
-        MemoryService::new(pool, embedder)
+    async fn make_service(name: &str) -> MemoryService {
+        let sqlite_db = SqliteDatabase::open_in_memory_named(name)
+            .await
+            .expect("db opens");
+        let db: Arc<dyn Database> = Arc::new(sqlite_db);
+        db.create_embedding_table("stub", 384)
+            .await
+            .expect("create table");
+        let mut providers: HashMap<String, Arc<dyn EmbeddingProvider>> = HashMap::new();
+        providers.insert("stub".into(), Arc::new(StubEmbedding::new(384)));
+        let registry = EmbeddingRegistry::new(providers, "stub".into()).unwrap();
+        MemoryService::new(db, registry)
     }
 
     #[tokio::test]
     async fn test_memory_service_store_and_recall() {
-        let svc = make_service().await;
+        let svc = make_service("svc_test_store_recall").await;
 
         let tags = vec!["svc-test".to_string()];
         let memory = svc
@@ -84,7 +112,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_memory_service_delete() {
-        let svc = make_service().await;
+        let svc = make_service("svc_test_delete").await;
 
         let memory = svc
             .store("to be deleted via service", "service-test", &[], None)

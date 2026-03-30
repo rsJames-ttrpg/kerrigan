@@ -1,23 +1,19 @@
+use chrono::NaiveDateTime;
+use sea_query::{Expr, Order, Query, SqliteQueryBuilder};
+use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+pub use super::models::Decision;
+use super::tables::Decisions;
 use crate::error::{OverseerError, Result};
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct Decision {
-    pub id: String,
-    pub agent: String,
-    pub context: String,
-    pub decision: String,
-    pub reasoning: String,
-    pub tags: Vec<String>,
-    pub run_id: Option<String>,
-    pub created_at: String,
-}
 
 fn row_to_decision(row: &sqlx::sqlite::SqliteRow) -> Decision {
     let tags_json: String = row.get("tags");
-    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_else(|e| {
+        tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "failed to deserialize tags, defaulting to empty");
+        Vec::new()
+    });
     Decision {
         id: row.get("id"),
         agent: row.get("agent"),
@@ -26,7 +22,7 @@ fn row_to_decision(row: &sqlx::sqlite::SqliteRow) -> Decision {
         reasoning: row.get("reasoning"),
         tags,
         run_id: row.get("run_id"),
-        created_at: row.get("created_at"),
+        created_at: row.get::<NaiveDateTime, _>("created_at").and_utc(),
     }
 }
 
@@ -43,35 +39,66 @@ pub async fn log_decision(
     let tags_json =
         serde_json::to_string(tags).map_err(|e| OverseerError::Internal(e.to_string()))?;
 
-    sqlx::query(
-        "INSERT INTO decisions (id, agent, context, decision, reasoning, tags, run_id) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-    )
-    .bind(&id)
-    .bind(agent)
-    .bind(context)
-    .bind(decision)
-    .bind(reasoning)
-    .bind(&tags_json)
-    .bind(run_id)
-    .execute(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::insert()
+        .into_table(Decisions::Table)
+        .columns([
+            Decisions::Id,
+            Decisions::Agent,
+            Decisions::Context,
+            Decisions::Decision,
+            Decisions::Reasoning,
+            Decisions::Tags,
+            Decisions::RunId,
+        ])
+        .values_panic([
+            id.into(),
+            agent.into(),
+            context.into(),
+            decision.into(),
+            reasoning.into(),
+            tags_json.into(),
+            run_id.map(|s| s.to_string()).into(),
+        ])
+        .returning(Query::returning().columns([
+            Decisions::Id,
+            Decisions::Agent,
+            Decisions::Context,
+            Decisions::Decision,
+            Decisions::Reasoning,
+            Decisions::Tags,
+            Decisions::RunId,
+            Decisions::CreatedAt,
+        ]))
+        .build_sqlx(SqliteQueryBuilder);
 
-    get_decision(pool, &id)
-        .await?
-        .ok_or_else(|| OverseerError::NotFound(format!("decision {id}")))
+    let row = sqlx::query_with(&sql, values)
+        .fetch_one(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
+
+    Ok(row_to_decision(&row))
 }
 
 pub async fn get_decision(pool: &SqlitePool, id: &str) -> Result<Option<Decision>> {
-    let row = sqlx::query(
-        "SELECT id, agent, context, decision, reasoning, tags, run_id, created_at \
-         FROM decisions WHERE id = ?1",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::select()
+        .columns([
+            Decisions::Id,
+            Decisions::Agent,
+            Decisions::Context,
+            Decisions::Decision,
+            Decisions::Reasoning,
+            Decisions::Tags,
+            Decisions::RunId,
+            Decisions::CreatedAt,
+        ])
+        .from(Decisions::Table)
+        .and_where(Expr::col(Decisions::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_optional(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_decision))
 }
@@ -82,28 +109,51 @@ pub async fn query_decisions(
     tags: Option<&[String]>,
     limit: i64,
 ) -> Result<Vec<Decision>> {
-    let rows = sqlx::query(
-        "SELECT id, agent, context, decision, reasoning, tags, run_id, created_at \
-         FROM decisions \
-         WHERE (?1 IS NULL OR agent = ?1) \
-         ORDER BY created_at DESC \
-         LIMIT ?2",
-    )
-    .bind(agent)
-    .bind(limit)
-    .fetch_all(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    // Over-fetch to compensate for post-filtering by tags
+    let fetch_limit = if tags.is_some_and(|t| !t.is_empty()) {
+        (limit * 10).max(100)
+    } else {
+        limit
+    };
+
+    let mut query = Query::select();
+    query
+        .columns([
+            Decisions::Id,
+            Decisions::Agent,
+            Decisions::Context,
+            Decisions::Decision,
+            Decisions::Reasoning,
+            Decisions::Tags,
+            Decisions::RunId,
+            Decisions::CreatedAt,
+        ])
+        .from(Decisions::Table);
+
+    if let Some(a) = agent {
+        query.and_where(Expr::col(Decisions::Agent).eq(a));
+    }
+
+    query
+        .order_by(Decisions::CreatedAt, Order::Desc)
+        .limit(fetch_limit as u64);
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    let rows = sqlx::query_with(&sql, values)
+        .fetch_all(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     let mut results: Vec<Decision> = rows.iter().map(row_to_decision).collect();
 
-    // Post-filter by tags in Rust
-    if let Some(filter_tags) = tags {
-        if !filter_tags.is_empty() {
-            results.retain(|d| filter_tags.iter().any(|ft| d.tags.contains(ft)));
-        }
+    if let Some(filter_tags) = tags
+        && !filter_tags.is_empty()
+    {
+        results.retain(|d| filter_tags.iter().any(|ft| d.tags.contains(ft)));
     }
 
+    results.truncate(limit as usize);
     Ok(results)
 }
 
@@ -203,6 +253,61 @@ mod tests {
             .expect("query by beta");
         // dec2 and dec3 have beta tag
         assert_eq!(beta_results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_query_decisions_limit_with_tag_filter() {
+        let pool = open_in_memory_named("decisions_test_limit_tags")
+            .await
+            .expect("pool opens");
+
+        let target_tag = vec!["target".to_string()];
+        let other_tag = vec!["other".to_string()];
+
+        // Insert 5 with target tag, 20 with other tag
+        for i in 0..5 {
+            log_decision(
+                &pool,
+                "agent",
+                "ctx",
+                &format!("target-{i}"),
+                "r",
+                &target_tag,
+                None,
+            )
+            .await
+            .expect("log target");
+        }
+        for i in 0..20 {
+            log_decision(
+                &pool,
+                "agent",
+                "ctx",
+                &format!("other-{i}"),
+                "r",
+                &other_tag,
+                None,
+            )
+            .await
+            .expect("log other");
+        }
+
+        // Query with limit=3 and tag filter — should get exactly 3
+        let results = query_decisions(&pool, None, Some(&target_tag), 3)
+            .await
+            .expect("query succeeds");
+        assert_eq!(results.len(), 3);
+        assert!(
+            results
+                .iter()
+                .all(|d| d.tags.contains(&"target".to_string()))
+        );
+
+        // Query with limit=10 and tag filter — only 5 exist, should get 5
+        let results = query_decisions(&pool, None, Some(&target_tag), 10)
+            .await
+            .expect("query succeeds");
+        assert_eq!(results.len(), 5);
     }
 
     #[tokio::test]

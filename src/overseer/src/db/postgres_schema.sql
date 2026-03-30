@@ -1,12 +1,14 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+
 CREATE TABLE IF NOT EXISTS memories (
     id TEXT PRIMARY KEY,
     content TEXT NOT NULL,
     embedding_model TEXT NOT NULL,
     source TEXT NOT NULL,
-    tags TEXT NOT NULL DEFAULT '[]',
-    expires_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    tags JSONB NOT NULL DEFAULT '[]',
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS memory_links (
@@ -17,36 +19,48 @@ CREATE TABLE IF NOT EXISTS memory_links (
     PRIMARY KEY (memory_id, linked_id)
 );
 
+CREATE TABLE IF NOT EXISTS memory_embeddings (
+    id BIGSERIAL PRIMARY KEY,
+    memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    embedding vector,
+    UNIQUE(memory_id, provider)
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_embeddings_provider ON memory_embeddings (provider);
+
 CREATE TABLE IF NOT EXISTS job_definitions (
     id TEXT PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    config TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    config JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS job_runs (
     id TEXT PRIMARY KEY,
     definition_id TEXT NOT NULL REFERENCES job_definitions(id),
     parent_id TEXT REFERENCES job_runs(id),
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
     triggered_by TEXT NOT NULL,
-    result TEXT,
+    result JSONB,
     error TEXT,
-    started_at TEXT,
-    completed_at TEXT
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     run_id TEXT REFERENCES job_runs(id),
     subject TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'failed')),
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'in_progress', 'completed', 'failed')),
     assigned_to TEXT,
-    output TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    output JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS decisions (
@@ -55,16 +69,16 @@ CREATE TABLE IF NOT EXISTS decisions (
     context TEXT NOT NULL,
     decision TEXT NOT NULL,
     reasoning TEXT NOT NULL DEFAULT '',
-    tags TEXT NOT NULL DEFAULT '[]',
+    tags JSONB NOT NULL DEFAULT '[]',
     run_id TEXT REFERENCES job_runs(id),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS artifacts (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     content_type TEXT NOT NULL,
-    size INTEGER NOT NULL,
+    size BIGINT NOT NULL,
     run_id TEXT REFERENCES job_runs(id),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
