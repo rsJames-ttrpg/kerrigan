@@ -44,7 +44,7 @@ async fn log_decision(
         )
         .await?;
     Ok(Json(serde_json::to_value(result).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }
 
@@ -68,6 +68,6 @@ async fn query_decisions(
         .query(params.agent.as_deref(), tags.as_deref(), limit)
         .await?;
     Ok(Json(serde_json::to_value(results).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }

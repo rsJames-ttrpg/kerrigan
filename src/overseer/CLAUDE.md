@@ -1,21 +1,21 @@
-# Cortex CLAUDE.md
+# Overseer CLAUDE.md
 
-## What is Cortex
+## What is Overseer
 
-Cortex is the foundational service for the Kerrigan agentic platform. It provides persistent memory (vector search), job orchestration, decision logging, and artifact storage via HTTP REST and MCP interfaces.
+Overseer is the foundational service for the Kerrigan agentic platform. It provides persistent memory (vector search), job orchestration, decision logging, and artifact storage via HTTP REST and MCP interfaces.
 
 ## Running
 
 ```bash
 # HTTP-only mode (for dev/testing)
-cargo run -- cortex.toml
+cargo run -- overseer.toml
 
 # With MCP on stdio (for Claude Code)
-# Set mcp_transport = "stdio" in cortex.toml
-cargo run -- cortex.toml
+# Set mcp_transport = "stdio" in overseer.toml
+cargo run -- overseer.toml
 ```
 
-Config: `cortex.toml` at repo root. Defaults to port 3100, SQLite at `data/cortex.db`.
+Config: `overseer.toml` at repo root. Defaults to port 3100, SQLite at `data/overseer.db`.
 
 ## Architecture
 
@@ -35,7 +35,7 @@ Both transport layers are thin adapters. No business logic outside services.
 | Module | Responsibility |
 |--------|---------------|
 | `config.rs` | TOML config parsing with defaults |
-| `error.rs` | `CortexError` enum, maps to HTTP status + MCP errors |
+| `error.rs` | `OverseerError` enum, maps to HTTP status + MCP errors |
 | `db/mod.rs` | `SqlitePool` init, schema, sqlite-vec extension loading |
 | `db/memory.rs` | Memory CRUD + vector KNN search |
 | `db/jobs.rs` | Job definitions, runs, tasks CRUD |
@@ -57,7 +57,7 @@ Both transport layers are thin adapters. No business logic outside services.
 1. **New table** → add to `db/schema.sql`, create `db/<feature>.rs` with async sqlx functions
 2. **New service** → create `services/<feature>.rs`, add to `AppState`
 3. **HTTP endpoint** → create `api/<feature>.rs`, nest in `api/mod.rs` router
-4. **MCP tool** → add `#[tool]` method to `CortexMcp` in `mcp/mod.rs`
+4. **MCP tool** → add `#[tool]` method to `OverseerMcp` in `mcp/mod.rs`
 
 ## Testing
 
@@ -75,4 +75,4 @@ Tests use `db::open_in_memory()` for isolated SQLite instances. Each test module
 - **JSON in TEXT columns** — tags, config, result, output stored as JSON strings
 - **sqlite-vec vectors** — bound as `&[u8]` via `zerocopy::IntoBytes`, KNN via `WHERE embedding MATCH ?1 AND k = ?2`
 - **Memory embeddings** — rowid in `memory_embeddings` matches rowid in `memories` table
-- **CortexError** — single error type, implements `IntoResponse` for HTTP and maps to `McpError` in MCP layer
+- **OverseerError** — single error type, implements `IntoResponse` for HTTP and maps to `McpError` in MCP layer

@@ -20,7 +20,7 @@ types = ["rust"]
 [[repos.hooks]]
 id = "cargo-test"
 name = "cargo test"
-entry = "cargo test --manifest-path src/cortex/Cargo.toml"
+entry = "cargo test --manifest-path src/overseer/Cargo.toml"
 language = "system"
 types = ["rust"]
 pass_filenames = false

@@ -1,7 +1,7 @@
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
-use crate::error::{CortexError, Result};
+use crate::error::{OverseerError, Result};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct JobDefinition {
@@ -95,7 +95,7 @@ pub async fn create_job_definition(
 ) -> Result<JobDefinition> {
     let id = Uuid::new_v4().to_string();
     let config_json =
-        serde_json::to_string(&config).map_err(|e| CortexError::Internal(e.to_string()))?;
+        serde_json::to_string(&config).map_err(|e| OverseerError::Internal(e.to_string()))?;
 
     sqlx::query(
         "INSERT INTO job_definitions (id, name, description, config) VALUES (?1, ?2, ?3, ?4)",
@@ -106,11 +106,11 @@ pub async fn create_job_definition(
     .bind(&config_json)
     .execute(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     get_job_definition(pool, &id)
         .await?
-        .ok_or_else(|| CortexError::NotFound(format!("job_definition {id}")))
+        .ok_or_else(|| OverseerError::NotFound(format!("job_definition {id}")))
 }
 
 pub async fn get_job_definition(pool: &SqlitePool, id: &str) -> Result<Option<JobDefinition>> {
@@ -121,7 +121,7 @@ pub async fn get_job_definition(pool: &SqlitePool, id: &str) -> Result<Option<Jo
     .bind(id)
     .fetch_optional(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_job_definition))
 }
@@ -133,7 +133,7 @@ pub async fn list_job_definitions(pool: &SqlitePool) -> Result<Vec<JobDefinition
     )
     .fetch_all(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     Ok(rows.iter().map(row_to_job_definition).collect())
 }
@@ -156,11 +156,11 @@ pub async fn start_job_run(
     .bind(triggered_by)
     .execute(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     get_job_run(pool, &id)
         .await?
-        .ok_or_else(|| CortexError::NotFound(format!("job_run {id}")))
+        .ok_or_else(|| OverseerError::NotFound(format!("job_run {id}")))
 }
 
 pub async fn get_job_run(pool: &SqlitePool, id: &str) -> Result<Option<JobRun>> {
@@ -171,7 +171,7 @@ pub async fn get_job_run(pool: &SqlitePool, id: &str) -> Result<Option<JobRun>> 
     .bind(id)
     .fetch_optional(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_job_run))
 }
@@ -185,7 +185,7 @@ pub async fn update_job_run(
 ) -> Result<JobRun> {
     let result_json = result
         .as_ref()
-        .map(|v| serde_json::to_string(v).map_err(|e| CortexError::Internal(e.to_string())))
+        .map(|v| serde_json::to_string(v).map_err(|e| OverseerError::Internal(e.to_string())))
         .transpose()?;
 
     let terminal_statuses = ["completed", "failed", "cancelled"];
@@ -208,7 +208,7 @@ pub async fn update_job_run(
         .bind(id)
         .execute(pool)
         .await
-        .map_err(CortexError::Storage)?;
+        .map_err(OverseerError::Storage)?;
     } else {
         sqlx::query(
             "UPDATE job_runs SET \
@@ -223,12 +223,12 @@ pub async fn update_job_run(
         .bind(id)
         .execute(pool)
         .await
-        .map_err(CortexError::Storage)?;
+        .map_err(OverseerError::Storage)?;
     }
 
     get_job_run(pool, id)
         .await?
-        .ok_or_else(|| CortexError::NotFound(format!("job_run {id}")))
+        .ok_or_else(|| OverseerError::NotFound(format!("job_run {id}")))
 }
 
 pub async fn list_job_runs(pool: &SqlitePool, status: Option<&str>) -> Result<Vec<JobRun>> {
@@ -241,7 +241,7 @@ pub async fn list_job_runs(pool: &SqlitePool, status: Option<&str>) -> Result<Ve
     .bind(status)
     .fetch_all(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     Ok(rows.iter().map(row_to_job_run).collect())
 }
@@ -261,11 +261,11 @@ pub async fn create_task(
         .bind(assigned_to)
         .execute(pool)
         .await
-        .map_err(CortexError::Storage)?;
+        .map_err(OverseerError::Storage)?;
 
     get_task(pool, &id)
         .await?
-        .ok_or_else(|| CortexError::NotFound(format!("task {id}")))
+        .ok_or_else(|| OverseerError::NotFound(format!("task {id}")))
 }
 
 pub async fn get_task(pool: &SqlitePool, id: &str) -> Result<Option<Task>> {
@@ -276,7 +276,7 @@ pub async fn get_task(pool: &SqlitePool, id: &str) -> Result<Option<Task>> {
     .bind(id)
     .fetch_optional(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_task))
 }
@@ -290,7 +290,7 @@ pub async fn update_task(
 ) -> Result<Task> {
     let output_json = output
         .as_ref()
-        .map(|v| serde_json::to_string(v).map_err(|e| CortexError::Internal(e.to_string())))
+        .map(|v| serde_json::to_string(v).map_err(|e| OverseerError::Internal(e.to_string())))
         .transpose()?;
 
     sqlx::query(
@@ -307,11 +307,11 @@ pub async fn update_task(
     .bind(id)
     .execute(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     get_task(pool, id)
         .await?
-        .ok_or_else(|| CortexError::NotFound(format!("task {id}")))
+        .ok_or_else(|| OverseerError::NotFound(format!("task {id}")))
 }
 
 pub async fn list_tasks(
@@ -333,7 +333,7 @@ pub async fn list_tasks(
     .bind(run_id)
     .fetch_all(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     Ok(rows.iter().map(row_to_task).collect())
 }

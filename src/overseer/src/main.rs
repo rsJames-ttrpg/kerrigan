@@ -8,7 +8,7 @@ mod services;
 
 use config::Config;
 use embedding::stub::StubEmbedding;
-use mcp::CortexMcp;
+use mcp::OverseerMcp;
 use services::AppState;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
     let config_path = std::env::args()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("cortex.toml"));
+        .unwrap_or_else(|| PathBuf::from("overseer.toml"));
 
     let config = Config::load(&config_path)?;
 
@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    tracing::info!("cortex starting");
+    tracing::info!("overseer starting");
 
     let db_path = config.storage.database_path.to_string_lossy();
     let pool = db::open(&db_path).await?;
@@ -59,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
             });
 
             tracing::info!("MCP server starting on stdio");
-            let mcp_server = CortexMcp::new(state);
+            let mcp_server = OverseerMcp::new(state);
             let service = rmcp::ServiceExt::serve(mcp_server, rmcp::transport::stdio()).await?;
             service.waiting().await?;
         }

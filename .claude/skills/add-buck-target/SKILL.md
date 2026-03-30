@@ -68,7 +68,7 @@ http_archive(
 ## Usage After Adding
 
 ```bash
-buck2 build root//src/cortex:cortex --target-platforms platforms//:linux-aarch64
+buck2 build root//src/overseer:cortex --target-platforms platforms//:linux-aarch64
 ```
 
 ## Notes

@@ -35,7 +35,7 @@ curl -sL "https://static.rust-lang.org/dist/{DATE}/channel-rust-nightly.toml" | 
 ```
 Update the comment line: `# -- Rust nightly {DATE} ({VERSION}) --`
 
-6. **Verify:** Run `buck2 build root//src/cortex:cortex` to confirm the new toolchain works.
+6. **Verify:** Run `buck2 build root//src/overseer:cortex` to confirm the new toolchain works.
 
 7. **Report** the old and new versions to the user.
 

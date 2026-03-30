@@ -46,14 +46,14 @@ async fn create_job_definition(
         .create_job_definition(&body.name, &description, config)
         .await?;
     Ok(Json(serde_json::to_value(result).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }
 
 async fn list_job_definitions(State(state): State<Arc<AppState>>) -> Result<Json<Value>> {
     let results = state.jobs.list_job_definitions().await?;
     Ok(Json(serde_json::to_value(results).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }
 
@@ -79,7 +79,7 @@ async fn start_job_run(
         )
         .await?;
     Ok(Json(serde_json::to_value(result).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }
 
@@ -94,7 +94,7 @@ async fn list_job_runs(
 ) -> Result<Json<Value>> {
     let results = state.jobs.list_job_runs(params.status.as_deref()).await?;
     Ok(Json(serde_json::to_value(results).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }
 
@@ -120,7 +120,7 @@ async fn update_job_run(
         )
         .await?;
     Ok(Json(serde_json::to_value(result).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }
 
@@ -146,7 +146,7 @@ async fn create_task(
         )
         .await?;
     Ok(Json(serde_json::to_value(result).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }
 
@@ -170,7 +170,7 @@ async fn list_tasks(
         )
         .await?;
     Ok(Json(serde_json::to_value(results).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }
 
@@ -196,6 +196,6 @@ async fn update_task(
         )
         .await?;
     Ok(Json(serde_json::to_value(result).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }

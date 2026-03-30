@@ -7,7 +7,7 @@ use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;
 
-use crate::error::CortexError;
+use crate::error::OverseerError;
 
 /// Load the sqlite-vec extension into every new SQLite connection.
 ///
@@ -24,27 +24,27 @@ fn register_vec_extension() {
     }
 }
 
-async fn init_pool(opts: SqliteConnectOptions) -> Result<SqlitePool, CortexError> {
+async fn init_pool(opts: SqliteConnectOptions) -> Result<SqlitePool, OverseerError> {
     register_vec_extension();
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(opts)
         .await
-        .map_err(CortexError::Storage)?;
+        .map_err(OverseerError::Storage)?;
 
     sqlx::raw_sql(include_str!("schema.sql"))
         .execute(&pool as &SqlitePool)
         .await
-        .map_err(CortexError::Storage)?;
+        .map_err(OverseerError::Storage)?;
 
     Ok(pool)
 }
 
 /// Open (or create) a SQLite database at the given file path.
-pub async fn open(path: &str) -> Result<SqlitePool, CortexError> {
+pub async fn open(path: &str) -> Result<SqlitePool, OverseerError> {
     let opts = SqliteConnectOptions::from_str(&format!("sqlite:{path}"))
-        .map_err(CortexError::Storage)?
+        .map_err(OverseerError::Storage)?
         .create_if_missing(true)
         .pragma("journal_mode", "WAL")
         .pragma("foreign_keys", "ON");
@@ -53,18 +53,18 @@ pub async fn open(path: &str) -> Result<SqlitePool, CortexError> {
 }
 
 /// Open an in-memory SQLite database (useful for tests).
-pub async fn open_in_memory() -> Result<SqlitePool, CortexError> {
-    open_in_memory_named("cortex_test").await
+pub async fn open_in_memory() -> Result<SqlitePool, OverseerError> {
+    open_in_memory_named("overseer_test").await
 }
 
 /// Open a named in-memory SQLite database. Each unique name gets its own
 /// isolated in-memory database, which is useful for test isolation.
-pub async fn open_in_memory_named(name: &str) -> Result<SqlitePool, CortexError> {
+pub async fn open_in_memory_named(name: &str) -> Result<SqlitePool, OverseerError> {
     // For an in-memory database shared across pool connections we use a named
     // in-memory URI with cache=shared so all connections see the same data.
     let opts =
         SqliteConnectOptions::from_str(&format!("sqlite:file:{name}?mode=memory&cache=shared"))
-            .map_err(CortexError::Storage)?
+            .map_err(OverseerError::Storage)?
             .pragma("journal_mode", "WAL")
             .pragma("foreign_keys", "ON");
 

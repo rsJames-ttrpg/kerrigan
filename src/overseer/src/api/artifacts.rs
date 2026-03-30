@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 
-use crate::error::{CortexError, Result};
+use crate::error::{OverseerError, Result};
 use crate::services::AppState;
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -34,7 +34,7 @@ async fn store_artifact(
 ) -> Result<Json<Value>> {
     let data = base64::engine::general_purpose::STANDARD
         .decode(&body.data)
-        .map_err(|e| CortexError::Validation(format!("invalid base64: {e}")))?;
+        .map_err(|e| OverseerError::Validation(format!("invalid base64: {e}")))?;
     let result = state
         .artifacts
         .store(
@@ -45,7 +45,7 @@ async fn store_artifact(
         )
         .await?;
     Ok(Json(
-        serde_json::to_value(result).map_err(|e| CortexError::Internal(e.to_string()))?,
+        serde_json::to_value(result).map_err(|e| OverseerError::Internal(e.to_string()))?,
     ))
 }
 
@@ -71,6 +71,6 @@ async fn list_artifacts(
 ) -> Result<Json<Value>> {
     let results = state.artifacts.list(params.run_id.as_deref()).await?;
     Ok(Json(
-        serde_json::to_value(results).map_err(|e| CortexError::Internal(e.to_string()))?,
+        serde_json::to_value(results).map_err(|e| OverseerError::Internal(e.to_string()))?,
     ))
 }

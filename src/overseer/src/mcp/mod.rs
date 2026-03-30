@@ -170,7 +170,7 @@ fn default_limit_i64() -> i64 {
 // ──────────────────────────── MCP server struct ────────────────────────────
 
 #[derive(Clone)]
-pub struct CortexMcp {
+pub struct OverseerMcp {
     state: Arc<AppState>,
     tool_router: ToolRouter<Self>,
 }
@@ -178,7 +178,7 @@ pub struct CortexMcp {
 // ──────────────────────────────── tool impl ────────────────────────────────
 
 #[tool_router]
-impl CortexMcp {
+impl OverseerMcp {
     pub fn new(state: Arc<AppState>) -> Self {
         Self {
             state,
@@ -427,10 +427,10 @@ impl CortexMcp {
 // ──────────────────────────── ServerHandler impl ───────────────────────────
 
 #[tool_handler]
-impl ServerHandler for CortexMcp {
+impl ServerHandler for OverseerMcp {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some("Cortex — persistent memory, jobs, decisions, artifacts".into()),
+            instructions: Some("Overseer — persistent memory, jobs, decisions, artifacts".into()),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
         }

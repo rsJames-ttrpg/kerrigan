@@ -40,7 +40,7 @@ async fn store_memory(
         )
         .await?;
     Ok(Json(serde_json::to_value(result).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }
 
@@ -64,7 +64,7 @@ async fn search_memories(
         .recall(&params.q, tags.as_deref(), limit)
         .await?;
     Ok(Json(serde_json::to_value(results).map_err(|e| {
-        crate::error::CortexError::Internal(e.to_string())
+        crate::error::OverseerError::Internal(e.to_string())
     })?))
 }
 

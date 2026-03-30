@@ -22,7 +22,7 @@ CORTEX_DEPS = [
 ]
 
 rust_binary(
-    name = "cortex",
+    name = "overseer",
     srcs = CORTEX_SRCS,
     crate_root = "src/main.rs",
     deps = CORTEX_DEPS,
@@ -30,7 +30,7 @@ rust_binary(
 )
 
 rust_test(
-    name = "cortex-test",
+    name = "overseer-test",
     srcs = CORTEX_SRCS,
     crate_root = "src/main.rs",
     deps = CORTEX_DEPS,

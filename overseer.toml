@@ -3,5 +3,5 @@ http_port = 3100
 mcp_transport = "http"
 
 [storage]
-database_path = "data/cortex.db"
+database_path = "data/overseer.db"
 artifact_path = "data/artifacts"

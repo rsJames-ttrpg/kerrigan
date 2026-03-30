@@ -11,7 +11,7 @@ Uses hybrid Cargo workspace + reindeer. Crate Cargo.tomls are the source of trut
 
 1. **Add the dep via cargo:**
    ```bash
-   cd src/cortex && cargo add serde --features derive
+   cd src/overseer && cargo add serde --features derive
    ```
 
 2. **Regenerate third-party/BUCK:**
@@ -30,7 +30,7 @@ Uses hybrid Cargo workspace + reindeer. Crate Cargo.tomls are the source of trut
    deps = ["//third-party:crate-name"]
    ```
 
-5. **Verify:** `buck2 build root//src/cortex:cortex`
+5. **Verify:** `buck2 build root//src/overseer:overseer`
 
 ## Known Fixups
 

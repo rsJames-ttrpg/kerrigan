@@ -1,14 +1,14 @@
-# Cortex Implementation Plan
+# Overseer Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build cortex — a persistent memory, job orchestration, decision logging, and artifact storage service exposed via HTTP REST and MCP.
+**Goal:** Build overseer — a persistent memory, job orchestration, decision logging, and artifact storage service exposed via HTTP REST and MCP.
 
 **Architecture:** Single Rust binary, layered monolith. SQLite with sqlite-vec for vector search. axum for HTTP. rmcp for MCP. Both transports share a common service layer with no business logic in transport adapters.
 
 **Tech Stack:** Rust (edition 2024), axum, sqlx (SQLite), sqlite-vec, rmcp, tokio, serde, uuid, tracing
 
-**Spec:** `docs/specs/2026-03-29-cortex-design.md`
+**Spec:** `docs/specs/2026-03-29-overseer-design.md`
 
 **Note on sqlx:** All database code uses `sqlx::SqlitePool` (async, pooled). The pattern across all tasks:
 - DB functions are `async fn` taking `&SqlitePool`
@@ -23,10 +23,10 @@
 ## File Structure
 
 ```
-src/cortex/src/
+src/overseer/src/
   main.rs                 -- Entrypoint: config loading, DB init, start HTTP + MCP
   config.rs               -- Config struct, TOML parsing
-  error.rs                -- CortexError enum, HTTP/MCP conversions
+  error.rs                -- OverseerError enum, HTTP/MCP conversions
   db/
     mod.rs                -- SqlitePool init, run migrations, sqlite-vec loading
     schema.sql            -- All CREATE TABLE / CREATE VIRTUAL TABLE statements
@@ -58,17 +58,17 @@ src/cortex/src/
 ### Task 1: Project scaffolding — deps, config, errors
 
 **Files:**
-- Modify: `src/cortex/Cargo.toml`
+- Modify: `src/overseer/Cargo.toml`
 - Modify: `Cargo.toml` (workspace)
-- Create: `src/cortex/src/config.rs`
-- Create: `src/cortex/src/error.rs`
-- Modify: `src/cortex/src/main.rs`
+- Create: `src/overseer/src/config.rs`
+- Create: `src/overseer/src/error.rs`
+- Modify: `src/overseer/src/main.rs`
 
-- [ ] **Step 1: Add dependencies to `src/cortex/Cargo.toml`**
+- [ ] **Step 1: Add dependencies to `src/overseer/Cargo.toml`**
 
 ```toml
 [package]
-name = "cortex"
+name = "overseer"
 version = "0.1.0"
 edition = "2024"
 
@@ -100,13 +100,13 @@ buck2 run root//tools:reindeer -- buckify
 
 Fix any fixups needed for crates with build scripts. Expected: several new fixups for rusqlite (bundled sqlite), proc-macro crates, etc. Create `third-party/fixups/<crate>/fixups.toml` with `[buildscript]\nrun = true` and `cargo_env = true` as needed until buckify succeeds cleanly.
 
-- [ ] **Step 3: Update cortex BUCK deps**
+- [ ] **Step 3: Update overseer BUCK deps**
 
-Modify `src/cortex/BUCK` to add all third-party deps:
+Modify `src/overseer/BUCK` to add all third-party deps:
 
 ```python
 rust_binary(
-    name = "cortex",
+    name = "overseer",
     srcs = glob(["src/**/*.rs"]),
     crate_root = "src/main.rs",
     deps = [
@@ -132,7 +132,7 @@ rust_binary(
 )
 ```
 
-- [ ] **Step 4: Write `src/cortex/src/error.rs`**
+- [ ] **Step 4: Write `src/overseer/src/error.rs`**
 
 ```rust
 use axum::http::StatusCode;
@@ -140,7 +140,7 @@ use axum::response::{IntoResponse, Response};
 use serde_json::json;
 
 #[derive(Debug, thiserror::Error)]
-pub enum CortexError {
+pub enum OverseerError {
     #[error("storage error: {0}")]
     Storage(#[from] rusqlite::Error),
 
@@ -160,27 +160,27 @@ pub enum CortexError {
     Internal(String),
 }
 
-impl IntoResponse for CortexError {
+impl IntoResponse for OverseerError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
-            CortexError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
-            CortexError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
-            CortexError::Storage(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-            CortexError::Embedding(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
-            CortexError::Io(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-            CortexError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            OverseerError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            OverseerError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            OverseerError::Storage(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            OverseerError::Embedding(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            OverseerError::Io(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            OverseerError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
         };
         let body = axum::Json(json!({ "error": message }));
         (status, body).into_response()
     }
 }
 
-pub type Result<T> = std::result::Result<T, CortexError>;
+pub type Result<T> = std::result::Result<T, OverseerError>;
 ```
 
 Note: add `thiserror = "2"` to Cargo.toml dependencies.
 
-- [ ] **Step 5: Write `src/cortex/src/config.rs`**
+- [ ] **Step 5: Write `src/overseer/src/config.rs`**
 
 ```rust
 use serde::Deserialize;
@@ -235,7 +235,7 @@ impl Default for StorageConfig {
     }
 }
 
-fn default_db_path() -> PathBuf { PathBuf::from("data/cortex.db") }
+fn default_db_path() -> PathBuf { PathBuf::from("data/overseer.db") }
 fn default_artifact_path() -> PathBuf { PathBuf::from("data/artifacts") }
 
 #[derive(Debug, Deserialize)]
@@ -278,7 +278,7 @@ impl Config {
 }
 ```
 
-- [ ] **Step 6: Update `src/cortex/src/main.rs` to wire config and logging**
+- [ ] **Step 6: Update `src/overseer/src/main.rs` to wire config and logging**
 
 ```rust
 mod config;
@@ -293,7 +293,7 @@ async fn main() -> anyhow::Result<()> {
     let config_path = std::env::args()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("cortex.toml"));
+        .unwrap_or_else(|| PathBuf::from("overseer.toml"));
 
     let config = Config::load(&config_path)?;
 
@@ -304,7 +304,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    tracing::info!("cortex starting");
+    tracing::info!("overseer starting");
     tracing::info!("config loaded from {:?}", config_path);
 
     // TODO: DB init, services, HTTP + MCP servers will be wired in subsequent tasks
@@ -316,7 +316,7 @@ async fn main() -> anyhow::Result<()> {
 - [ ] **Step 7: Verify it compiles**
 
 ```bash
-cd src/cortex && cargo check
+cd src/overseer && cargo check
 ```
 
 Expected: compiles with no errors (warnings about unused modules are fine).
@@ -324,8 +324,8 @@ Expected: compiles with no errors (warnings about unused modules are fine).
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/cortex/ third-party/ Cargo.toml Cargo.lock
-git commit -m "feat(cortex): project scaffolding — config, errors, dependencies"
+git add src/overseer/ third-party/ Cargo.toml Cargo.lock
+git commit -m "feat(overseer): project scaffolding — config, errors, dependencies"
 ```
 
 ---
@@ -333,11 +333,11 @@ git commit -m "feat(cortex): project scaffolding — config, errors, dependencie
 ### Task 2: Database layer — schema and connection
 
 **Files:**
-- Create: `src/cortex/src/db/mod.rs`
-- Create: `src/cortex/src/db/schema.sql`
-- Modify: `src/cortex/src/main.rs`
+- Create: `src/overseer/src/db/mod.rs`
+- Create: `src/overseer/src/db/schema.sql`
+- Modify: `src/overseer/src/main.rs`
 
-- [ ] **Step 1: Create `src/cortex/src/db/schema.sql`**
+- [ ] **Step 1: Create `src/overseer/src/db/schema.sql`**
 
 ```sql
 CREATE TABLE IF NOT EXISTS memories (
@@ -416,7 +416,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
 );
 ```
 
-- [ ] **Step 2: Create `src/cortex/src/db/mod.rs`**
+- [ ] **Step 2: Create `src/overseer/src/db/mod.rs`**
 
 ```rust
 pub mod memory;
@@ -498,7 +498,7 @@ drop(pool); // placeholder — will be passed to services later
 
 - [ ] **Step 4: Write a test that verifies schema creation**
 
-Add to `src/cortex/src/db/mod.rs`:
+Add to `src/overseer/src/db/mod.rs`:
 
 ```rust
 #[cfg(test)]
@@ -545,7 +545,7 @@ mod tests {
 - [ ] **Step 5: Run tests**
 
 ```bash
-cd src/cortex && cargo test db::tests
+cd src/overseer && cargo test db::tests
 ```
 
 Expected: 2 tests pass.
@@ -553,8 +553,8 @@ Expected: 2 tests pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/cortex/src/db/
-git commit -m "feat(cortex): database layer — schema, sqlite-vec, connection"
+git add src/overseer/src/db/
+git commit -m "feat(overseer): database layer — schema, sqlite-vec, connection"
 ```
 
 ---
@@ -562,10 +562,10 @@ git commit -m "feat(cortex): database layer — schema, sqlite-vec, connection"
 ### Task 3: Embedding trait and stub provider
 
 **Files:**
-- Create: `src/cortex/src/embedding/mod.rs`
-- Create: `src/cortex/src/embedding/stub.rs`
+- Create: `src/overseer/src/embedding/mod.rs`
+- Create: `src/overseer/src/embedding/stub.rs`
 
-- [ ] **Step 1: Create `src/cortex/src/embedding/mod.rs`**
+- [ ] **Step 1: Create `src/overseer/src/embedding/mod.rs`**
 
 ```rust
 pub mod stub;
@@ -579,7 +579,7 @@ pub trait EmbeddingProvider: Send + Sync {
 }
 ```
 
-- [ ] **Step 2: Create `src/cortex/src/embedding/stub.rs`**
+- [ ] **Step 2: Create `src/overseer/src/embedding/stub.rs`**
 
 ```rust
 use super::EmbeddingProvider;
@@ -635,7 +635,7 @@ mod tests {
 Add `mod embedding;` to `main.rs`.
 
 ```bash
-cd src/cortex && cargo test embedding
+cd src/overseer && cargo test embedding
 ```
 
 Expected: 2 tests pass.
@@ -643,8 +643,8 @@ Expected: 2 tests pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/cortex/src/embedding/
-git commit -m "feat(cortex): embedding trait and stub provider"
+git add src/overseer/src/embedding/
+git commit -m "feat(overseer): embedding trait and stub provider"
 ```
 
 ---
@@ -652,14 +652,14 @@ git commit -m "feat(cortex): embedding trait and stub provider"
 ### Task 4: Memory storage and service
 
 **Files:**
-- Create: `src/cortex/src/db/memory.rs`
-- Create: `src/cortex/src/services/mod.rs`
-- Create: `src/cortex/src/services/memory.rs`
+- Create: `src/overseer/src/db/memory.rs`
+- Create: `src/overseer/src/services/mod.rs`
+- Create: `src/overseer/src/services/memory.rs`
 
-- [ ] **Step 1: Create `src/cortex/src/db/memory.rs`**
+- [ ] **Step 1: Create `src/overseer/src/db/memory.rs`**
 
 ```rust
-use crate::error::{CortexError, Result};
+use crate::error::{OverseerError, Result};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -701,7 +701,7 @@ pub fn insert_memory(
     expires_at: Option<&str>,
 ) -> Result<Memory> {
     let id = Uuid::new_v4().to_string();
-    let tags_json = serde_json::to_string(tags).map_err(|e| CortexError::Internal(e.to_string()))?;
+    let tags_json = serde_json::to_string(tags).map_err(|e| OverseerError::Internal(e.to_string()))?;
 
     conn.execute(
         "INSERT INTO memories (id, content, embedding_model, source, tags, expires_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -721,7 +721,7 @@ pub fn insert_memory(
         params![rowid, embedding.as_bytes()],
     )?;
 
-    get_memory(conn, &id)?.ok_or_else(|| CortexError::Internal("inserted memory not found".into()))
+    get_memory(conn, &id)?.ok_or_else(|| OverseerError::Internal("inserted memory not found".into()))
 }
 
 pub fn get_memory(conn: &Connection, id: &str) -> Result<Option<Memory>> {
@@ -898,7 +898,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Create `src/cortex/src/services/mod.rs`**
+- [ ] **Step 2: Create `src/overseer/src/services/mod.rs`**
 
 ```rust
 pub mod memory;
@@ -929,7 +929,7 @@ impl AppState {
 }
 ```
 
-- [ ] **Step 3: Create `src/cortex/src/services/memory.rs`**
+- [ ] **Step 3: Create `src/overseer/src/services/memory.rs`**
 
 ```rust
 use crate::db::Database;
@@ -957,7 +957,7 @@ impl MemoryService {
         expires_at: Option<&str>,
     ) -> Result<Memory> {
         let embedding = self.embedder.embed(content)?;
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
 
         let mem = memory::insert_memory(
             &conn,
@@ -983,12 +983,12 @@ impl MemoryService {
         limit: usize,
     ) -> Result<Vec<MemorySearchResult>> {
         let embedding = self.embedder.embed(query)?;
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         memory::search_memories(&conn, &embedding, tags, limit)
     }
 
     pub fn delete(&self, id: &str) -> Result<bool> {
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         memory::delete_memory(&conn, id)
     }
 }
@@ -1029,7 +1029,7 @@ mod tests {
 
 - [ ] **Step 4: Create stub files for other services**
 
-Create `src/cortex/src/services/jobs.rs`:
+Create `src/overseer/src/services/jobs.rs`:
 
 ```rust
 use crate::db::Database;
@@ -1046,7 +1046,7 @@ impl JobService {
 }
 ```
 
-Create `src/cortex/src/services/decisions.rs`:
+Create `src/overseer/src/services/decisions.rs`:
 
 ```rust
 use crate::db::Database;
@@ -1063,7 +1063,7 @@ impl DecisionService {
 }
 ```
 
-Create `src/cortex/src/services/artifacts.rs`:
+Create `src/overseer/src/services/artifacts.rs`:
 
 ```rust
 use crate::db::Database;
@@ -1087,7 +1087,7 @@ impl ArtifactService {
 Add `mod services;` to `main.rs`.
 
 ```bash
-cd src/cortex && cargo test
+cd src/overseer && cargo test
 ```
 
 Expected: all tests pass (db tests + embedding tests + memory service tests).
@@ -1095,8 +1095,8 @@ Expected: all tests pass (db tests + embedding tests + memory service tests).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/cortex/src/
-git commit -m "feat(cortex): memory storage, service, and vector search"
+git add src/overseer/src/
+git commit -m "feat(overseer): memory storage, service, and vector search"
 ```
 
 ---
@@ -1104,17 +1104,17 @@ git commit -m "feat(cortex): memory storage, service, and vector search"
 ### Task 5: Jobs and decisions storage + services
 
 **Files:**
-- Create: `src/cortex/src/db/jobs.rs`
-- Create: `src/cortex/src/db/decisions.rs`
-- Create: `src/cortex/src/db/artifacts.rs`
-- Modify: `src/cortex/src/services/jobs.rs`
-- Modify: `src/cortex/src/services/decisions.rs`
-- Modify: `src/cortex/src/services/artifacts.rs`
+- Create: `src/overseer/src/db/jobs.rs`
+- Create: `src/overseer/src/db/decisions.rs`
+- Create: `src/overseer/src/db/artifacts.rs`
+- Modify: `src/overseer/src/services/jobs.rs`
+- Modify: `src/overseer/src/services/decisions.rs`
+- Modify: `src/overseer/src/services/artifacts.rs`
 
-- [ ] **Step 1: Create `src/cortex/src/db/jobs.rs`**
+- [ ] **Step 1: Create `src/overseer/src/db/jobs.rs`**
 
 ```rust
-use crate::error::{CortexError, Result};
+use crate::error::{OverseerError, Result};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -1156,12 +1156,12 @@ pub struct Task {
 
 pub fn create_job_definition(conn: &Connection, name: &str, description: &str, config: &serde_json::Value) -> Result<JobDefinition> {
     let id = Uuid::new_v4().to_string();
-    let config_str = serde_json::to_string(config).map_err(|e| CortexError::Internal(e.to_string()))?;
+    let config_str = serde_json::to_string(config).map_err(|e| OverseerError::Internal(e.to_string()))?;
     conn.execute(
         "INSERT INTO job_definitions (id, name, description, config) VALUES (?1, ?2, ?3, ?4)",
         params![id, name, description, config_str],
     )?;
-    get_job_definition(conn, &id)?.ok_or_else(|| CortexError::Internal("inserted definition not found".into()))
+    get_job_definition(conn, &id)?.ok_or_else(|| OverseerError::Internal("inserted definition not found".into()))
 }
 
 pub fn get_job_definition(conn: &Connection, id: &str) -> Result<Option<JobDefinition>> {
@@ -1207,7 +1207,7 @@ pub fn start_job_run(conn: &Connection, definition_id: &str, triggered_by: &str,
         params![id, definition_id, parent_id, triggered_by],
     )?;
     conn.execute("UPDATE job_runs SET status = 'running' WHERE id = ?1", params![id])?;
-    get_job_run(conn, &id)?.ok_or_else(|| CortexError::Internal("inserted run not found".into()))
+    get_job_run(conn, &id)?.ok_or_else(|| OverseerError::Internal("inserted run not found".into()))
 }
 
 pub fn get_job_run(conn: &Connection, id: &str) -> Result<Option<JobRun>> {
@@ -1241,13 +1241,13 @@ pub fn update_job_run(conn: &Connection, id: &str, status: Option<&str>, result:
         }
     }
     if let Some(r) = result {
-        let json = serde_json::to_string(r).map_err(|e| CortexError::Internal(e.to_string()))?;
+        let json = serde_json::to_string(r).map_err(|e| OverseerError::Internal(e.to_string()))?;
         conn.execute("UPDATE job_runs SET result = ?1 WHERE id = ?2", params![json, id])?;
     }
     if let Some(e) = error {
         conn.execute("UPDATE job_runs SET error = ?1 WHERE id = ?2", params![e, id])?;
     }
-    get_job_run(conn, id)?.ok_or_else(|| CortexError::NotFound(format!("job run {id} not found")))
+    get_job_run(conn, id)?.ok_or_else(|| OverseerError::NotFound(format!("job run {id} not found")))
 }
 
 pub fn list_job_runs(conn: &Connection, status: Option<&str>) -> Result<Vec<JobRun>> {
@@ -1287,7 +1287,7 @@ pub fn create_task(conn: &Connection, subject: &str, run_id: Option<&str>, assig
         "INSERT INTO tasks (id, run_id, subject, assigned_to) VALUES (?1, ?2, ?3, ?4)",
         params![id, run_id, subject, assigned_to],
     )?;
-    get_task(conn, &id)?.ok_or_else(|| CortexError::Internal("inserted task not found".into()))
+    get_task(conn, &id)?.ok_or_else(|| OverseerError::Internal("inserted task not found".into()))
 }
 
 pub fn get_task(conn: &Connection, id: &str) -> Result<Option<Task>> {
@@ -1316,10 +1316,10 @@ pub fn update_task(conn: &Connection, id: &str, status: Option<&str>, assigned_t
         conn.execute("UPDATE tasks SET assigned_to = ?1, updated_at = datetime('now') WHERE id = ?2", params![a, id])?;
     }
     if let Some(o) = output {
-        let json = serde_json::to_string(o).map_err(|e| CortexError::Internal(e.to_string()))?;
+        let json = serde_json::to_string(o).map_err(|e| OverseerError::Internal(e.to_string()))?;
         conn.execute("UPDATE tasks SET output = ?1, updated_at = datetime('now') WHERE id = ?2", params![json, id])?;
     }
-    get_task(conn, id)?.ok_or_else(|| CortexError::NotFound(format!("task {id} not found")))
+    get_task(conn, id)?.ok_or_else(|| OverseerError::NotFound(format!("task {id} not found")))
 }
 
 pub fn list_tasks(conn: &Connection, status: Option<&str>, assigned_to: Option<&str>, run_id: Option<&str>) -> Result<Vec<Task>> {
@@ -1421,10 +1421,10 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Create `src/cortex/src/db/decisions.rs`**
+- [ ] **Step 2: Create `src/overseer/src/db/decisions.rs`**
 
 ```rust
-use crate::error::{CortexError, Result};
+use crate::error::{OverseerError, Result};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -1451,12 +1451,12 @@ pub fn log_decision(
     run_id: Option<&str>,
 ) -> Result<Decision> {
     let id = Uuid::new_v4().to_string();
-    let tags_json = serde_json::to_string(tags).map_err(|e| CortexError::Internal(e.to_string()))?;
+    let tags_json = serde_json::to_string(tags).map_err(|e| OverseerError::Internal(e.to_string()))?;
     conn.execute(
         "INSERT INTO decisions (id, agent, context, decision, reasoning, tags, run_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![id, agent, context, decision, reasoning, tags_json, run_id],
     )?;
-    get_decision(conn, &id)?.ok_or_else(|| CortexError::Internal("inserted decision not found".into()))
+    get_decision(conn, &id)?.ok_or_else(|| OverseerError::Internal("inserted decision not found".into()))
 }
 
 pub fn get_decision(conn: &Connection, id: &str) -> Result<Option<Decision>> {
@@ -1546,10 +1546,10 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: Create `src/cortex/src/db/artifacts.rs`**
+- [ ] **Step 3: Create `src/overseer/src/db/artifacts.rs`**
 
 ```rust
-use crate::error::{CortexError, Result};
+use crate::error::{OverseerError, Result};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -1570,7 +1570,7 @@ pub fn insert_artifact(conn: &Connection, name: &str, content_type: &str, size: 
         "INSERT INTO artifacts (id, name, content_type, size, run_id) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![id, name, content_type, size, run_id],
     )?;
-    get_artifact(conn, &id)?.ok_or_else(|| CortexError::Internal("inserted artifact not found".into()))
+    get_artifact(conn, &id)?.ok_or_else(|| OverseerError::Internal("inserted artifact not found".into()))
 }
 
 pub fn get_artifact(conn: &Connection, id: &str) -> Result<Option<ArtifactMetadata>> {
@@ -1629,7 +1629,7 @@ mod tests {
 
 - [ ] **Step 4: Wire up full services**
 
-Update `src/cortex/src/services/jobs.rs`:
+Update `src/overseer/src/services/jobs.rs`:
 
 ```rust
 use crate::db::Database;
@@ -1647,48 +1647,48 @@ impl JobService {
     }
 
     pub fn create_definition(&self, name: &str, description: &str, config: &serde_json::Value) -> Result<JobDefinition> {
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         jobs::create_job_definition(&conn, name, description, config)
     }
 
     pub fn list_definitions(&self) -> Result<Vec<JobDefinition>> {
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         jobs::list_job_definitions(&conn)
     }
 
     pub fn start_run(&self, definition_id: &str, triggered_by: &str, parent_id: Option<&str>) -> Result<JobRun> {
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         jobs::start_job_run(&conn, definition_id, triggered_by, parent_id)
     }
 
     pub fn update_run(&self, id: &str, status: Option<&str>, result: Option<&serde_json::Value>, error: Option<&str>) -> Result<JobRun> {
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         jobs::update_job_run(&conn, id, status, result, error)
     }
 
     pub fn list_runs(&self, status: Option<&str>) -> Result<Vec<JobRun>> {
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         jobs::list_job_runs(&conn, status)
     }
 
     pub fn create_task(&self, subject: &str, run_id: Option<&str>, assigned_to: Option<&str>) -> Result<Task> {
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         jobs::create_task(&conn, subject, run_id, assigned_to)
     }
 
     pub fn update_task(&self, id: &str, status: Option<&str>, assigned_to: Option<&str>, output: Option<&serde_json::Value>) -> Result<Task> {
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         jobs::update_task(&conn, id, status, assigned_to, output)
     }
 
     pub fn list_tasks(&self, status: Option<&str>, assigned_to: Option<&str>, run_id: Option<&str>) -> Result<Vec<Task>> {
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         jobs::list_tasks(&conn, status, assigned_to, run_id)
     }
 }
 ```
 
-Update `src/cortex/src/services/decisions.rs`:
+Update `src/overseer/src/services/decisions.rs`:
 
 ```rust
 use crate::db::Database;
@@ -1706,23 +1706,23 @@ impl DecisionService {
     }
 
     pub fn log(&self, agent: &str, context: &str, decision: &str, reasoning: &str, tags: &[String], run_id: Option<&str>) -> Result<Decision> {
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         decisions::log_decision(&conn, agent, context, decision, reasoning, tags, run_id)
     }
 
     pub fn query(&self, agent: Option<&str>, tags: Option<&[String]>, limit: usize) -> Result<Vec<Decision>> {
-        let conn = self.db.conn.lock().map_err(|e| crate::error::CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| crate::error::OverseerError::Internal(e.to_string()))?;
         decisions::query_decisions(&conn, agent, tags, limit)
     }
 }
 ```
 
-Update `src/cortex/src/services/artifacts.rs`:
+Update `src/overseer/src/services/artifacts.rs`:
 
 ```rust
 use crate::db::Database;
 use crate::db::artifacts::{self, ArtifactMetadata};
-use crate::error::{CortexError, Result};
+use crate::error::{OverseerError, Result};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -1737,7 +1737,7 @@ impl ArtifactService {
     }
 
     pub fn store(&self, name: &str, content_type: &str, data: &[u8], run_id: Option<&str>) -> Result<ArtifactMetadata> {
-        let conn = self.db.conn.lock().map_err(|e| CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| OverseerError::Internal(e.to_string()))?;
         let meta = artifacts::insert_artifact(&conn, name, content_type, data.len() as i64, run_id)?;
 
         std::fs::create_dir_all(&self.artifact_path)?;
@@ -1748,9 +1748,9 @@ impl ArtifactService {
     }
 
     pub fn get(&self, id: &str) -> Result<(ArtifactMetadata, Vec<u8>)> {
-        let conn = self.db.conn.lock().map_err(|e| CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| OverseerError::Internal(e.to_string()))?;
         let meta = artifacts::get_artifact(&conn, id)?
-            .ok_or_else(|| CortexError::NotFound(format!("artifact {id} not found")))?;
+            .ok_or_else(|| OverseerError::NotFound(format!("artifact {id} not found")))?;
 
         let path = self.artifact_path.join(id);
         let data = std::fs::read(&path)?;
@@ -1759,7 +1759,7 @@ impl ArtifactService {
     }
 
     pub fn list(&self, run_id: Option<&str>) -> Result<Vec<ArtifactMetadata>> {
-        let conn = self.db.conn.lock().map_err(|e| CortexError::Internal(e.to_string()))?;
+        let conn = self.db.conn.lock().map_err(|e| OverseerError::Internal(e.to_string()))?;
         artifacts::list_artifacts(&conn, run_id)
     }
 }
@@ -1768,7 +1768,7 @@ impl ArtifactService {
 - [ ] **Step 5: Run all tests**
 
 ```bash
-cd src/cortex && cargo test
+cd src/overseer && cargo test
 ```
 
 Expected: all tests pass.
@@ -1776,8 +1776,8 @@ Expected: all tests pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/cortex/src/
-git commit -m "feat(cortex): jobs, decisions, artifacts — storage and services"
+git add src/overseer/src/
+git commit -m "feat(overseer): jobs, decisions, artifacts — storage and services"
 ```
 
 ---
@@ -1785,13 +1785,13 @@ git commit -m "feat(cortex): jobs, decisions, artifacts — storage and services
 ### Task 6: HTTP API
 
 **Files:**
-- Create: `src/cortex/src/api/mod.rs`
-- Create: `src/cortex/src/api/memory.rs`
-- Create: `src/cortex/src/api/jobs.rs`
-- Create: `src/cortex/src/api/decisions.rs`
-- Create: `src/cortex/src/api/artifacts.rs`
+- Create: `src/overseer/src/api/mod.rs`
+- Create: `src/overseer/src/api/memory.rs`
+- Create: `src/overseer/src/api/jobs.rs`
+- Create: `src/overseer/src/api/decisions.rs`
+- Create: `src/overseer/src/api/artifacts.rs`
 
-- [ ] **Step 1: Create `src/cortex/src/api/mod.rs`**
+- [ ] **Step 1: Create `src/overseer/src/api/mod.rs`**
 
 ```rust
 mod memory;
@@ -1813,10 +1813,10 @@ pub fn router(state: Arc<AppState>) -> Router {
 }
 ```
 
-- [ ] **Step 2: Create `src/cortex/src/api/memory.rs`**
+- [ ] **Step 2: Create `src/overseer/src/api/memory.rs`**
 
 ```rust
-use crate::error::CortexError;
+use crate::error::OverseerError;
 use crate::services::AppState;
 use axum::{extract::{Path, Query, State}, routing::{delete, get, post}, Json, Router};
 use serde::Deserialize;
@@ -1861,7 +1861,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 async fn store_memory(
     State(state): State<Arc<AppState>>,
     Json(req): Json<StoreMemoryRequest>,
-) -> Result<Json<serde_json::Value>, CortexError> {
+) -> Result<Json<serde_json::Value>, OverseerError> {
     let links: Vec<(String, String, String)> = req.links.into_iter()
         .map(|l| (l.linked_id, l.linked_type, l.relation_type))
         .collect();
@@ -1875,7 +1875,7 @@ async fn store_memory(
 async fn search_memories(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<serde_json::Value>, CortexError> {
+) -> Result<Json<serde_json::Value>, OverseerError> {
     let tags: Option<Vec<String>> = query.tags.map(|t| t.split(',').map(|s| s.trim().to_string()).collect());
     let results = state.memory.recall(&query.q, tags.as_deref(), query.limit)?;
     Ok(Json(serde_json::to_value(results).unwrap()))
@@ -1884,16 +1884,16 @@ async fn search_memories(
 async fn delete_memory(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, CortexError> {
+) -> Result<Json<serde_json::Value>, OverseerError> {
     let deleted = state.memory.delete(&id)?;
     Ok(Json(serde_json::json!({ "deleted": deleted })))
 }
 ```
 
-- [ ] **Step 3: Create `src/cortex/src/api/decisions.rs`**
+- [ ] **Step 3: Create `src/overseer/src/api/decisions.rs`**
 
 ```rust
-use crate::error::CortexError;
+use crate::error::OverseerError;
 use crate::services::AppState;
 use axum::{extract::{Query, State}, routing::{get, post}, Json, Router};
 use serde::Deserialize;
@@ -1930,7 +1930,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 async fn log_decision(
     State(state): State<Arc<AppState>>,
     Json(req): Json<LogDecisionRequest>,
-) -> Result<Json<serde_json::Value>, CortexError> {
+) -> Result<Json<serde_json::Value>, OverseerError> {
     let d = state.decisions.log(&req.agent, &req.context, &req.decision, &req.reasoning, &req.tags, req.run_id.as_deref())?;
     Ok(Json(serde_json::to_value(d).unwrap()))
 }
@@ -1938,17 +1938,17 @@ async fn log_decision(
 async fn query_decisions(
     State(state): State<Arc<AppState>>,
     Query(q): Query<DecisionQuery>,
-) -> Result<Json<serde_json::Value>, CortexError> {
+) -> Result<Json<serde_json::Value>, OverseerError> {
     let tags: Option<Vec<String>> = q.tags.map(|t| t.split(',').map(|s| s.trim().to_string()).collect());
     let results = state.decisions.query(q.agent.as_deref(), tags.as_deref(), q.limit)?;
     Ok(Json(serde_json::to_value(results).unwrap()))
 }
 ```
 
-- [ ] **Step 4: Create `src/cortex/src/api/jobs.rs`**
+- [ ] **Step 4: Create `src/overseer/src/api/jobs.rs`**
 
 ```rust
-use crate::error::CortexError;
+use crate::error::OverseerError;
 use crate::services::AppState;
 use axum::{extract::{Path, Query, State}, routing::{get, patch, post}, Json, Router};
 use serde::Deserialize;
@@ -2020,51 +2020,51 @@ pub fn task_router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
-async fn create_definition(State(state): State<Arc<AppState>>, Json(req): Json<CreateDefinitionRequest>) -> Result<Json<serde_json::Value>, CortexError> {
+async fn create_definition(State(state): State<Arc<AppState>>, Json(req): Json<CreateDefinitionRequest>) -> Result<Json<serde_json::Value>, OverseerError> {
     let def = state.jobs.create_definition(&req.name, &req.description, &req.config)?;
     Ok(Json(serde_json::to_value(def).unwrap()))
 }
 
-async fn list_definitions(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, CortexError> {
+async fn list_definitions(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, OverseerError> {
     let defs = state.jobs.list_definitions()?;
     Ok(Json(serde_json::to_value(defs).unwrap()))
 }
 
-async fn start_run(State(state): State<Arc<AppState>>, Json(req): Json<StartRunRequest>) -> Result<Json<serde_json::Value>, CortexError> {
+async fn start_run(State(state): State<Arc<AppState>>, Json(req): Json<StartRunRequest>) -> Result<Json<serde_json::Value>, OverseerError> {
     let run = state.jobs.start_run(&req.definition_id, &req.triggered_by, req.parent_id.as_deref())?;
     Ok(Json(serde_json::to_value(run).unwrap()))
 }
 
-async fn update_run(State(state): State<Arc<AppState>>, Path(id): Path<String>, Json(req): Json<UpdateRunRequest>) -> Result<Json<serde_json::Value>, CortexError> {
+async fn update_run(State(state): State<Arc<AppState>>, Path(id): Path<String>, Json(req): Json<UpdateRunRequest>) -> Result<Json<serde_json::Value>, OverseerError> {
     let run = state.jobs.update_run(&id, req.status.as_deref(), req.result.as_ref(), req.error.as_deref())?;
     Ok(Json(serde_json::to_value(run).unwrap()))
 }
 
-async fn list_runs(State(state): State<Arc<AppState>>, Query(q): Query<RunQuery>) -> Result<Json<serde_json::Value>, CortexError> {
+async fn list_runs(State(state): State<Arc<AppState>>, Query(q): Query<RunQuery>) -> Result<Json<serde_json::Value>, OverseerError> {
     let runs = state.jobs.list_runs(q.status.as_deref())?;
     Ok(Json(serde_json::to_value(runs).unwrap()))
 }
 
-async fn create_task(State(state): State<Arc<AppState>>, Json(req): Json<CreateTaskRequest>) -> Result<Json<serde_json::Value>, CortexError> {
+async fn create_task(State(state): State<Arc<AppState>>, Json(req): Json<CreateTaskRequest>) -> Result<Json<serde_json::Value>, OverseerError> {
     let task = state.jobs.create_task(&req.subject, req.run_id.as_deref(), req.assigned_to.as_deref())?;
     Ok(Json(serde_json::to_value(task).unwrap()))
 }
 
-async fn update_task(State(state): State<Arc<AppState>>, Path(id): Path<String>, Json(req): Json<UpdateTaskRequest>) -> Result<Json<serde_json::Value>, CortexError> {
+async fn update_task(State(state): State<Arc<AppState>>, Path(id): Path<String>, Json(req): Json<UpdateTaskRequest>) -> Result<Json<serde_json::Value>, OverseerError> {
     let task = state.jobs.update_task(&id, req.status.as_deref(), req.assigned_to.as_deref(), req.output.as_ref())?;
     Ok(Json(serde_json::to_value(task).unwrap()))
 }
 
-async fn list_tasks(State(state): State<Arc<AppState>>, Query(q): Query<TaskQuery>) -> Result<Json<serde_json::Value>, CortexError> {
+async fn list_tasks(State(state): State<Arc<AppState>>, Query(q): Query<TaskQuery>) -> Result<Json<serde_json::Value>, OverseerError> {
     let tasks = state.jobs.list_tasks(q.status.as_deref(), q.assigned_to.as_deref(), q.run_id.as_deref())?;
     Ok(Json(serde_json::to_value(tasks).unwrap()))
 }
 ```
 
-- [ ] **Step 5: Create `src/cortex/src/api/artifacts.rs`**
+- [ ] **Step 5: Create `src/overseer/src/api/artifacts.rs`**
 
 ```rust
-use crate::error::CortexError;
+use crate::error::OverseerError;
 use crate::services::AppState;
 use axum::{extract::{Path, Query, State}, routing::{get, post}, Json, Router};
 use axum::body::Bytes;
@@ -2096,11 +2096,11 @@ pub fn router(state: Arc<AppState>) -> Router {
 async fn store_artifact(
     State(state): State<Arc<AppState>>,
     Json(req): Json<StoreArtifactRequest>,
-) -> Result<Json<serde_json::Value>, CortexError> {
+) -> Result<Json<serde_json::Value>, OverseerError> {
     use base64::Engine;
     let data = base64::engine::general_purpose::STANDARD
         .decode(&req.data)
-        .map_err(|e| CortexError::Validation(format!("invalid base64: {e}")))?;
+        .map_err(|e| OverseerError::Validation(format!("invalid base64: {e}")))?;
 
     let meta = state.artifacts.store(&req.name, &req.content_type, &data, req.run_id.as_deref())?;
     Ok(Json(serde_json::to_value(meta).unwrap()))
@@ -2109,7 +2109,7 @@ async fn store_artifact(
 async fn get_artifact(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<impl IntoResponse, CortexError> {
+) -> Result<impl IntoResponse, OverseerError> {
     let (meta, data) = state.artifacts.get(&id)?;
     Ok((
         [(header::CONTENT_TYPE, meta.content_type)],
@@ -2120,7 +2120,7 @@ async fn get_artifact(
 async fn list_artifacts(
     State(state): State<Arc<AppState>>,
     Query(q): Query<ArtifactQuery>,
-) -> Result<Json<serde_json::Value>, CortexError> {
+) -> Result<Json<serde_json::Value>, OverseerError> {
     let artifacts = state.artifacts.list(q.run_id.as_deref())?;
     Ok(Json(serde_json::to_value(artifacts).unwrap()))
 }
@@ -2133,7 +2133,7 @@ Note: add `base64 = "0.22"` to Cargo.toml dependencies.
 Add `mod api;` to `main.rs`.
 
 ```bash
-cd src/cortex && cargo check
+cd src/overseer && cargo check
 ```
 
 Expected: compiles.
@@ -2141,8 +2141,8 @@ Expected: compiles.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/cortex/
-git commit -m "feat(cortex): HTTP API — all REST endpoints"
+git add src/overseer/
+git commit -m "feat(overseer): HTTP API — all REST endpoints"
 ```
 
 ---
@@ -2150,9 +2150,9 @@ git commit -m "feat(cortex): HTTP API — all REST endpoints"
 ### Task 7: MCP server
 
 **Files:**
-- Create: `src/cortex/src/mcp/mod.rs`
+- Create: `src/overseer/src/mcp/mod.rs`
 
-- [ ] **Step 1: Create `src/cortex/src/mcp/mod.rs`**
+- [ ] **Step 1: Create `src/overseer/src/mcp/mod.rs`**
 
 ```rust
 use crate::services::AppState;
@@ -2283,13 +2283,13 @@ pub struct GetArtifactParams {
 // -- MCP Server ---------------------------------------------------------------
 
 #[derive(Clone)]
-pub struct CortexMcp {
+pub struct OverseerMcp {
     state: Arc<AppState>,
     tool_router: ToolRouter<Self>,
 }
 
 #[tool_router]
-impl CortexMcp {
+impl OverseerMcp {
     pub fn new(state: Arc<AppState>) -> Self {
         Self { state, tool_router: Self::tool_router() }
     }
@@ -2395,14 +2395,14 @@ impl CortexMcp {
 }
 
 #[tool_handler]
-impl ServerHandler for CortexMcp {
+impl ServerHandler for OverseerMcp {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(
             ServerCapabilities::builder()
                 .enable_tools()
                 .build(),
         )
-        .with_instructions("Cortex — persistent memory, job orchestration, decisions, and artifacts for the Kerrigan agentic platform.".to_string())
+        .with_instructions("Overseer — persistent memory, job orchestration, decisions, and artifacts for the Kerrigan agentic platform.".to_string())
     }
 }
 ```
@@ -2412,7 +2412,7 @@ impl ServerHandler for CortexMcp {
 Add `mod mcp;` to `main.rs`.
 
 ```bash
-cd src/cortex && cargo check
+cd src/overseer && cargo check
 ```
 
 Expected: compiles.
@@ -2420,8 +2420,8 @@ Expected: compiles.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/cortex/src/mcp/
-git commit -m "feat(cortex): MCP server — all tools defined"
+git add src/overseer/src/mcp/
+git commit -m "feat(overseer): MCP server — all tools defined"
 ```
 
 ---
@@ -2429,7 +2429,7 @@ git commit -m "feat(cortex): MCP server — all tools defined"
 ### Task 8: Main entrypoint — wire everything together
 
 **Files:**
-- Modify: `src/cortex/src/main.rs`
+- Modify: `src/overseer/src/main.rs`
 
 - [ ] **Step 1: Write the full main.rs**
 
@@ -2445,7 +2445,7 @@ mod services;
 use config::Config;
 use db::Database;
 use embedding::stub::StubEmbedding;
-use mcp::CortexMcp;
+use mcp::OverseerMcp;
 use services::AppState;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -2456,7 +2456,7 @@ async fn main() -> anyhow::Result<()> {
     let config_path = std::env::args()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("cortex.toml"));
+        .unwrap_or_else(|| PathBuf::from("overseer.toml"));
 
     let config = Config::load(&config_path)?;
 
@@ -2467,7 +2467,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    tracing::info!("cortex starting");
+    tracing::info!("overseer starting");
 
     let database = Arc::new(Database::open(&config.storage.database_path)?);
     tracing::info!("database opened at {:?}", config.storage.database_path);
@@ -2495,7 +2495,7 @@ async fn main() -> anyhow::Result<()> {
             });
 
             tracing::info!("MCP server starting on stdio");
-            let mcp_server = CortexMcp::new(state);
+            let mcp_server = OverseerMcp::new(state);
             let service = rmcp::ServiceExt::serve(mcp_server, rmcp::transport::stdio()).await?;
             service.waiting().await?;
         }
@@ -2518,7 +2518,7 @@ async fn main() -> anyhow::Result<()> {
 - [ ] **Step 2: Verify it compiles**
 
 ```bash
-cd src/cortex && cargo check
+cd src/overseer && cargo check
 ```
 
 Expected: compiles with no errors.
@@ -2526,14 +2526,14 @@ Expected: compiles with no errors.
 - [ ] **Step 3: Verify Buck2 build**
 
 ```bash
-buck2 build root//src/cortex:cortex
+buck2 build root//src/overseer:overseer
 ```
 
 Expected: BUILD SUCCEEDED.
 
-- [ ] **Step 4: Smoke test — start cortex and hit the HTTP API**
+- [ ] **Step 4: Smoke test — start overseer and hit the HTTP API**
 
-Create a minimal `cortex.toml` at the repo root:
+Create a minimal `overseer.toml` at the repo root:
 
 ```toml
 [server]
@@ -2541,13 +2541,13 @@ http_port = 3100
 mcp_transport = "http"
 
 [storage]
-database_path = "data/cortex.db"
+database_path = "data/overseer.db"
 artifact_path = "data/artifacts"
 ```
 
-Start cortex:
+Start overseer:
 ```bash
-buck2 run root//src/cortex:cortex -- cortex.toml &
+buck2 run root//src/overseer:overseer -- overseer.toml &
 ```
 
 Test the API:
@@ -2567,7 +2567,7 @@ curl -s -X POST http://localhost:3100/api/decisions -H 'Content-Type: applicatio
 
 Expected: JSON responses for each request.
 
-Kill cortex and clean up:
+Kill overseer and clean up:
 ```bash
 kill %1
 rm -rf data/
@@ -2576,31 +2576,31 @@ rm -rf data/
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/cortex/src/main.rs cortex.toml
-git commit -m "feat(cortex): wire up main — HTTP + MCP server running"
+git add src/overseer/src/main.rs overseer.toml
+git commit -m "feat(overseer): wire up main — HTTP + MCP server running"
 ```
 
 ---
 
-### Task 9: Update CLAUDE.md and cortex CLAUDE.md
+### Task 9: Update CLAUDE.md and overseer CLAUDE.md
 
 **Files:**
 - Modify: `CLAUDE.md`
-- Create: `src/cortex/CLAUDE.md`
+- Create: `src/overseer/CLAUDE.md`
 
-- [ ] **Step 1: Create `src/cortex/CLAUDE.md`**
+- [ ] **Step 1: Create `src/overseer/CLAUDE.md`**
 
-Document cortex's architecture, module structure, how to add new endpoints/tools, and test patterns — all derived from the actual code written in previous tasks.
+Document overseer's architecture, module structure, how to add new endpoints/tools, and test patterns — all derived from the actual code written in previous tasks.
 
 - [ ] **Step 2: Update root `CLAUDE.md`**
 
-Update the Components > Cortex section to reflect the actual implementation: HTTP API on port 3100, MCP via stdio, SQLite + sqlite-vec, the service layer architecture.
+Update the Components > Overseer section to reflect the actual implementation: HTTP API on port 3100, MCP via stdio, SQLite + sqlite-vec, the service layer architecture.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add CLAUDE.md src/cortex/CLAUDE.md
-git commit -m "docs: update CLAUDE.md with cortex architecture details"
+git add CLAUDE.md src/overseer/CLAUDE.md
+git commit -m "docs: update CLAUDE.md with overseer architecture details"
 ```
 
 ---

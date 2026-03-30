@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use tokio::fs;
 
 use crate::db::artifacts as db;
-use crate::error::{CortexError, Result};
+use crate::error::{OverseerError, Result};
 
 pub struct ArtifactService {
     pool: SqlitePool,
@@ -40,7 +40,7 @@ impl ArtifactService {
     pub async fn get(&self, id: &str) -> Result<(db::ArtifactMetadata, Vec<u8>)> {
         let metadata = db::get_artifact(&self.pool, id)
             .await?
-            .ok_or_else(|| CortexError::NotFound(format!("artifact {id}")))?;
+            .ok_or_else(|| OverseerError::NotFound(format!("artifact {id}")))?;
 
         let path = self.artifact_path.join(id);
         let data = fs::read(&path).await?;
@@ -59,7 +59,7 @@ mod tests {
     use crate::db::open_in_memory_named;
 
     fn test_dir() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("cortex-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("overseer-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -116,7 +116,7 @@ mod tests {
 
         let result = svc.get("nonexistent-id").await;
         assert!(
-            matches!(result, Err(CortexError::NotFound(_))),
+            matches!(result, Err(OverseerError::NotFound(_))),
             "expected NotFound, got: {result:?}"
         );
     }

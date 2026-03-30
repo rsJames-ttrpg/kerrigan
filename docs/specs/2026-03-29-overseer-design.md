@@ -1,6 +1,6 @@
-# Cortex Design Spec
+# Overseer Design Spec
 
-Cortex is the foundational service of the Kerrigan agentic development platform. It provides persistent memory, job orchestration, decision logging, and artifact storage — exposed via both HTTP REST and MCP interfaces.
+Overseer is the foundational service of the Kerrigan agentic development platform. It provides persistent memory, job orchestration, decision logging, and artifact storage — exposed via both HTTP REST and MCP interfaces.
 
 ## Clients
 
@@ -195,7 +195,7 @@ Mirrors the MCP surface as REST. All endpoints under `/api/`.
 
 ## Configuration
 
-Single TOML file (`cortex.toml`):
+Single TOML file (`overseer.toml`):
 
 ```toml
 [server]
@@ -203,7 +203,7 @@ http_port = 3100
 mcp_transport = "stdio"  # or "sse" with a port
 
 [storage]
-database_path = "data/cortex.db"
+database_path = "data/overseer.db"
 artifact_path = "data/artifacts"
 
 [embedding]
@@ -215,14 +215,14 @@ level = "info"
 
 ## Error Handling
 
-Single `CortexError` enum covering all failure modes:
+Single `OverseerError` enum covering all failure modes:
 - `Storage` — SQLite errors, filesystem errors
 - `NotFound` — entity not found
 - `Validation` — bad input
 - `Embedding` — embedding provider failures
 - `Transport` — MCP/HTTP protocol errors
 
-Each transport maps `CortexError` to its error format (HTTP status codes, MCP error objects). All errors logged via `tracing`.
+Each transport maps `OverseerError` to its error format (HTTP status codes, MCP error objects). All errors logged via `tracing`.
 
 ## Crate Dependencies
 

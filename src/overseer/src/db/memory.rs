@@ -2,7 +2,7 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 use zerocopy::IntoBytes;
 
-use crate::error::{CortexError, Result};
+use crate::error::{OverseerError, Result};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Memory {
@@ -48,7 +48,7 @@ pub async fn insert_memory(
 ) -> Result<Memory> {
     let id = Uuid::new_v4().to_string();
     let tags_json =
-        serde_json::to_string(tags).map_err(|e| CortexError::Internal(e.to_string()))?;
+        serde_json::to_string(tags).map_err(|e| OverseerError::Internal(e.to_string()))?;
 
     // Insert into memories table and get the rowid
     let rowid: i64 = sqlx::query_scalar(
@@ -64,7 +64,7 @@ pub async fn insert_memory(
     .bind(expires_at)
     .fetch_one(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     // Insert into memory_embeddings virtual table using the same rowid
     let embedding_bytes: &[u8] = embedding.as_bytes();
@@ -73,7 +73,7 @@ pub async fn insert_memory(
         .bind(embedding_bytes)
         .execute(pool)
         .await
-        .map_err(CortexError::Storage)?;
+        .map_err(OverseerError::Storage)?;
 
     get_memory(pool, &id).await
 }
@@ -86,8 +86,8 @@ pub async fn get_memory(pool: &SqlitePool, id: &str) -> Result<Memory> {
     .bind(id)
     .fetch_optional(pool)
     .await
-    .map_err(CortexError::Storage)?
-    .ok_or_else(|| CortexError::NotFound(format!("memory {id}")))?;
+    .map_err(OverseerError::Storage)?
+    .ok_or_else(|| OverseerError::NotFound(format!("memory {id}")))?;
 
     Ok(row_to_memory(&row))
 }
@@ -100,7 +100,7 @@ pub async fn delete_memory(pool: &SqlitePool, id: &str) -> Result<()> {
         .bind(id)
         .execute(pool)
         .await
-        .map_err(CortexError::Storage)?;
+        .map_err(OverseerError::Storage)?;
 
     Ok(())
 }
@@ -127,7 +127,7 @@ pub async fn search_memories(
     .bind(fetch_limit)
     .fetch_all(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     let mut results: Vec<MemorySearchResult> = rows
         .iter()
@@ -168,7 +168,7 @@ pub async fn insert_memory_link(
     .bind(relation_type)
     .execute(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     Ok(())
 }
@@ -237,7 +237,7 @@ mod tests {
 
         let result = get_memory(&pool, &memory.id).await;
         assert!(
-            matches!(result, Err(CortexError::NotFound(_))),
+            matches!(result, Err(OverseerError::NotFound(_))),
             "expected NotFound, got: {result:?}"
         );
     }

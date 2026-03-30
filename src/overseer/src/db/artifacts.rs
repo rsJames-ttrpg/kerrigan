@@ -1,7 +1,7 @@
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
-use crate::error::{CortexError, Result};
+use crate::error::{OverseerError, Result};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ArtifactMetadata {
@@ -44,11 +44,11 @@ pub async fn insert_artifact(
     .bind(run_id)
     .execute(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     get_artifact(pool, &id)
         .await?
-        .ok_or_else(|| CortexError::NotFound(format!("artifact {id}")))
+        .ok_or_else(|| OverseerError::NotFound(format!("artifact {id}")))
 }
 
 pub async fn get_artifact(pool: &SqlitePool, id: &str) -> Result<Option<ArtifactMetadata>> {
@@ -59,7 +59,7 @@ pub async fn get_artifact(pool: &SqlitePool, id: &str) -> Result<Option<Artifact
     .bind(id)
     .fetch_optional(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_artifact))
 }
@@ -77,7 +77,7 @@ pub async fn list_artifacts(
     .bind(run_id)
     .fetch_all(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     Ok(rows.iter().map(row_to_artifact).collect())
 }

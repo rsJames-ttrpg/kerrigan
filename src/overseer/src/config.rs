@@ -55,7 +55,7 @@ impl Default for StorageConfig {
 }
 
 fn default_db_path() -> PathBuf {
-    PathBuf::from("data/cortex.db")
+    PathBuf::from("data/overseer.db")
 }
 fn default_artifact_path() -> PathBuf {
     PathBuf::from("data/artifacts")

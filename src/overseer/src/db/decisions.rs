@@ -1,7 +1,7 @@
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
-use crate::error::{CortexError, Result};
+use crate::error::{OverseerError, Result};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Decision {
@@ -41,7 +41,7 @@ pub async fn log_decision(
 ) -> Result<Decision> {
     let id = Uuid::new_v4().to_string();
     let tags_json =
-        serde_json::to_string(tags).map_err(|e| CortexError::Internal(e.to_string()))?;
+        serde_json::to_string(tags).map_err(|e| OverseerError::Internal(e.to_string()))?;
 
     sqlx::query(
         "INSERT INTO decisions (id, agent, context, decision, reasoning, tags, run_id) \
@@ -56,11 +56,11 @@ pub async fn log_decision(
     .bind(run_id)
     .execute(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     get_decision(pool, &id)
         .await?
-        .ok_or_else(|| CortexError::NotFound(format!("decision {id}")))
+        .ok_or_else(|| OverseerError::NotFound(format!("decision {id}")))
 }
 
 pub async fn get_decision(pool: &SqlitePool, id: &str) -> Result<Option<Decision>> {
@@ -71,7 +71,7 @@ pub async fn get_decision(pool: &SqlitePool, id: &str) -> Result<Option<Decision
     .bind(id)
     .fetch_optional(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_decision))
 }
@@ -93,7 +93,7 @@ pub async fn query_decisions(
     .bind(limit)
     .fetch_all(pool)
     .await
-    .map_err(CortexError::Storage)?;
+    .map_err(OverseerError::Storage)?;
 
     let mut results: Vec<Decision> = rows.iter().map(row_to_decision).collect();
 
