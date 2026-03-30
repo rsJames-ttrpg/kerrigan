@@ -1,17 +1,18 @@
-use sqlx::SqlitePool;
+use std::sync::Arc;
 
-use crate::db::memory as db;
+use crate::db::Database;
+use crate::db::models::{Memory, MemorySearchResult};
 use crate::embedding::EmbeddingRegistry;
 use crate::error::Result;
 
 pub struct MemoryService {
-    pool: SqlitePool,
+    db: Arc<dyn Database>,
     registry: EmbeddingRegistry,
 }
 
 impl MemoryService {
-    pub fn new(pool: SqlitePool, registry: EmbeddingRegistry) -> Self {
-        Self { pool, registry }
+    pub fn new(db: Arc<dyn Database>, registry: EmbeddingRegistry) -> Self {
+        Self { db, registry }
     }
 
     pub async fn store(
@@ -20,21 +21,21 @@ impl MemoryService {
         source: &str,
         tags: &[String],
         expires_at: Option<&str>,
-    ) -> Result<db::Memory> {
+    ) -> Result<Memory> {
         let provider = self.registry.get_default();
         let provider_name = self.registry.default_name();
         let embedding = provider.embed(content).await?;
-        db::insert_memory(
-            &self.pool,
-            provider_name,
-            content,
-            &embedding,
-            provider_name,
-            source,
-            tags,
-            expires_at,
-        )
-        .await
+        self.db
+            .insert_memory(
+                provider_name,
+                content,
+                &embedding,
+                provider_name,
+                source,
+                tags,
+                expires_at,
+            )
+            .await
     }
 
     pub async fn recall(
@@ -42,37 +43,42 @@ impl MemoryService {
         query: &str,
         tags_filter: Option<&[String]>,
         limit: usize,
-    ) -> Result<Vec<db::MemorySearchResult>> {
+    ) -> Result<Vec<MemorySearchResult>> {
         let provider = self.registry.get_default();
         let provider_name = self.registry.default_name();
         let embedding = provider.embed(query).await?;
-        db::search_memories(&self.pool, provider_name, &embedding, tags_filter, limit).await
+        self.db
+            .search_memories(provider_name, &embedding, tags_filter, limit)
+            .await
     }
 
     pub async fn delete(&self, id: &str) -> Result<()> {
-        let memory = db::get_memory(&self.pool, id).await?;
-        db::delete_memory(&self.pool, &memory.embedding_model, id).await
+        let memory = self.db.get_memory(id).await?;
+        self.db.delete_memory(&memory.embedding_model, id).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{create_embedding_table, open_in_memory_named};
+    use crate::db::{Database, SqliteDatabase};
     use crate::embedding::EmbeddingProvider;
     use crate::embedding::stub::StubEmbedding;
     use std::collections::HashMap;
     use std::sync::Arc;
 
     async fn make_service(name: &str) -> MemoryService {
-        let pool = open_in_memory_named(name).await.expect("pool opens");
-        create_embedding_table(&pool, "stub", 384)
+        let sqlite_db = SqliteDatabase::open_in_memory_named(name)
+            .await
+            .expect("db opens");
+        let db: Arc<dyn Database> = Arc::new(sqlite_db);
+        db.create_embedding_table("stub", 384)
             .await
             .expect("create table");
         let mut providers: HashMap<String, Arc<dyn EmbeddingProvider>> = HashMap::new();
         providers.insert("stub".into(), Arc::new(StubEmbedding::new(384)));
         let registry = EmbeddingRegistry::new(providers, "stub".into()).unwrap();
-        MemoryService::new(pool, registry)
+        MemoryService::new(db, registry)
     }
 
     #[tokio::test]

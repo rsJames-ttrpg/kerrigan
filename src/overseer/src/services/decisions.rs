@@ -1,15 +1,16 @@
-use sqlx::SqlitePool;
+use std::sync::Arc;
 
-use crate::db::decisions as db;
+use crate::db::Database;
+use crate::db::models::Decision;
 use crate::error::Result;
 
 pub struct DecisionService {
-    pool: SqlitePool,
+    db: Arc<dyn Database>,
 }
 
 impl DecisionService {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(db: Arc<dyn Database>) -> Self {
+        Self { db }
     }
 
     pub async fn log(
@@ -20,11 +21,10 @@ impl DecisionService {
         reasoning: &str,
         tags: &[String],
         run_id: Option<&str>,
-    ) -> Result<db::Decision> {
-        db::log_decision(
-            &self.pool, agent, context, decision, reasoning, tags, run_id,
-        )
-        .await
+    ) -> Result<Decision> {
+        self.db
+            .log_decision(agent, context, decision, reasoning, tags, run_id)
+            .await
     }
 
     pub async fn query(
@@ -32,22 +32,22 @@ impl DecisionService {
         agent: Option<&str>,
         tags: Option<&[String]>,
         limit: i64,
-    ) -> Result<Vec<db::Decision>> {
-        db::query_decisions(&self.pool, agent, tags, limit).await
+    ) -> Result<Vec<Decision>> {
+        self.db.query_decisions(agent, tags, limit).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::open_in_memory_named;
+    use crate::db::SqliteDatabase;
 
     #[tokio::test]
     async fn test_decision_service_log_and_query() {
-        let pool = open_in_memory_named("svc_decisions_test_log")
+        let sqlite_db = SqliteDatabase::open_in_memory_named("svc_decisions_test_log")
             .await
-            .expect("pool opens");
-        let svc = DecisionService::new(pool);
+            .expect("db opens");
+        let svc = DecisionService::new(Arc::new(sqlite_db));
 
         let tags = vec!["routing".to_string()];
         let dec = svc
@@ -81,10 +81,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_decision_service_query_by_tags() {
-        let pool = open_in_memory_named("svc_decisions_test_tags")
+        let sqlite_db = SqliteDatabase::open_in_memory_named("svc_decisions_test_tags")
             .await
-            .expect("pool opens");
-        let svc = DecisionService::new(pool);
+            .expect("db opens");
+        let svc = DecisionService::new(Arc::new(sqlite_db));
 
         svc.log("a", "c", "d", "r", &["foo-svc".to_string()], None)
             .await

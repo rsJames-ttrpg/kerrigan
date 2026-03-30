@@ -35,7 +35,8 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("overseer starting");
 
     let db_path = config.storage.database_path.to_string_lossy();
-    let pool = db::open(&db_path).await?;
+    let sqlite_db = db::SqliteDatabase::open(&db_path).await?;
+    let db: std::sync::Arc<dyn db::Database> = std::sync::Arc::new(sqlite_db);
     tracing::info!("database opened at {:?}", db_path);
 
     config.embedding.validate()?;
@@ -71,7 +72,8 @@ async fn main() -> anyhow::Result<()> {
             provider.model_name(),
             provider.dimensions()
         );
-        db::create_embedding_table(&pool, name, provider_config.dimensions).await?;
+        db.create_embedding_table(name, provider_config.dimensions)
+            .await?;
         providers.insert(name.clone(), provider);
     }
 
@@ -79,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("default embedding provider: {}", config.embedding.default);
 
     let state = Arc::new(AppState::new(
-        pool,
+        db,
         registry,
         config.storage.artifact_path.clone(),
     ));
