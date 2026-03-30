@@ -1,7 +1,10 @@
+use sea_query::{Expr, Order, Query, SqliteQueryBuilder};
+use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 pub use super::models::{JobDefinition, JobRun, Task};
+use super::tables::{JobDefinitions, JobRuns, Tasks};
 use crate::error::{OverseerError, Result};
 
 fn row_to_job_definition(row: &sqlx::sqlite::SqliteRow) -> JobDefinition {
@@ -63,42 +66,78 @@ pub async fn create_job_definition(
     let config_json =
         serde_json::to_string(&config).map_err(|e| OverseerError::Internal(e.to_string()))?;
 
-    let row = sqlx::query(
-        "INSERT INTO job_definitions (id, name, description, config) VALUES (?1, ?2, ?3, ?4) \
-         RETURNING id, name, description, config, created_at, updated_at",
-    )
-    .bind(&id)
-    .bind(name)
-    .bind(description)
-    .bind(&config_json)
-    .fetch_one(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::insert()
+        .into_table(JobDefinitions::Table)
+        .columns([
+            JobDefinitions::Id,
+            JobDefinitions::Name,
+            JobDefinitions::Description,
+            JobDefinitions::Config,
+        ])
+        .values_panic([
+            id.into(),
+            name.into(),
+            description.into(),
+            config_json.into(),
+        ])
+        .returning(Query::returning().columns([
+            JobDefinitions::Id,
+            JobDefinitions::Name,
+            JobDefinitions::Description,
+            JobDefinitions::Config,
+            JobDefinitions::CreatedAt,
+            JobDefinitions::UpdatedAt,
+        ]))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_one(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row_to_job_definition(&row))
 }
 
 pub async fn get_job_definition(pool: &SqlitePool, id: &str) -> Result<Option<JobDefinition>> {
-    let row = sqlx::query(
-        "SELECT id, name, description, config, created_at, updated_at \
-         FROM job_definitions WHERE id = ?1",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::select()
+        .columns([
+            JobDefinitions::Id,
+            JobDefinitions::Name,
+            JobDefinitions::Description,
+            JobDefinitions::Config,
+            JobDefinitions::CreatedAt,
+            JobDefinitions::UpdatedAt,
+        ])
+        .from(JobDefinitions::Table)
+        .and_where(Expr::col(JobDefinitions::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_optional(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_job_definition))
 }
 
 pub async fn list_job_definitions(pool: &SqlitePool) -> Result<Vec<JobDefinition>> {
-    let rows = sqlx::query(
-        "SELECT id, name, description, config, created_at, updated_at \
-         FROM job_definitions ORDER BY created_at",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::select()
+        .columns([
+            JobDefinitions::Id,
+            JobDefinitions::Name,
+            JobDefinitions::Description,
+            JobDefinitions::Config,
+            JobDefinitions::CreatedAt,
+            JobDefinitions::UpdatedAt,
+        ])
+        .from(JobDefinitions::Table)
+        .order_by(JobDefinitions::CreatedAt, Order::Asc)
+        .build_sqlx(SqliteQueryBuilder);
+
+    let rows = sqlx::query_with(&sql, values)
+        .fetch_all(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(rows.iter().map(row_to_job_definition).collect())
 }
@@ -111,31 +150,66 @@ pub async fn start_job_run(
 ) -> Result<JobRun> {
     let id = Uuid::new_v4().to_string();
 
-    let row = sqlx::query(
-        "INSERT INTO job_runs (id, definition_id, parent_id, status, triggered_by, started_at) \
-         VALUES (?1, ?2, ?3, 'running', ?4, datetime('now')) \
-         RETURNING id, definition_id, parent_id, status, triggered_by, result, error, started_at, completed_at",
-    )
-    .bind(&id)
-    .bind(definition_id)
-    .bind(parent_id)
-    .bind(triggered_by)
-    .fetch_one(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::insert()
+        .into_table(JobRuns::Table)
+        .columns([
+            JobRuns::Id,
+            JobRuns::DefinitionId,
+            JobRuns::ParentId,
+            JobRuns::Status,
+            JobRuns::TriggeredBy,
+            JobRuns::StartedAt,
+        ])
+        .values_panic([
+            id.into(),
+            definition_id.into(),
+            parent_id.map(|s| s.to_string()).into(),
+            "running".into(),
+            triggered_by.into(),
+            Expr::cust("datetime('now')"),
+        ])
+        .returning(Query::returning().columns([
+            JobRuns::Id,
+            JobRuns::DefinitionId,
+            JobRuns::ParentId,
+            JobRuns::Status,
+            JobRuns::TriggeredBy,
+            JobRuns::Result,
+            JobRuns::Error,
+            JobRuns::StartedAt,
+            JobRuns::CompletedAt,
+        ]))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_one(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row_to_job_run(&row))
 }
 
 pub async fn get_job_run(pool: &SqlitePool, id: &str) -> Result<Option<JobRun>> {
-    let row = sqlx::query(
-        "SELECT id, definition_id, parent_id, status, triggered_by, result, error, \
-         started_at, completed_at FROM job_runs WHERE id = ?1",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::select()
+        .columns([
+            JobRuns::Id,
+            JobRuns::DefinitionId,
+            JobRuns::ParentId,
+            JobRuns::Status,
+            JobRuns::TriggeredBy,
+            JobRuns::Result,
+            JobRuns::Error,
+            JobRuns::StartedAt,
+            JobRuns::CompletedAt,
+        ])
+        .from(JobRuns::Table)
+        .and_where(Expr::col(JobRuns::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_optional(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_job_run))
 }
@@ -157,38 +231,30 @@ pub async fn update_job_run(
         .map(|s| terminal_statuses.contains(&s))
         .unwrap_or(false);
 
-    if is_terminal {
-        sqlx::query(
-            "UPDATE job_runs SET \
-             status = COALESCE(?1, status), \
-             result = COALESCE(?2, result), \
-             error = COALESCE(?3, error), \
-             completed_at = datetime('now') \
-             WHERE id = ?4",
-        )
-        .bind(status)
-        .bind(result_json.as_deref())
-        .bind(error)
-        .bind(id)
-        .execute(pool)
-        .await
-        .map_err(OverseerError::Storage)?;
-    } else {
-        sqlx::query(
-            "UPDATE job_runs SET \
-             status = COALESCE(?1, status), \
-             result = COALESCE(?2, result), \
-             error = COALESCE(?3, error) \
-             WHERE id = ?4",
-        )
-        .bind(status)
-        .bind(result_json.as_deref())
-        .bind(error)
-        .bind(id)
-        .execute(pool)
-        .await
-        .map_err(OverseerError::Storage)?;
+    let mut query = Query::update();
+    query.table(JobRuns::Table);
+
+    if let Some(s) = status {
+        query.value(JobRuns::Status, s);
     }
+    if let Some(ref r) = result_json {
+        query.value(JobRuns::Result, r.as_str());
+    }
+    if let Some(e) = error {
+        query.value(JobRuns::Error, e);
+    }
+    if is_terminal {
+        query.value(JobRuns::CompletedAt, Expr::cust("datetime('now')"));
+    }
+
+    query.and_where(Expr::col(JobRuns::Id).eq(id));
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    sqlx::query_with(&sql, values)
+        .execute(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     get_job_run(pool, id)
         .await?
@@ -196,16 +262,33 @@ pub async fn update_job_run(
 }
 
 pub async fn list_job_runs(pool: &SqlitePool, status: Option<&str>) -> Result<Vec<JobRun>> {
-    let rows = sqlx::query(
-        "SELECT id, definition_id, parent_id, status, triggered_by, result, error, \
-         started_at, completed_at FROM job_runs \
-         WHERE (?1 IS NULL OR status = ?1) \
-         ORDER BY started_at",
-    )
-    .bind(status)
-    .fetch_all(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let mut query = Query::select();
+    query
+        .columns([
+            JobRuns::Id,
+            JobRuns::DefinitionId,
+            JobRuns::ParentId,
+            JobRuns::Status,
+            JobRuns::TriggeredBy,
+            JobRuns::Result,
+            JobRuns::Error,
+            JobRuns::StartedAt,
+            JobRuns::CompletedAt,
+        ])
+        .from(JobRuns::Table);
+
+    if let Some(s) = status {
+        query.and_where(Expr::col(JobRuns::Status).eq(s));
+    }
+
+    query.order_by(JobRuns::StartedAt, Order::Asc);
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    let rows = sqlx::query_with(&sql, values)
+        .fetch_all(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(rows.iter().map(row_to_job_run).collect())
 }
@@ -218,30 +301,55 @@ pub async fn create_task(
 ) -> Result<Task> {
     let id = Uuid::new_v4().to_string();
 
-    let row = sqlx::query(
-        "INSERT INTO tasks (id, subject, run_id, assigned_to) VALUES (?1, ?2, ?3, ?4) \
-         RETURNING id, run_id, subject, status, assigned_to, output, created_at, updated_at",
-    )
-    .bind(&id)
-    .bind(subject)
-    .bind(run_id)
-    .bind(assigned_to)
-    .fetch_one(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::insert()
+        .into_table(Tasks::Table)
+        .columns([Tasks::Id, Tasks::Subject, Tasks::RunId, Tasks::AssignedTo])
+        .values_panic([
+            id.into(),
+            subject.into(),
+            run_id.map(|s| s.to_string()).into(),
+            assigned_to.map(|s| s.to_string()).into(),
+        ])
+        .returning(Query::returning().columns([
+            Tasks::Id,
+            Tasks::RunId,
+            Tasks::Subject,
+            Tasks::Status,
+            Tasks::AssignedTo,
+            Tasks::Output,
+            Tasks::CreatedAt,
+            Tasks::UpdatedAt,
+        ]))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_one(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row_to_task(&row))
 }
 
 pub async fn get_task(pool: &SqlitePool, id: &str) -> Result<Option<Task>> {
-    let row = sqlx::query(
-        "SELECT id, run_id, subject, status, assigned_to, output, created_at, updated_at \
-         FROM tasks WHERE id = ?1",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::select()
+        .columns([
+            Tasks::Id,
+            Tasks::RunId,
+            Tasks::Subject,
+            Tasks::Status,
+            Tasks::AssignedTo,
+            Tasks::Output,
+            Tasks::CreatedAt,
+            Tasks::UpdatedAt,
+        ])
+        .from(Tasks::Table)
+        .and_where(Expr::col(Tasks::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_optional(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_task))
 }
@@ -258,21 +366,28 @@ pub async fn update_task(
         .map(|v| serde_json::to_string(v).map_err(|e| OverseerError::Internal(e.to_string())))
         .transpose()?;
 
-    sqlx::query(
-        "UPDATE tasks SET \
-         status = COALESCE(?1, status), \
-         assigned_to = COALESCE(?2, assigned_to), \
-         output = COALESCE(?3, output), \
-         updated_at = datetime('now') \
-         WHERE id = ?4",
-    )
-    .bind(status)
-    .bind(assigned_to)
-    .bind(output_json.as_deref())
-    .bind(id)
-    .execute(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let mut query = Query::update();
+    query.table(Tasks::Table);
+
+    if let Some(s) = status {
+        query.value(Tasks::Status, s);
+    }
+    if let Some(a) = assigned_to {
+        query.value(Tasks::AssignedTo, a);
+    }
+    if let Some(ref o) = output_json {
+        query.value(Tasks::Output, o.as_str());
+    }
+
+    query.value(Tasks::UpdatedAt, Expr::cust("datetime('now')"));
+    query.and_where(Expr::col(Tasks::Id).eq(id));
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    sqlx::query_with(&sql, values)
+        .execute(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     get_task(pool, id)
         .await?
@@ -285,20 +400,38 @@ pub async fn list_tasks(
     assigned_to: Option<&str>,
     run_id: Option<&str>,
 ) -> Result<Vec<Task>> {
-    let rows = sqlx::query(
-        "SELECT id, run_id, subject, status, assigned_to, output, created_at, updated_at \
-         FROM tasks \
-         WHERE (?1 IS NULL OR status = ?1) \
-         AND (?2 IS NULL OR assigned_to = ?2) \
-         AND (?3 IS NULL OR run_id = ?3) \
-         ORDER BY created_at",
-    )
-    .bind(status)
-    .bind(assigned_to)
-    .bind(run_id)
-    .fetch_all(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let mut query = Query::select();
+    query
+        .columns([
+            Tasks::Id,
+            Tasks::RunId,
+            Tasks::Subject,
+            Tasks::Status,
+            Tasks::AssignedTo,
+            Tasks::Output,
+            Tasks::CreatedAt,
+            Tasks::UpdatedAt,
+        ])
+        .from(Tasks::Table);
+
+    if let Some(s) = status {
+        query.and_where(Expr::col(Tasks::Status).eq(s));
+    }
+    if let Some(a) = assigned_to {
+        query.and_where(Expr::col(Tasks::AssignedTo).eq(a));
+    }
+    if let Some(r) = run_id {
+        query.and_where(Expr::col(Tasks::RunId).eq(r));
+    }
+
+    query.order_by(Tasks::CreatedAt, Order::Asc);
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    let rows = sqlx::query_with(&sql, values)
+        .fetch_all(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(rows.iter().map(row_to_task).collect())
 }

@@ -1,7 +1,10 @@
+use sea_query::{Expr, Order, Query, SqliteQueryBuilder};
+use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 pub use super::models::Decision;
+use super::tables::Decisions;
 use crate::error::{OverseerError, Result};
 
 fn row_to_decision(row: &sqlx::sqlite::SqliteRow) -> Decision {
@@ -32,34 +35,66 @@ pub async fn log_decision(
     let tags_json =
         serde_json::to_string(tags).map_err(|e| OverseerError::Internal(e.to_string()))?;
 
-    let row = sqlx::query(
-        "INSERT INTO decisions (id, agent, context, decision, reasoning, tags, run_id) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
-         RETURNING id, agent, context, decision, reasoning, tags, run_id, created_at",
-    )
-    .bind(&id)
-    .bind(agent)
-    .bind(context)
-    .bind(decision)
-    .bind(reasoning)
-    .bind(&tags_json)
-    .bind(run_id)
-    .fetch_one(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::insert()
+        .into_table(Decisions::Table)
+        .columns([
+            Decisions::Id,
+            Decisions::Agent,
+            Decisions::Context,
+            Decisions::Decision,
+            Decisions::Reasoning,
+            Decisions::Tags,
+            Decisions::RunId,
+        ])
+        .values_panic([
+            id.into(),
+            agent.into(),
+            context.into(),
+            decision.into(),
+            reasoning.into(),
+            tags_json.into(),
+            run_id.map(|s| s.to_string()).into(),
+        ])
+        .returning(Query::returning().columns([
+            Decisions::Id,
+            Decisions::Agent,
+            Decisions::Context,
+            Decisions::Decision,
+            Decisions::Reasoning,
+            Decisions::Tags,
+            Decisions::RunId,
+            Decisions::CreatedAt,
+        ]))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_one(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row_to_decision(&row))
 }
 
 pub async fn get_decision(pool: &SqlitePool, id: &str) -> Result<Option<Decision>> {
-    let row = sqlx::query(
-        "SELECT id, agent, context, decision, reasoning, tags, run_id, created_at \
-         FROM decisions WHERE id = ?1",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::select()
+        .columns([
+            Decisions::Id,
+            Decisions::Agent,
+            Decisions::Context,
+            Decisions::Decision,
+            Decisions::Reasoning,
+            Decisions::Tags,
+            Decisions::RunId,
+            Decisions::CreatedAt,
+        ])
+        .from(Decisions::Table)
+        .and_where(Expr::col(Decisions::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_optional(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_decision))
 }
@@ -77,18 +112,34 @@ pub async fn query_decisions(
         limit
     };
 
-    let rows = sqlx::query(
-        "SELECT id, agent, context, decision, reasoning, tags, run_id, created_at \
-         FROM decisions \
-         WHERE (?1 IS NULL OR agent = ?1) \
-         ORDER BY created_at DESC \
-         LIMIT ?2",
-    )
-    .bind(agent)
-    .bind(fetch_limit)
-    .fetch_all(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let mut query = Query::select();
+    query
+        .columns([
+            Decisions::Id,
+            Decisions::Agent,
+            Decisions::Context,
+            Decisions::Decision,
+            Decisions::Reasoning,
+            Decisions::Tags,
+            Decisions::RunId,
+            Decisions::CreatedAt,
+        ])
+        .from(Decisions::Table);
+
+    if let Some(a) = agent {
+        query.and_where(Expr::col(Decisions::Agent).eq(a));
+    }
+
+    query
+        .order_by(Decisions::CreatedAt, Order::Desc)
+        .limit(fetch_limit as u64);
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    let rows = sqlx::query_with(&sql, values)
+        .fetch_all(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     let mut results: Vec<Decision> = rows.iter().map(row_to_decision).collect();
 

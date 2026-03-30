@@ -1,6 +1,9 @@
+use sea_query::{Expr, Order, Query, SqliteQueryBuilder};
+use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
 
 pub use super::models::ArtifactMetadata;
+use super::tables::Artifacts;
 use crate::error::{OverseerError, Result};
 
 fn row_to_artifact(row: &sqlx::sqlite::SqliteRow) -> ArtifactMetadata {
@@ -22,32 +25,58 @@ pub async fn insert_artifact(
     size: i64,
     run_id: Option<&str>,
 ) -> Result<ArtifactMetadata> {
-    let row = sqlx::query(
-        "INSERT INTO artifacts (id, name, content_type, size, run_id) \
-         VALUES (?1, ?2, ?3, ?4, ?5) \
-         RETURNING id, name, content_type, size, run_id, created_at",
-    )
-    .bind(id)
-    .bind(name)
-    .bind(content_type)
-    .bind(size)
-    .bind(run_id)
-    .fetch_one(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::insert()
+        .into_table(Artifacts::Table)
+        .columns([
+            Artifacts::Id,
+            Artifacts::Name,
+            Artifacts::ContentType,
+            Artifacts::Size,
+            Artifacts::RunId,
+        ])
+        .values_panic([
+            id.into(),
+            name.into(),
+            content_type.into(),
+            size.into(),
+            run_id.map(|s| s.to_string()).into(),
+        ])
+        .returning(Query::returning().columns([
+            Artifacts::Id,
+            Artifacts::Name,
+            Artifacts::ContentType,
+            Artifacts::Size,
+            Artifacts::RunId,
+            Artifacts::CreatedAt,
+        ]))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_one(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row_to_artifact(&row))
 }
 
 pub async fn get_artifact(pool: &SqlitePool, id: &str) -> Result<Option<ArtifactMetadata>> {
-    let row = sqlx::query(
-        "SELECT id, name, content_type, size, run_id, created_at \
-         FROM artifacts WHERE id = ?1",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::select()
+        .columns([
+            Artifacts::Id,
+            Artifacts::Name,
+            Artifacts::ContentType,
+            Artifacts::Size,
+            Artifacts::RunId,
+            Artifacts::CreatedAt,
+        ])
+        .from(Artifacts::Table)
+        .and_where(Expr::col(Artifacts::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_optional(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(row.as_ref().map(row_to_artifact))
 }
@@ -56,16 +85,30 @@ pub async fn list_artifacts(
     pool: &SqlitePool,
     run_id: Option<&str>,
 ) -> Result<Vec<ArtifactMetadata>> {
-    let rows = sqlx::query(
-        "SELECT id, name, content_type, size, run_id, created_at \
-         FROM artifacts \
-         WHERE (?1 IS NULL OR run_id = ?1) \
-         ORDER BY created_at",
-    )
-    .bind(run_id)
-    .fetch_all(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let mut query = Query::select();
+    query
+        .columns([
+            Artifacts::Id,
+            Artifacts::Name,
+            Artifacts::ContentType,
+            Artifacts::Size,
+            Artifacts::RunId,
+            Artifacts::CreatedAt,
+        ])
+        .from(Artifacts::Table);
+
+    if let Some(rid) = run_id {
+        query.and_where(Expr::col(Artifacts::RunId).eq(rid));
+    }
+
+    query.order_by(Artifacts::CreatedAt, Order::Asc);
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    let rows = sqlx::query_with(&sql, values)
+        .fetch_all(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(rows.iter().map(row_to_artifact).collect())
 }

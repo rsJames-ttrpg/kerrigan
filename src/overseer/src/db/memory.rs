@@ -1,8 +1,11 @@
+use sea_query::{Expr, Query, SqliteQueryBuilder};
+use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 use zerocopy::IntoBytes;
 
 pub use super::models::{Memory, MemorySearchResult};
+use super::tables::{Memories, MemoryLinks};
 use crate::error::{OverseerError, Result};
 
 fn row_to_memory(row: &sqlx::sqlite::SqliteRow) -> Memory {
@@ -37,23 +40,34 @@ pub async fn insert_memory(
 
     let mut tx = pool.begin().await.map_err(OverseerError::Storage)?;
 
-    // Insert into memories table and get the rowid
-    let rowid: i64 = sqlx::query_scalar(
-        "INSERT INTO memories (id, content, embedding_model, source, tags, expires_at) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
-         RETURNING rowid",
-    )
-    .bind(&id)
-    .bind(content)
-    .bind(embedding_model)
-    .bind(source)
-    .bind(&tags_json)
-    .bind(expires_at)
-    .fetch_one(&mut *tx)
-    .await
-    .map_err(OverseerError::Storage)?;
+    // Insert into memories table and get the rowid — use sea-query for the metadata INSERT
+    let (sql, values) = Query::insert()
+        .into_table(Memories::Table)
+        .columns([
+            Memories::Id,
+            Memories::Content,
+            Memories::EmbeddingModel,
+            Memories::Source,
+            Memories::Tags,
+            Memories::ExpiresAt,
+        ])
+        .values_panic([
+            id.clone().into(),
+            content.into(),
+            embedding_model.into(),
+            source.into(),
+            tags_json.into(),
+            expires_at.map(|s| s.to_string()).into(),
+        ])
+        .returning_col(sea_query::Alias::new("rowid"))
+        .build_sqlx(SqliteQueryBuilder);
 
-    // Insert into memory_embeddings virtual table using the same rowid
+    let rowid: i64 = sqlx::query_scalar_with(&sql, values)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(OverseerError::Storage)?;
+
+    // Insert into memory_embeddings virtual table using the same rowid — raw SQL (sqlite-vec)
     let embedding_bytes: &[u8] = embedding.as_bytes();
     let emb_sql =
         format!("INSERT INTO memory_embeddings_{provider_name} (rowid, embedding) VALUES (?1, ?2)");
@@ -70,15 +84,26 @@ pub async fn insert_memory(
 }
 
 pub async fn get_memory(pool: &SqlitePool, id: &str) -> Result<Memory> {
-    let row = sqlx::query(
-        "SELECT id, content, embedding_model, source, tags, expires_at, created_at, updated_at \
-         FROM memories WHERE id = ?1",
-    )
-    .bind(id)
-    .fetch_optional(pool)
-    .await
-    .map_err(OverseerError::Storage)?
-    .ok_or_else(|| OverseerError::NotFound(format!("memory {id}")))?;
+    let (sql, values) = Query::select()
+        .columns([
+            Memories::Id,
+            Memories::Content,
+            Memories::EmbeddingModel,
+            Memories::Source,
+            Memories::Tags,
+            Memories::ExpiresAt,
+            Memories::CreatedAt,
+            Memories::UpdatedAt,
+        ])
+        .from(Memories::Table)
+        .and_where(Expr::col(Memories::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+
+    let row = sqlx::query_with(&sql, values)
+        .fetch_optional(pool)
+        .await
+        .map_err(OverseerError::Storage)?
+        .ok_or_else(|| OverseerError::NotFound(format!("memory {id}")))?;
 
     Ok(row_to_memory(&row))
 }
@@ -91,13 +116,18 @@ pub async fn delete_memory(pool: &SqlitePool, provider_name: &str, id: &str) -> 
         .await
         .map_err(OverseerError::Storage)?;
 
-    sqlx::query("DELETE FROM memories WHERE id = ?1")
-        .bind(id)
+    // Delete from memories table using sea-query
+    let (sql, values) = Query::delete()
+        .from_table(Memories::Table)
+        .and_where(Expr::col(Memories::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+
+    sqlx::query_with(&sql, values)
         .execute(pool)
         .await
         .map_err(OverseerError::Storage)?;
 
-    // Clean up the vec0 embedding row to avoid KNN scan bloat
+    // Clean up the vec0 embedding row to avoid KNN scan bloat — raw SQL (sqlite-vec)
     if let Some(rowid) = rowid {
         let del_sql = format!("DELETE FROM memory_embeddings_{provider_name} WHERE rowid = ?1");
         let _ = sqlx::query(&del_sql).bind(rowid).execute(pool).await;
@@ -160,17 +190,26 @@ pub async fn insert_memory_link(
     linked_type: &str,
     relation_type: &str,
 ) -> Result<()> {
-    sqlx::query(
-        "INSERT INTO memory_links (memory_id, linked_id, linked_type, relation_type) \
-         VALUES (?1, ?2, ?3, ?4)",
-    )
-    .bind(memory_id)
-    .bind(linked_id)
-    .bind(linked_type)
-    .bind(relation_type)
-    .execute(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+    let (sql, values) = Query::insert()
+        .into_table(MemoryLinks::Table)
+        .columns([
+            MemoryLinks::MemoryId,
+            MemoryLinks::LinkedId,
+            MemoryLinks::LinkedType,
+            MemoryLinks::RelationType,
+        ])
+        .values_panic([
+            memory_id.into(),
+            linked_id.into(),
+            linked_type.into(),
+            relation_type.into(),
+        ])
+        .build_sqlx(SqliteQueryBuilder);
+
+    sqlx::query_with(&sql, values)
+        .execute(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     Ok(())
 }
