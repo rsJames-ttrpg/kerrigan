@@ -31,14 +31,15 @@ HTTP API on port 3100, MCP via stdio or HTTP. Config: `overseer.toml`. See `src/
 
 ## Toolchains
 
-Hermetic Rust toolchain — Buck2 downloads rustc, rust-std, and clippy from `static.rust-lang.org` (no system rustc used). Defined in `toolchains/BUCK` + `toolchains/rust_dist.bzl`.
+Fully hermetic Rust + C/C++ toolchains — no system compiler dependencies.
 
 - **rust** — hermetic nightly 1.96.0 (2026-03-28), edition 2024, nightly features enabled
-- **cxx** — system C/C++ toolchain (required by Rust linker)
+- **cxx** — hermetic LLVM 22.1.2 (clang/clang++/llvm-ar), defined in `toolchains/cxx_dist.bzl`
 - **genrule** — generic build rules
 - **python_bootstrap** — required by Rust prelude internals
 
-To update the Rust version: change `RUST_NIGHTLY` date and SHA256 hashes in `toolchains/BUCK`.
+To update Rust: change `RUST_NIGHTLY` date and SHA256 hashes in `toolchains/BUCK`.
+To update LLVM: change `LLVM_VERSION` and SHA256 in `toolchains/BUCK`.
 Default edition and nightly features are set in the toolchain — don't override per-target.
 
 ## Platforms
@@ -52,16 +53,19 @@ Cross-compile with: `buck2 build root//src/overseer:overseer --target-platforms 
 
 ## Dependencies
 
-Hybrid Cargo workspace + **reindeer** (hermetic, downloaded by Buck2). The workflow:
+Hybrid Cargo workspace + **reindeer** (hermetic). The workflow:
 
 1. `cargo add <crate>` in the crate directory (e.g. `src/overseer/`)
-2. `buck2 run root//tools:reindeer -- buckify` to regenerate `third-party/BUCK`
+2. `./tools/buckify.sh` to regenerate `third-party/BUCK` (NOT raw `reindeer buckify` — the wrapper fixes a rule ordering bug)
 3. Add `deps = ["//third-party:crate-name"]` to the crate's BUCK file
 
 - Root `Cargo.toml` is a workspace with all crates as members
 - `reindeer.toml` uses `manifest_path = "Cargo.toml"` (hybrid mode — reads deps from workspace)
 - `third-party/BUCK` is generated — do not edit by hand (gitignored)
 - Crates with `build.rs` need fixups in `third-party/fixups/<crate>/fixups.toml`
+- Reindeer skips `[dev-dependencies]` — test-only crates must go in `[dependencies]`
+- Crates with C build scripts (like `libsqlite3-sys`, `ring`) need fixups with `[buildscript.run]` including `rustc_link_lib = true` and `rustc_link_search = true`
+- The `tools/buckify.sh` wrapper runs reindeer then fixes `buildscript_run`/`http_archive` ordering (reindeer bug: `rule_exists()` needs forward declarations)
 
 ## Pre-commit Hooks
 
@@ -71,8 +75,10 @@ Hybrid Cargo workspace + **reindeer** (hermetic, downloaded by Buck2). The workf
 - **Run manually:** `buck2 run root//tools:prek -- run --all-files`
 - **Config:** `prek.toml`
 
-Hooks on pre-commit: trailing whitespace, end-of-file fixer, TOML check, merge conflict check, `cargo fmt --check`, reindeer sync check.
-Hooks on pre-push: `buck2 build root//...`
+Hooks on pre-commit: trailing whitespace, end-of-file fixer, TOML check, merge conflict check, `cargo fmt --check`, clippy (hermetic via Buck2), cargo test, reindeer sync check.
+Hooks on pre-push: `buck2 build root//...`, `buck2 test //...`
+
+Clippy runs via `buck2 build 'root//src/overseer:overseer[clippy.txt]'` — the sub-target produces a text file. The hook fails if any warnings or errors appear.
 
 ## Repo Layout
 

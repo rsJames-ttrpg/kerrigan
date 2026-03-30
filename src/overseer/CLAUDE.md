@@ -41,8 +41,9 @@ Both transport layers are thin adapters. No business logic outside services.
 | `db/jobs.rs` | Job definitions, runs, tasks CRUD |
 | `db/decisions.rs` | Decision insert + query |
 | `db/artifacts.rs` | Artifact metadata CRUD |
-| `embedding/mod.rs` | `EmbeddingProvider` trait |
+| `embedding/mod.rs` | `EmbeddingProvider` trait + `EmbeddingRegistry` named provider lookup |
 | `embedding/stub.rs` | Zero-vector stub (placeholder) |
+| `embedding/voyage.rs` | Voyage AI HTTP embedding provider |
 | `services/mod.rs` | `AppState` holding all services |
 | `services/memory.rs` | Embeds text then delegates to db |
 | `services/jobs.rs` | Delegates to db/jobs |
