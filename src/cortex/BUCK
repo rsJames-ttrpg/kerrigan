@@ -1,10 +1,38 @@
+CORTEX_SRCS = glob(["src/**/*.rs", "src/**/*.sql"])
+
+CORTEX_DEPS = [
+    "//third-party:anyhow",
+    "//third-party:axum",
+    "//third-party:base64",
+    "//third-party:libsqlite3-sys",
+    "//third-party:rmcp",
+    "//third-party:schemars",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:sqlite-vec",
+    "//third-party:sqlx",
+    "//third-party:thiserror",
+    "//third-party:tokio",
+    "//third-party:tokio-util",
+    "//third-party:toml",
+    "//third-party:tracing",
+    "//third-party:tracing-subscriber",
+    "//third-party:uuid",
+    "//third-party:zerocopy",
+]
+
 rust_binary(
     name = "cortex",
-    srcs = glob(["src/**/*.rs"]),
+    srcs = CORTEX_SRCS,
     crate_root = "src/main.rs",
+    deps = CORTEX_DEPS,
+    visibility = ["PUBLIC"],
+)
 
-    deps = [
-        "//third-party:serde",
-    ],
+rust_test(
+    name = "cortex-test",
+    srcs = CORTEX_SRCS,
+    crate_root = "src/main.rs",
+    deps = CORTEX_DEPS,
     visibility = ["PUBLIC"],
 )

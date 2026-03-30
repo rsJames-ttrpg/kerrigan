@@ -57,15 +57,20 @@ impl ArtifactService {
 mod tests {
     use super::*;
     use crate::db::open_in_memory_named;
-    use tempfile::tempdir;
+
+    fn test_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("cortex-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     #[tokio::test]
     async fn test_artifact_service_store_and_get() {
         let pool = open_in_memory_named("svc_artifacts_test_store")
             .await
             .expect("pool opens");
-        let dir = tempdir().expect("tempdir created");
-        let svc = ArtifactService::new(pool, dir.path().to_path_buf());
+        let dir = test_dir();
+        let svc = ArtifactService::new(pool, dir);
 
         let data = b"hello artifact world";
         let meta = svc
@@ -87,8 +92,8 @@ mod tests {
         let pool = open_in_memory_named("svc_artifacts_test_list")
             .await
             .expect("pool opens");
-        let dir = tempdir().expect("tempdir created");
-        let svc = ArtifactService::new(pool, dir.path().to_path_buf());
+        let dir = test_dir();
+        let svc = ArtifactService::new(pool, dir);
 
         svc.store("a.bin", "application/octet-stream", b"aaa", None)
             .await
@@ -106,8 +111,8 @@ mod tests {
         let pool = open_in_memory_named("svc_artifacts_test_notfound")
             .await
             .expect("pool opens");
-        let dir = tempdir().expect("tempdir created");
-        let svc = ArtifactService::new(pool, dir.path().to_path_buf());
+        let dir = test_dir();
+        let svc = ArtifactService::new(pool, dir);
 
         let result = svc.get("nonexistent-id").await;
         assert!(

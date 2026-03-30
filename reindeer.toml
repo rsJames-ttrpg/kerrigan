@@ -1,5 +1,6 @@
 manifest_path = "Cargo.toml"
 third_party_dir = "third-party"
+cargo_env = true
 
 [buck]
 file_name = "BUCK"

@@ -18,9 +18,17 @@ language = "system"
 types = ["rust"]
 
 [[repos.hooks]]
+id = "cargo-test"
+name = "cargo test"
+entry = "cargo test --manifest-path src/cortex/Cargo.toml"
+language = "system"
+types = ["rust"]
+pass_filenames = false
+
+[[repos.hooks]]
 id = "reindeer-check"
 name = "reindeer in sync"
-entry = "bash -c 'buck2 run root//tools:reindeer -- buckify && git diff --exit-code third-party/BUCK'"
+entry = "bash -c './tools/buckify.sh && git diff --exit-code third-party/BUCK'"
 language = "system"
 files = "Cargo\\.(toml|lock)$"
 pass_filenames = false
