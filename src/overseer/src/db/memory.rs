@@ -2,25 +2,8 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 use zerocopy::IntoBytes;
 
+pub use super::models::{Memory, MemorySearchResult};
 use crate::error::{OverseerError, Result};
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct Memory {
-    pub id: String,
-    pub content: String,
-    pub embedding_model: String,
-    pub source: String,
-    pub tags: Vec<String>,
-    pub expires_at: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct MemorySearchResult {
-    pub memory: Memory,
-    pub distance: f64,
-}
 
 fn row_to_memory(row: &sqlx::sqlite::SqliteRow) -> Memory {
     let tags_json: String = row.get("tags");

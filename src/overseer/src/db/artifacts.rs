@@ -1,16 +1,7 @@
 use sqlx::{Row, SqlitePool};
 
+pub use super::models::ArtifactMetadata;
 use crate::error::{OverseerError, Result};
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ArtifactMetadata {
-    pub id: String,
-    pub name: String,
-    pub content_type: String,
-    pub size: i64,
-    pub run_id: Option<String>,
-    pub created_at: String,
-}
 
 fn row_to_artifact(row: &sqlx::sqlite::SqliteRow) -> ArtifactMetadata {
     ArtifactMetadata {

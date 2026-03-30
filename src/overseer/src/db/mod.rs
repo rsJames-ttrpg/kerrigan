@@ -2,6 +2,10 @@ pub mod artifacts;
 pub mod decisions;
 pub mod jobs;
 pub mod memory;
+pub mod models;
+
+#[allow(unused_imports)]
+pub use models::*;
 
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};

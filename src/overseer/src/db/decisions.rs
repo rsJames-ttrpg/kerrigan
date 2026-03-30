@@ -1,19 +1,8 @@
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+pub use super::models::Decision;
 use crate::error::{OverseerError, Result};
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct Decision {
-    pub id: String,
-    pub agent: String,
-    pub context: String,
-    pub decision: String,
-    pub reasoning: String,
-    pub tags: Vec<String>,
-    pub run_id: Option<String>,
-    pub created_at: String,
-}
 
 fn row_to_decision(row: &sqlx::sqlite::SqliteRow) -> Decision {
     let tags_json: String = row.get("tags");

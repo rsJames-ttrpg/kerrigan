@@ -1,42 +1,8 @@
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+pub use super::models::{JobDefinition, JobRun, Task};
 use crate::error::{OverseerError, Result};
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct JobDefinition {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-    pub config: serde_json::Value,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct JobRun {
-    pub id: String,
-    pub definition_id: String,
-    pub parent_id: Option<String>,
-    pub status: String,
-    pub triggered_by: String,
-    pub result: Option<serde_json::Value>,
-    pub error: Option<String>,
-    pub started_at: Option<String>,
-    pub completed_at: Option<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct Task {
-    pub id: String,
-    pub run_id: Option<String>,
-    pub subject: String,
-    pub status: String,
-    pub assigned_to: Option<String>,
-    pub output: Option<serde_json::Value>,
-    pub created_at: String,
-    pub updated_at: String,
-}
 
 fn row_to_job_definition(row: &sqlx::sqlite::SqliteRow) -> JobDefinition {
     let config_json: String = row.get("config");
