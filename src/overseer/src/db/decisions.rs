@@ -103,10 +103,10 @@ pub async fn query_decisions(
 
     let mut results: Vec<Decision> = rows.iter().map(row_to_decision).collect();
 
-    if let Some(filter_tags) = tags {
-        if !filter_tags.is_empty() {
-            results.retain(|d| filter_tags.iter().any(|ft| d.tags.contains(ft)));
-        }
+    if let Some(filter_tags) = tags
+        && !filter_tags.is_empty()
+    {
+        results.retain(|d| filter_tags.iter().any(|ft| d.tags.contains(ft)));
     }
 
     results.truncate(limit as usize);

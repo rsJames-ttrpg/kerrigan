@@ -20,6 +20,7 @@ fn register_vec_extension() {
     use std::sync::Once;
     static INIT: Once = Once::new();
     INIT.call_once(|| unsafe {
+        #[allow(clippy::missing_transmute_annotations)]
         libsqlite3_sys::sqlite3_auto_extension(Some(std::mem::transmute(
             sqlite_vec::sqlite3_vec_init as *const (),
         )));

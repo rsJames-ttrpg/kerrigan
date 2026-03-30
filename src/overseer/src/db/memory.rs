@@ -37,6 +37,7 @@ fn row_to_memory(row: &sqlx::sqlite::SqliteRow) -> Memory {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_memory(
     pool: &SqlitePool,
     provider_name: &str,
@@ -159,11 +160,10 @@ pub async fn search_memories(
         })
         .collect();
 
-    // Post-filter by tags if requested
-    if let Some(filter_tags) = tags_filter {
-        if !filter_tags.is_empty() {
-            results.retain(|r| filter_tags.iter().any(|ft| r.memory.tags.contains(ft)));
-        }
+    if let Some(filter_tags) = tags_filter
+        && !filter_tags.is_empty()
+    {
+        results.retain(|r| filter_tags.iter().any(|ft| r.memory.tags.contains(ft)));
     }
 
     results.truncate(limit);

@@ -18,9 +18,9 @@ language = "system"
 types = ["rust"]
 
 [[repos.hooks]]
-id = "cargo-test"
-name = "cargo test"
-entry = "cargo test --manifest-path src/overseer/Cargo.toml"
+id = "clippy"
+name = "clippy (hermetic)"
+entry = "bash -c 'OUTPUT=$(buck2 build \"root//src/overseer:overseer[clippy.txt]\" --show-output 2>/dev/null | awk \"{print \\$2}\") && [ -f \"$OUTPUT\" ] && ! grep -q \"warning\\|error\" \"$OUTPUT\"'"
 language = "system"
 types = ["rust"]
 pass_filenames = false
@@ -39,4 +39,10 @@ name = "buck2 build"
 entry = "buck2 build root//..."
 language = "system"
 pass_filenames = false
-stages = ["pre-push"]
+
+[[repos.hooks]]
+id = "buck2-test"
+name = "buck2 test"
+entry = "buck2 test //..."
+language = "system"
+pass_filenames = false
