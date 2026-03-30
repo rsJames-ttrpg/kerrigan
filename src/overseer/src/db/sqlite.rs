@@ -4,7 +4,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;
 
 use super::models::*;
-use super::trait_def::Database;
+use super::trait_def::{ArtifactStore, DecisionStore, JobStore, MemoryStore};
 use crate::error::{OverseerError, Result};
 
 /// Load the sqlite-vec extension into every new SQLite connection.
@@ -82,8 +82,7 @@ impl SqliteDatabase {
 }
 
 #[async_trait]
-impl Database for SqliteDatabase {
-    // Memory (6 methods)
+impl MemoryStore for SqliteDatabase {
     async fn insert_memory(
         &self,
         provider_name: &str,
@@ -152,8 +151,10 @@ impl Database for SqliteDatabase {
     async fn create_embedding_table(&self, provider_name: &str, dimensions: usize) -> Result<()> {
         super::create_embedding_table(&self.pool, provider_name, dimensions).await
     }
+}
 
-    // Jobs (11 methods)
+#[async_trait]
+impl JobStore for SqliteDatabase {
     async fn create_job_definition(
         &self,
         name: &str,
@@ -229,8 +230,10 @@ impl Database for SqliteDatabase {
     ) -> Result<Vec<Task>> {
         super::jobs::list_tasks(&self.pool, status, assigned_to, run_id).await
     }
+}
 
-    // Decisions (3 methods)
+#[async_trait]
+impl DecisionStore for SqliteDatabase {
     async fn log_decision(
         &self,
         agent: &str,
@@ -258,8 +261,10 @@ impl Database for SqliteDatabase {
     ) -> Result<Vec<Decision>> {
         super::decisions::query_decisions(&self.pool, agent, tags, limit).await
     }
+}
 
-    // Artifacts (3 methods)
+#[async_trait]
+impl ArtifactStore for SqliteDatabase {
     async fn insert_artifact(
         &self,
         id: &str,

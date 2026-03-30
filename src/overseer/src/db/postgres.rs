@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::models::*;
 use super::tables::*;
-use super::trait_def::Database;
+use super::trait_def::{ArtifactStore, DecisionStore, JobStore, MemoryStore};
 use crate::error::{OverseerError, Result};
 
 /// A PostgreSQL-backed implementation of the `Database` trait.
@@ -154,9 +154,7 @@ fn row_to_artifact(row: &sqlx::postgres::PgRow) -> ArtifactMetadata {
 // ── Database trait implementation ────────────────────────────────────────────
 
 #[async_trait]
-impl Database for PostgresDatabase {
-    // ── Memory (6 methods) ───────────────────────────────────────────────
-
+impl MemoryStore for PostgresDatabase {
     async fn create_embedding_table(&self, provider_name: &str, _dimensions: usize) -> Result<()> {
         // The memory_embeddings table is created by migration; create a partial HNSW index
         // for this provider to accelerate vector search. If creation fails (e.g. mixed
@@ -372,9 +370,10 @@ impl Database for PostgresDatabase {
 
         Ok(())
     }
+}
 
-    // ── Jobs (11 methods) ────────────────────────────────────────────────
-
+#[async_trait]
+impl JobStore for PostgresDatabase {
     async fn create_job_definition(
         &self,
         name: &str,
@@ -769,9 +768,10 @@ impl Database for PostgresDatabase {
 
         Ok(rows.iter().map(row_to_task).collect())
     }
+}
 
-    // ── Decisions (3 methods) ────────────────────────────────────────────
-
+#[async_trait]
+impl DecisionStore for PostgresDatabase {
     async fn log_decision(
         &self,
         agent: &str,
@@ -922,9 +922,10 @@ impl Database for PostgresDatabase {
 
         Ok(rows.iter().map(row_to_decision).collect())
     }
+}
 
-    // ── Artifacts (3 methods) ────────────────────────────────────────────
-
+#[async_trait]
+impl ArtifactStore for PostgresDatabase {
     async fn insert_artifact(
         &self,
         id: &str,

@@ -4,8 +4,7 @@ use super::models::*;
 use crate::error::Result;
 
 #[async_trait]
-pub trait Database: Send + Sync {
-    // Memory (6 methods)
+pub trait MemoryStore: Send + Sync {
     #[allow(clippy::too_many_arguments)]
     async fn insert_memory(
         &self,
@@ -39,8 +38,10 @@ pub trait Database: Send + Sync {
     ) -> Result<()>;
 
     async fn create_embedding_table(&self, provider_name: &str, dimensions: usize) -> Result<()>;
+}
 
-    // Jobs (11 methods)
+#[async_trait]
+pub trait JobStore: Send + Sync {
     async fn create_job_definition(
         &self,
         name: &str,
@@ -94,8 +95,10 @@ pub trait Database: Send + Sync {
         assigned_to: Option<&str>,
         run_id: Option<&str>,
     ) -> Result<Vec<Task>>;
+}
 
-    // Decisions (3 methods)
+#[async_trait]
+pub trait DecisionStore: Send + Sync {
     async fn log_decision(
         &self,
         agent: &str,
@@ -114,8 +117,10 @@ pub trait Database: Send + Sync {
         tags: Option<&[String]>,
         limit: i64,
     ) -> Result<Vec<Decision>>;
+}
 
-    // Artifacts (3 methods)
+#[async_trait]
+pub trait ArtifactStore: Send + Sync {
     async fn insert_artifact(
         &self,
         id: &str,
@@ -129,3 +134,8 @@ pub trait Database: Send + Sync {
 
     async fn list_artifacts(&self, run_id: Option<&str>) -> Result<Vec<ArtifactMetadata>>;
 }
+
+/// Convenience supertrait combining all domain stores.
+/// Blanket-implemented for any type that implements all four.
+pub trait Database: MemoryStore + JobStore + DecisionStore + ArtifactStore {}
+impl<T: MemoryStore + JobStore + DecisionStore + ArtifactStore> Database for T {}

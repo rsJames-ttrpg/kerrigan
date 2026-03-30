@@ -10,7 +10,7 @@ mod trait_def;
 pub use postgres::PostgresDatabase;
 pub use sqlite::SqliteDatabase;
 #[allow(unused_imports)]
-pub use trait_def::Database;
+pub use trait_def::{ArtifactStore, Database, DecisionStore, JobStore, MemoryStore};
 
 #[allow(unused_imports)]
 pub use models::*;
