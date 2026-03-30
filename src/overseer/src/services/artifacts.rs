@@ -1,6 +1,9 @@
-use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::fs;
+
+use object_store::ObjectStore;
+use object_store::ObjectStoreExt;
+use object_store::PutPayload;
+use object_store::path::Path as ObjectPath;
 
 use crate::db::Database;
 use crate::db::models::ArtifactMetadata;
@@ -8,12 +11,12 @@ use crate::error::{OverseerError, Result};
 
 pub struct ArtifactService {
     db: Arc<dyn Database>,
-    artifact_path: PathBuf,
+    store: Arc<dyn ObjectStore>,
 }
 
 impl ArtifactService {
-    pub fn new(db: Arc<dyn Database>, artifact_path: PathBuf) -> Self {
-        Self { db, artifact_path }
+    pub fn new(db: Arc<dyn Database>, store: Arc<dyn ObjectStore>) -> Self {
+        Self { db, store }
     }
 
     pub async fn store(
@@ -23,19 +26,14 @@ impl ArtifactService {
         data: &[u8],
         run_id: Option<&str>,
     ) -> Result<ArtifactMetadata> {
-        // Write blob first — if this fails, no orphaned DB row
         let id = uuid::Uuid::new_v4().to_string();
-        let dest = self.artifact_path.join(&id);
-        fs::create_dir_all(&self.artifact_path).await?;
-        fs::write(&dest, data).await?;
-
-        // Insert metadata now that the blob is safely on disk
-        let metadata = self
-            .db
-            .insert_artifact(&id, name, content_type, data.len() as i64, run_id)
+        let path = ObjectPath::from(format!("artifacts/{id}"));
+        self.store
+            .put(&path, PutPayload::from(data.to_vec()))
             .await?;
-
-        Ok(metadata)
+        self.db
+            .insert_artifact(&id, name, content_type, data.len() as i64, run_id)
+            .await
     }
 
     pub async fn get(&self, id: &str) -> Result<(ArtifactMetadata, Vec<u8>)> {
@@ -44,11 +42,13 @@ impl ArtifactService {
             .get_artifact(id)
             .await?
             .ok_or_else(|| OverseerError::NotFound(format!("artifact {id}")))?;
-
-        let path = self.artifact_path.join(id);
-        let data = fs::read(&path).await?;
-
-        Ok((metadata, data))
+        let path = ObjectPath::from(format!("artifacts/{id}"));
+        let result: object_store::GetResult = self.store.get(&path).await?;
+        let data = result
+            .bytes()
+            .await
+            .map_err(|e| OverseerError::ObjectStore(e.to_string()))?;
+        Ok((metadata, data.to_vec()))
     }
 
     pub async fn list(&self, run_id: Option<&str>) -> Result<Vec<ArtifactMetadata>> {
@@ -60,20 +60,15 @@ impl ArtifactService {
 mod tests {
     use super::*;
     use crate::db::SqliteDatabase;
-
-    fn test_dir() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("overseer-test-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::storage::create_in_memory_store;
 
     #[tokio::test]
     async fn test_artifact_service_store_and_get() {
         let sqlite_db = SqliteDatabase::open_in_memory_named("svc_artifacts_test_store")
             .await
             .expect("db opens");
-        let dir = test_dir();
-        let svc = ArtifactService::new(Arc::new(sqlite_db), dir);
+        let store = create_in_memory_store();
+        let svc = ArtifactService::new(Arc::new(sqlite_db), store);
 
         let data = b"hello artifact world";
         let meta = svc
@@ -95,8 +90,8 @@ mod tests {
         let sqlite_db = SqliteDatabase::open_in_memory_named("svc_artifacts_test_list")
             .await
             .expect("db opens");
-        let dir = test_dir();
-        let svc = ArtifactService::new(Arc::new(sqlite_db), dir);
+        let store = create_in_memory_store();
+        let svc = ArtifactService::new(Arc::new(sqlite_db), store);
 
         svc.store("a.bin", "application/octet-stream", b"aaa", None)
             .await
@@ -114,8 +109,8 @@ mod tests {
         let sqlite_db = SqliteDatabase::open_in_memory_named("svc_artifacts_test_notfound")
             .await
             .expect("db opens");
-        let dir = test_dir();
-        let svc = ArtifactService::new(Arc::new(sqlite_db), dir);
+        let store = create_in_memory_store();
+        let svc = ArtifactService::new(Arc::new(sqlite_db), store);
 
         let result = svc.get("nonexistent-id").await;
         assert!(

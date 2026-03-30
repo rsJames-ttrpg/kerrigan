@@ -26,6 +26,7 @@ OVERSEER_DEPS = [
     "//third-party:sea-query-binder",
     "//third-party:uuid",
     "//third-party:zerocopy",
+    "//third-party:object_store",
 ]
 
 rust_binary(

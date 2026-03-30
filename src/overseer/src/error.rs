@@ -21,6 +21,15 @@ pub enum OverseerError {
 
     #[error("{0}")]
     Internal(String),
+
+    #[error("object store error: {0}")]
+    ObjectStore(String),
+}
+
+impl From<object_store::Error> for OverseerError {
+    fn from(e: object_store::Error) -> Self {
+        OverseerError::ObjectStore(e.to_string())
+    }
 }
 
 impl IntoResponse for OverseerError {
@@ -32,6 +41,7 @@ impl IntoResponse for OverseerError {
             OverseerError::Embedding(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
             OverseerError::Io(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             OverseerError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            OverseerError::ObjectStore(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
         };
         let body = axum::Json(json!({ "error": message }));
         (status, body).into_response()
@@ -83,6 +93,12 @@ mod tests {
     async fn test_io_is_500() {
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "gone");
         let (status, _) = status_and_body(OverseerError::Io(io_err)).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_object_store_is_500() {
+        let (status, _) = status_and_body(OverseerError::ObjectStore("store failed".into())).await;
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

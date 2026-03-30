@@ -7,6 +7,7 @@ mod embedding;
 mod error;
 mod mcp;
 mod services;
+mod storage;
 
 use config::Config;
 use embedding::stub::StubEmbedding;
@@ -78,14 +79,10 @@ async fn main() -> anyhow::Result<()> {
     let registry = embedding::EmbeddingRegistry::new(providers, config.embedding.default.clone())?;
     tracing::info!("default embedding provider: {}", config.embedding.default);
 
-    let artifact_path = config
-        .storage
-        .artifact_url
-        .strip_prefix("file://")
-        .map(PathBuf::from)
-        .ok_or_else(|| anyhow::anyhow!("only file:// artifact URLs supported currently"))?;
+    let store = storage::create_object_store(&config.storage)?;
+    tracing::info!("artifact store: {}", config.storage.artifact_url);
 
-    let state = Arc::new(AppState::new(db, registry, artifact_path));
+    let state = Arc::new(AppState::new(db, registry, store));
 
     // HTTP server
     let http_router = api::router(state.clone());
