@@ -279,27 +279,48 @@ impl Database for PostgresDatabase {
         tags_filter: Option<&[String]>,
         limit: usize,
     ) -> Result<Vec<MemorySearchResult>> {
-        // Over-fetch to allow post-filtering by tags
-        let fetch_limit = (limit * 10).max(100) as i64;
-
         let vec = pgvector::Vector::from(query_embedding.to_vec());
-        let rows = sqlx::query(
-            "SELECT m.id, m.content, m.embedding_model, m.source, m.tags, m.expires_at, \
-                    m.created_at, m.updated_at, e.embedding <-> $1 AS distance \
-             FROM memory_embeddings e \
-             JOIN memories m ON m.id = e.memory_id \
-             WHERE e.provider = $2 \
-             ORDER BY e.embedding <-> $1 \
-             LIMIT $3",
-        )
-        .bind(&vec)
-        .bind(provider_name)
-        .bind(fetch_limit)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(OverseerError::Storage)?;
+        let limit_i64 = limit as i64;
 
-        let mut results: Vec<MemorySearchResult> = rows
+        let rows = if let Some(tags) = tags_filter
+            && !tags.is_empty()
+        {
+            // Use JSONB ?| operator: matches rows where tags array contains ANY of the given values
+            sqlx::query(
+                "SELECT m.id, m.content, m.embedding_model, m.source, m.tags, m.expires_at, \
+                 m.created_at, m.updated_at, e.embedding <-> $1 AS distance \
+                 FROM memory_embeddings e \
+                 JOIN memories m ON m.id = e.memory_id \
+                 WHERE e.provider = $2 AND m.tags ?| $4 \
+                 ORDER BY e.embedding <-> $1 \
+                 LIMIT $3",
+            )
+            .bind(&vec)
+            .bind(provider_name)
+            .bind(limit_i64)
+            .bind(tags)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?
+        } else {
+            sqlx::query(
+                "SELECT m.id, m.content, m.embedding_model, m.source, m.tags, m.expires_at, \
+                 m.created_at, m.updated_at, e.embedding <-> $1 AS distance \
+                 FROM memory_embeddings e \
+                 JOIN memories m ON m.id = e.memory_id \
+                 WHERE e.provider = $2 \
+                 ORDER BY e.embedding <-> $1 \
+                 LIMIT $3",
+            )
+            .bind(&vec)
+            .bind(provider_name)
+            .bind(limit_i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?
+        };
+
+        let results: Vec<MemorySearchResult> = rows
             .iter()
             .map(|row| {
                 let distance: f64 = row.get("distance");
@@ -310,13 +331,6 @@ impl Database for PostgresDatabase {
             })
             .collect();
 
-        if let Some(filter_tags) = tags_filter
-            && !filter_tags.is_empty()
-        {
-            results.retain(|r| filter_tags.iter().any(|ft| r.memory.tags.contains(ft)));
-        }
-
-        results.truncate(limit);
         Ok(results)
     }
 
@@ -831,51 +845,71 @@ impl Database for PostgresDatabase {
         tags: Option<&[String]>,
         limit: i64,
     ) -> Result<Vec<Decision>> {
-        let fetch_limit = if tags.is_some_and(|t| !t.is_empty()) {
-            (limit * 10).max(100)
-        } else {
-            limit
+        let filter_tags = tags.filter(|t| !t.is_empty());
+
+        let rows = match (agent, filter_tags) {
+            (Some(a), Some(t)) => {
+                // Both agent and tags filters
+                sqlx::query(
+                    "SELECT id, agent, context, decision, reasoning, tags, run_id, created_at \
+                     FROM decisions \
+                     WHERE agent = $1 AND tags ?| $2 \
+                     ORDER BY created_at DESC \
+                     LIMIT $3",
+                )
+                .bind(a)
+                .bind(t)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(OverseerError::Storage)?
+            }
+            (Some(a), None) => {
+                // Agent filter only
+                sqlx::query(
+                    "SELECT id, agent, context, decision, reasoning, tags, run_id, created_at \
+                     FROM decisions \
+                     WHERE agent = $1 \
+                     ORDER BY created_at DESC \
+                     LIMIT $2",
+                )
+                .bind(a)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(OverseerError::Storage)?
+            }
+            (None, Some(t)) => {
+                // Tags filter only
+                sqlx::query(
+                    "SELECT id, agent, context, decision, reasoning, tags, run_id, created_at \
+                     FROM decisions \
+                     WHERE tags ?| $1 \
+                     ORDER BY created_at DESC \
+                     LIMIT $2",
+                )
+                .bind(t)
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(OverseerError::Storage)?
+            }
+            (None, None) => {
+                // No filters
+                sqlx::query(
+                    "SELECT id, agent, context, decision, reasoning, tags, run_id, created_at \
+                     FROM decisions \
+                     ORDER BY created_at DESC \
+                     LIMIT $1",
+                )
+                .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(OverseerError::Storage)?
+            }
         };
 
-        let mut query = Query::select();
-        query
-            .columns([
-                Decisions::Id,
-                Decisions::Agent,
-                Decisions::Context,
-                Decisions::Decision,
-                Decisions::Reasoning,
-                Decisions::Tags,
-                Decisions::RunId,
-                Decisions::CreatedAt,
-            ])
-            .from(Decisions::Table);
-
-        if let Some(a) = agent {
-            query.and_where(Expr::col(Decisions::Agent).eq(a));
-        }
-
-        query
-            .order_by(Decisions::CreatedAt, Order::Desc)
-            .limit(fetch_limit as u64);
-
-        let (sql, values) = query.build_sqlx(PostgresQueryBuilder);
-
-        let rows = sqlx::query_with(&sql, values)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(OverseerError::Storage)?;
-
-        let mut results: Vec<Decision> = rows.iter().map(row_to_decision).collect();
-
-        if let Some(filter_tags) = tags
-            && !filter_tags.is_empty()
-        {
-            results.retain(|d| filter_tags.iter().any(|ft| d.tags.contains(ft)));
-        }
-
-        results.truncate(limit as usize);
-        Ok(results)
+        Ok(rows.iter().map(row_to_decision).collect())
     }
 
     // ── Artifacts (3 methods) ────────────────────────────────────────────
@@ -984,7 +1018,12 @@ mod tests {
         if !url.starts_with("postgres") {
             return None;
         }
-        Some(PostgresDatabase::open(&url).await.ok()?)
+        // If the env var IS set, we expect it to work
+        Some(
+            PostgresDatabase::open(&url)
+                .await
+                .expect("TEST_DATABASE_URL is set but database connection failed"),
+        )
     }
 
     #[tokio::test]
@@ -993,16 +1032,17 @@ mod tests {
             return;
         };
 
+        let artifact_id = Uuid::new_v4().to_string();
         let artifact = db
-            .insert_artifact("pg-test-1", "report.pdf", "application/pdf", 1024, None)
+            .insert_artifact(&artifact_id, "report.pdf", "application/pdf", 1024, None)
             .await
             .expect("insert succeeds");
 
-        assert_eq!(artifact.id, "pg-test-1");
+        assert_eq!(artifact.id, artifact_id);
         assert_eq!(artifact.name, "report.pdf");
 
         let fetched = db
-            .get_artifact("pg-test-1")
+            .get_artifact(&artifact_id)
             .await
             .expect("get succeeds")
             .expect("artifact exists");
