@@ -53,3 +53,38 @@ pub fn create_object_store(config: &StorageConfig) -> Result<Arc<dyn ObjectStore
 pub fn create_in_memory_store() -> Arc<dyn ObjectStore> {
     Arc::new(InMemory::new())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::StorageConfig;
+
+    fn config_with_artifact_url(url: &str) -> StorageConfig {
+        StorageConfig {
+            database_url: "sqlite://:memory:".to_string(),
+            artifact_url: url.to_string(),
+            s3: None,
+        }
+    }
+
+    #[test]
+    fn test_create_object_store_file_url() {
+        let dir = std::env::temp_dir();
+        let config = config_with_artifact_url(&format!("file://{}", dir.display()));
+        let store = create_object_store(&config);
+        assert!(store.is_ok());
+    }
+
+    #[test]
+    fn test_create_object_store_unsupported_scheme() {
+        let config = config_with_artifact_url("gcs://bucket/prefix");
+        let result = create_object_store(&config);
+        assert!(matches!(result, Err(OverseerError::Validation(_))));
+    }
+
+    #[test]
+    fn test_create_in_memory_store_works() {
+        let _store = create_in_memory_store();
+        // Just verify it doesn't panic
+    }
+}

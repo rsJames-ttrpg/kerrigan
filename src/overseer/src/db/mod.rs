@@ -67,6 +67,89 @@ pub async fn open_in_memory_named(name: &str) -> Result<SqlitePool, OverseerErro
         .map(|db| db.pool)
 }
 
+/// Shared conformance test that runs against any Database implementation.
+/// Verifies that both SQLite and Postgres backends behave identically.
+pub(crate) async fn trait_conformance_suite(db: Arc<dyn Database>) {
+    // Artifacts
+    let artifact = db
+        .insert_artifact("test-id", "test.txt", "text/plain", 42, None)
+        .await
+        .expect("insert artifact");
+    assert_eq!(artifact.name, "test.txt");
+
+    let fetched = db.get_artifact("test-id").await.expect("get artifact");
+    assert!(fetched.is_some());
+
+    let listed = db.list_artifacts(None).await.expect("list artifacts");
+    assert!(!listed.is_empty());
+
+    // Job definitions
+    let def = db
+        .create_job_definition("conformance-job", "test", serde_json::json!({}))
+        .await
+        .expect("create job def");
+    assert_eq!(def.name, "conformance-job");
+
+    let fetched_def = db.get_job_definition(&def.id).await.expect("get def");
+    assert!(fetched_def.is_some());
+
+    let defs = db.list_job_definitions().await.expect("list defs");
+    assert!(!defs.is_empty());
+
+    // Job runs
+    let run = db
+        .start_job_run(&def.id, "test-agent", None)
+        .await
+        .expect("start run");
+    assert_eq!(run.status, "running");
+
+    let updated = db
+        .update_job_run(
+            &run.id,
+            Some("completed"),
+            Some(serde_json::json!({"ok": true})),
+            None,
+        )
+        .await
+        .expect("update run");
+    assert_eq!(updated.status, "completed");
+    assert!(updated.completed_at.is_some());
+
+    // Tasks
+    let task = db
+        .create_task("do something", Some(&run.id), Some("agent"))
+        .await
+        .expect("create task");
+    assert_eq!(task.status, "pending");
+
+    let updated_task = db
+        .update_task(&task.id, Some("completed"), None, None)
+        .await
+        .expect("update task");
+    assert_eq!(updated_task.status, "completed");
+
+    // Decisions
+    let dec = db
+        .log_decision(
+            "agent",
+            "context",
+            "decision",
+            "reasoning",
+            &["tag".to_string()],
+            None,
+        )
+        .await
+        .expect("log decision");
+    assert_eq!(dec.agent, "agent");
+    assert_eq!(dec.tags, vec!["tag"]);
+
+    let queried = db
+        .query_decisions(Some("agent"), None, 10)
+        .await
+        .expect("query decisions");
+    assert!(!queried.is_empty());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,5 +228,38 @@ mod tests {
         create_embedding_table(&pool, "dup", 384)
             .await
             .expect("second create should be ok");
+    }
+
+    #[tokio::test]
+    async fn test_open_from_url_sqlite() {
+        let db = open_from_url("sqlite://:memory:")
+            .await
+            .expect("sqlite URL should work");
+        // Verify we can use it
+        let defs = db.list_job_definitions().await.expect("query works");
+        assert!(defs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_open_from_url_unknown_scheme() {
+        let result = open_from_url("unknown://foo").await;
+        assert!(matches!(result, Err(OverseerError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn test_open_from_url_postgres_stub() {
+        // When no Postgres is available, just verify it returns an error (not a panic)
+        let result = open_from_url("postgres://localhost:1/nonexistent").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_trait_conformance() {
+        let db: Arc<dyn Database> = Arc::new(
+            SqliteDatabase::open_in_memory_named("trait_conformance")
+                .await
+                .expect("open"),
+        );
+        super::trait_conformance_suite(db).await;
     }
 }
