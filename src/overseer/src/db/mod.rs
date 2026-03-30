@@ -4,6 +4,7 @@ pub mod jobs;
 pub mod memory;
 pub mod models;
 pub mod sqlite;
+pub mod tables;
 mod trait_def;
 pub use sqlite::SqliteDatabase;
 #[allow(unused_imports)]
