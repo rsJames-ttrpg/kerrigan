@@ -3,7 +3,9 @@ pub mod decisions;
 pub mod jobs;
 pub mod memory;
 pub mod models;
+pub mod sqlite;
 mod trait_def;
+pub use sqlite::SqliteDatabase;
 #[allow(unused_imports)]
 pub use trait_def::Database;
 
@@ -11,45 +13,8 @@ pub use trait_def::Database;
 pub use models::*;
 
 use sqlx::SqlitePool;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use std::str::FromStr;
 
 use crate::error::OverseerError;
-
-/// Load the sqlite-vec extension into every new SQLite connection.
-///
-/// SAFETY: `sqlite3_vec_init` is the standard entry-point exported by the
-/// sqlite-vec shared library.  `sqlite3_auto_extension` expects a function
-/// pointer with the C signature `int(*)(sqlite3*,char**,const sqlite3_api_routines*)`,
-/// but we register it via the opaque-pointer / transmute pattern that SQLite's
-/// own extension-loading infrastructure uses.
-fn register_vec_extension() {
-    use std::sync::Once;
-    static INIT: Once = Once::new();
-    INIT.call_once(|| unsafe {
-        #[allow(clippy::missing_transmute_annotations)]
-        libsqlite3_sys::sqlite3_auto_extension(Some(std::mem::transmute(
-            sqlite_vec::sqlite3_vec_init as *const (),
-        )));
-    });
-}
-
-async fn init_pool(opts: SqliteConnectOptions) -> Result<SqlitePool, OverseerError> {
-    register_vec_extension();
-
-    let pool = SqlitePoolOptions::new()
-        .max_connections(5)
-        .connect_with(opts)
-        .await
-        .map_err(OverseerError::Storage)?;
-
-    sqlx::raw_sql(include_str!("schema.sql"))
-        .execute(&pool as &SqlitePool)
-        .await
-        .map_err(OverseerError::Storage)?;
-
-    Ok(pool)
-}
 
 pub async fn create_embedding_table(
     pool: &SqlitePool,
@@ -68,32 +33,20 @@ pub async fn create_embedding_table(
 
 /// Open (or create) a SQLite database at the given file path.
 pub async fn open(path: &str) -> Result<SqlitePool, OverseerError> {
-    let opts = SqliteConnectOptions::from_str(&format!("sqlite:{path}"))
-        .map_err(OverseerError::Storage)?
-        .create_if_missing(true)
-        .pragma("journal_mode", "WAL")
-        .pragma("foreign_keys", "ON");
-
-    init_pool(opts).await
+    SqliteDatabase::open(path).await.map(|db| db.pool)
 }
 
 /// Open an in-memory SQLite database (useful for tests).
 pub async fn open_in_memory() -> Result<SqlitePool, OverseerError> {
-    open_in_memory_named("overseer_test").await
+    SqliteDatabase::open_in_memory().await.map(|db| db.pool)
 }
 
 /// Open a named in-memory SQLite database. Each unique name gets its own
 /// isolated in-memory database, which is useful for test isolation.
 pub async fn open_in_memory_named(name: &str) -> Result<SqlitePool, OverseerError> {
-    // For an in-memory database shared across pool connections we use a named
-    // in-memory URI with cache=shared so all connections see the same data.
-    let opts =
-        SqliteConnectOptions::from_str(&format!("sqlite:file:{name}?mode=memory&cache=shared"))
-            .map_err(OverseerError::Storage)?
-            .pragma("journal_mode", "WAL")
-            .pragma("foreign_keys", "ON");
-
-    init_pool(opts).await
+    SqliteDatabase::open_in_memory_named(name)
+        .await
+        .map(|db| db.pool)
 }
 
 #[cfg(test)]
