@@ -9,10 +9,6 @@ CREATE TABLE IF NOT EXISTS memories (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE VIRTUAL TABLE IF NOT EXISTS memory_embeddings USING vec0(
-    embedding float[384]
-);
-
 CREATE TABLE IF NOT EXISTS memory_links (
     memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     linked_id TEXT NOT NULL,

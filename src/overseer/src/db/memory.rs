@@ -39,6 +39,7 @@ fn row_to_memory(row: &sqlx::sqlite::SqliteRow) -> Memory {
 
 pub async fn insert_memory(
     pool: &SqlitePool,
+    provider_name: &str,
     content: &str,
     embedding: &[f32],
     embedding_model: &str,
@@ -70,7 +71,9 @@ pub async fn insert_memory(
 
     // Insert into memory_embeddings virtual table using the same rowid
     let embedding_bytes: &[u8] = embedding.as_bytes();
-    sqlx::query("INSERT INTO memory_embeddings (rowid, embedding) VALUES (?1, ?2)")
+    let emb_sql =
+        format!("INSERT INTO memory_embeddings_{provider_name} (rowid, embedding) VALUES (?1, ?2)");
+    sqlx::query(&emb_sql)
         .bind(rowid)
         .bind(embedding_bytes)
         .execute(&mut *tx)
@@ -96,7 +99,7 @@ pub async fn get_memory(pool: &SqlitePool, id: &str) -> Result<Memory> {
     Ok(row_to_memory(&row))
 }
 
-pub async fn delete_memory(pool: &SqlitePool, id: &str) -> Result<()> {
+pub async fn delete_memory(pool: &SqlitePool, provider_name: &str, id: &str) -> Result<()> {
     // Get the rowid first so we can clean up the embedding
     let rowid: Option<i64> = sqlx::query_scalar("SELECT rowid FROM memories WHERE id = ?1")
         .bind(id)
@@ -112,10 +115,8 @@ pub async fn delete_memory(pool: &SqlitePool, id: &str) -> Result<()> {
 
     // Clean up the vec0 embedding row to avoid KNN scan bloat
     if let Some(rowid) = rowid {
-        let _ = sqlx::query("DELETE FROM memory_embeddings WHERE rowid = ?1")
-            .bind(rowid)
-            .execute(pool)
-            .await;
+        let del_sql = format!("DELETE FROM memory_embeddings_{provider_name} WHERE rowid = ?1");
+        let _ = sqlx::query(&del_sql).bind(rowid).execute(pool).await;
     }
 
     Ok(())
@@ -123,6 +124,7 @@ pub async fn delete_memory(pool: &SqlitePool, id: &str) -> Result<()> {
 
 pub async fn search_memories(
     pool: &SqlitePool,
+    provider_name: &str,
     query_embedding: &[f32],
     tags_filter: Option<&[String]>,
     limit: usize,
@@ -131,19 +133,20 @@ pub async fn search_memories(
     // Fetch more than `limit` so we have room to post-filter by tags
     let fetch_limit = (limit * 10).max(100) as i64;
 
-    let rows = sqlx::query(
+    let sql = format!(
         "SELECT m.id, m.content, m.embedding_model, m.source, m.tags, m.expires_at, \
          m.created_at, m.updated_at, v.distance \
-         FROM memory_embeddings v \
+         FROM memory_embeddings_{provider_name} v \
          JOIN memories m ON m.rowid = v.rowid \
          WHERE v.embedding MATCH ?1 AND k = ?2 \
-         ORDER BY v.distance",
-    )
-    .bind(embedding_bytes)
-    .bind(fetch_limit)
-    .fetch_all(pool)
-    .await
-    .map_err(OverseerError::Storage)?;
+         ORDER BY v.distance"
+    );
+    let rows = sqlx::query(&sql)
+        .bind(embedding_bytes)
+        .bind(fetch_limit)
+        .fetch_all(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
 
     let mut results: Vec<MemorySearchResult> = rows
         .iter()
@@ -192,7 +195,7 @@ pub async fn insert_memory_link(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::open_in_memory_named;
+    use crate::db::{create_embedding_table, open_in_memory_named};
 
     fn make_embedding(val: f32) -> Vec<f32> {
         vec![val; 384]
@@ -203,11 +206,15 @@ mod tests {
         let pool = open_in_memory_named("mem_test_insert_get")
             .await
             .expect("pool opens");
+        create_embedding_table(&pool, "stub", 384)
+            .await
+            .expect("create table");
         let tags = vec!["test".to_string(), "demo".to_string()];
         let embedding = make_embedding(0.1);
 
         let memory = insert_memory(
             &pool,
+            "stub",
             "hello world",
             &embedding,
             "stub",
@@ -237,10 +244,14 @@ mod tests {
         let pool = open_in_memory_named("mem_test_delete")
             .await
             .expect("pool opens");
+        create_embedding_table(&pool, "stub", 384)
+            .await
+            .expect("create table");
         let embedding = make_embedding(0.0);
 
         let memory = insert_memory(
             &pool,
+            "stub",
             "to be deleted",
             &embedding,
             "stub",
@@ -251,7 +262,7 @@ mod tests {
         .await
         .expect("insert succeeds");
 
-        delete_memory(&pool, &memory.id)
+        delete_memory(&pool, "stub", &memory.id)
             .await
             .expect("delete succeeds");
 
@@ -267,25 +278,46 @@ mod tests {
         let pool = open_in_memory_named("mem_test_search")
             .await
             .expect("pool opens");
+        create_embedding_table(&pool, "stub", 384)
+            .await
+            .expect("create table");
 
         // Insert 3 memories with distinct embeddings
         let emb_a = make_embedding(1.0);
         let emb_b = make_embedding(0.5);
         let emb_c = make_embedding(0.1);
 
-        let mem_a = insert_memory(&pool, "close one", &emb_a, "stub", "test", &[], None)
-            .await
-            .expect("insert a");
-        let _mem_b = insert_memory(&pool, "middle one", &emb_b, "stub", "test", &[], None)
-            .await
-            .expect("insert b");
-        let _mem_c = insert_memory(&pool, "far one", &emb_c, "stub", "test", &[], None)
+        let mem_a = insert_memory(
+            &pool,
+            "stub",
+            "close one",
+            &emb_a,
+            "stub",
+            "test",
+            &[],
+            None,
+        )
+        .await
+        .expect("insert a");
+        let _mem_b = insert_memory(
+            &pool,
+            "stub",
+            "middle one",
+            &emb_b,
+            "stub",
+            "test",
+            &[],
+            None,
+        )
+        .await
+        .expect("insert b");
+        let _mem_c = insert_memory(&pool, "stub", "far one", &emb_c, "stub", "test", &[], None)
             .await
             .expect("insert c");
 
         // Query with embedding closest to emb_a
         let query = make_embedding(1.0);
-        let results = search_memories(&pool, &query, None, 3)
+        let results = search_memories(&pool, "stub", &query, None, 3)
             .await
             .expect("search succeeds");
 
@@ -302,11 +334,23 @@ mod tests {
         let pool = open_in_memory_named("mem_test_delete_cleanup")
             .await
             .expect("pool opens");
+        create_embedding_table(&pool, "stub", 384)
+            .await
+            .expect("create table");
         let embedding = make_embedding(0.5);
 
-        let memory = insert_memory(&pool, "will delete", &embedding, "stub", "test", &[], None)
-            .await
-            .expect("insert succeeds");
+        let memory = insert_memory(
+            &pool,
+            "stub",
+            "will delete",
+            &embedding,
+            "stub",
+            "test",
+            &[],
+            None,
+        )
+        .await
+        .expect("insert succeeds");
 
         // Get the rowid for this memory
         let rowid: i64 = sqlx::query_scalar("SELECT rowid FROM memories WHERE id = ?1")
@@ -317,20 +361,20 @@ mod tests {
 
         // Verify embedding exists before delete
         let count_before: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM memory_embeddings WHERE rowid = ?1")
+            sqlx::query_scalar("SELECT COUNT(*) FROM memory_embeddings_stub WHERE rowid = ?1")
                 .bind(rowid)
                 .fetch_one(&pool)
                 .await
                 .expect("count query");
         assert_eq!(count_before, 1);
 
-        delete_memory(&pool, &memory.id)
+        delete_memory(&pool, "stub", &memory.id)
             .await
             .expect("delete succeeds");
 
         // Verify embedding is gone after delete
         let count_after: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM memory_embeddings WHERE rowid = ?1")
+            sqlx::query_scalar("SELECT COUNT(*) FROM memory_embeddings_stub WHERE rowid = ?1")
                 .bind(rowid)
                 .fetch_one(&pool)
                 .await
@@ -343,10 +387,14 @@ mod tests {
         let pool = open_in_memory_named("mem_test_search_tags")
             .await
             .expect("pool opens");
+        create_embedding_table(&pool, "stub", 384)
+            .await
+            .expect("create table");
 
         let emb = make_embedding(1.0);
         insert_memory(
             &pool,
+            "stub",
             "tagged a",
             &emb,
             "stub",
@@ -358,6 +406,7 @@ mod tests {
         .expect("insert a");
         insert_memory(
             &pool,
+            "stub",
             "tagged b",
             &emb,
             "stub",
@@ -369,6 +418,7 @@ mod tests {
         .expect("insert b");
         insert_memory(
             &pool,
+            "stub",
             "tagged both",
             &emb,
             "stub",
@@ -378,23 +428,23 @@ mod tests {
         )
         .await
         .expect("insert both");
-        insert_memory(&pool, "no tags", &emb, "stub", "test", &[], None)
+        insert_memory(&pool, "stub", "no tags", &emb, "stub", "test", &[], None)
             .await
             .expect("insert none");
 
         let query = make_embedding(1.0);
-        let alpha_results = search_memories(&pool, &query, Some(&["alpha".into()]), 10)
+        let alpha_results = search_memories(&pool, "stub", &query, Some(&["alpha".into()]), 10)
             .await
             .expect("search with alpha tag");
         assert_eq!(alpha_results.len(), 2); // "tagged a" and "tagged both"
 
-        let beta_results = search_memories(&pool, &query, Some(&["beta".into()]), 10)
+        let beta_results = search_memories(&pool, "stub", &query, Some(&["beta".into()]), 10)
             .await
             .expect("search with beta tag");
         assert_eq!(beta_results.len(), 2); // "tagged b" and "tagged both"
 
         // Empty filter returns all
-        let all_results = search_memories(&pool, &query, Some(&[]), 10)
+        let all_results = search_memories(&pool, "stub", &query, Some(&[]), 10)
             .await
             .expect("search with empty filter");
         assert_eq!(all_results.len(), 4);
@@ -405,12 +455,15 @@ mod tests {
         let pool = open_in_memory_named("mem_test_link")
             .await
             .expect("pool opens");
+        create_embedding_table(&pool, "stub", 384)
+            .await
+            .expect("create table");
         let emb = make_embedding(0.0);
 
-        let mem1 = insert_memory(&pool, "memory 1", &emb, "stub", "test", &[], None)
+        let mem1 = insert_memory(&pool, "stub", "memory 1", &emb, "stub", "test", &[], None)
             .await
             .expect("insert 1");
-        let mem2 = insert_memory(&pool, "memory 2", &emb, "stub", "test", &[], None)
+        let mem2 = insert_memory(&pool, "stub", "memory 2", &emb, "stub", "test", &[], None)
             .await
             .expect("insert 2");
 

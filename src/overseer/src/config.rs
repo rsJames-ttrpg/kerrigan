@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
@@ -63,20 +64,63 @@ fn default_artifact_path() -> PathBuf {
 
 #[derive(Debug, Deserialize)]
 pub struct EmbeddingConfig {
-    #[serde(default = "default_provider")]
-    pub provider: String,
+    #[serde(default = "default_embedding_default")]
+    pub default: String,
+    #[serde(default = "default_providers")]
+    pub providers: HashMap<String, ProviderConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProviderConfig {
+    pub source: String,
+    pub dimensions: usize,
+    pub model: Option<String>,
+    pub api_key_env: Option<String>,
 }
 
 impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
-            provider: default_provider(),
+            default: default_embedding_default(),
+            providers: default_providers(),
         }
     }
 }
 
-fn default_provider() -> String {
+fn default_embedding_default() -> String {
     "stub".to_string()
+}
+
+fn default_providers() -> HashMap<String, ProviderConfig> {
+    let mut m = HashMap::new();
+    m.insert(
+        "stub".to_string(),
+        ProviderConfig {
+            source: "stub".to_string(),
+            dimensions: 384,
+            model: None,
+            api_key_env: None,
+        },
+    );
+    m
+}
+
+impl EmbeddingConfig {
+    pub fn validate(&self) -> anyhow::Result<()> {
+        let name_re = regex_lite::Regex::new(r"^[a-z0-9_]+$").unwrap();
+        for name in self.providers.keys() {
+            anyhow::ensure!(
+                name_re.is_match(name),
+                "provider name '{name}' must match [a-z0-9_]+"
+            );
+        }
+        anyhow::ensure!(
+            self.providers.contains_key(&self.default),
+            "default provider '{}' not found in providers",
+            self.default
+        );
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,7 +171,9 @@ mod tests {
             config.storage.artifact_path,
             PathBuf::from("data/artifacts")
         );
-        assert_eq!(config.embedding.provider, "stub");
+        assert_eq!(config.embedding.default, "stub");
+        assert_eq!(config.embedding.providers.len(), 1);
+        assert!(config.embedding.providers.contains_key("stub"));
         assert_eq!(config.logging.level, "info");
     }
 
@@ -138,7 +184,7 @@ mod tests {
         let config = Config::load(f.path()).expect("should parse");
         assert_eq!(config.server.http_port, 9000);
         assert_eq!(config.server.mcp_transport, "stdio"); // default
-        assert_eq!(config.embedding.provider, "stub"); // default
+        assert_eq!(config.embedding.default, "stub"); // default
     }
 
     #[test]
@@ -156,7 +202,11 @@ database_path = "/tmp/test.db"
 artifact_path = "/tmp/arts"
 
 [embedding]
-provider = "local"
+default = "local"
+
+[embedding.providers.local]
+source = "stub"
+dimensions = 384
 
 [logging]
 level = "debug"
@@ -167,7 +217,72 @@ level = "debug"
         assert_eq!(config.server.http_port, 8080);
         assert_eq!(config.server.mcp_transport, "http");
         assert_eq!(config.storage.database_path, PathBuf::from("/tmp/test.db"));
-        assert_eq!(config.embedding.provider, "local");
+        assert_eq!(config.embedding.default, "local");
         assert_eq!(config.logging.level, "debug");
+    }
+
+    #[test]
+    fn test_multi_provider_config() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"
+[embedding]
+default = "voyage"
+
+[embedding.providers.stub]
+source = "stub"
+dimensions = 384
+
+[embedding.providers.voyage]
+source = "voyage"
+model = "voyage-3-lite"
+dimensions = 512
+api_key_env = "VOYAGE_API_KEY"
+"#
+        )
+        .unwrap();
+        let config = Config::load(f.path()).expect("should parse");
+        assert_eq!(config.embedding.default, "voyage");
+        assert_eq!(config.embedding.providers.len(), 2);
+
+        let stub = &config.embedding.providers["stub"];
+        assert_eq!(stub.source, "stub");
+        assert_eq!(stub.dimensions, 384);
+
+        let voyage = &config.embedding.providers["voyage"];
+        assert_eq!(voyage.source, "voyage");
+        assert_eq!(voyage.model.as_deref(), Some("voyage-3-lite"));
+        assert_eq!(voyage.dimensions, 512);
+        assert_eq!(voyage.api_key_env.as_deref(), Some("VOYAGE_API_KEY"));
+    }
+
+    #[test]
+    fn test_default_config_has_stub_provider() {
+        let config = Config::load(std::path::Path::new("nonexistent.toml"))
+            .expect("should fall back to defaults");
+        assert_eq!(config.embedding.default, "stub");
+        assert_eq!(config.embedding.providers.len(), 1);
+        assert!(config.embedding.providers.contains_key("stub"));
+    }
+
+    #[test]
+    fn test_invalid_provider_name_rejected() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"
+[embedding]
+default = "bad-name"
+
+[embedding.providers.bad-name]
+source = "stub"
+dimensions = 384
+"#
+        )
+        .unwrap();
+        let config = Config::load(f.path()).expect("should parse");
+        let result = config.embedding.validate();
+        assert!(result.is_err());
     }
 }

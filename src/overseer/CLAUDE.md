@@ -74,5 +74,15 @@ Tests use `db::open_in_memory()` for isolated SQLite instances. Each test module
 - **sqlx async everywhere** — all db functions are `async fn` taking `&SqlitePool`
 - **JSON in TEXT columns** — tags, config, result, output stored as JSON strings
 - **sqlite-vec vectors** — bound as `&[u8]` via `zerocopy::IntoBytes`, KNN via `WHERE embedding MATCH ?1 AND k = ?2`
-- **Memory embeddings** — rowid in `memory_embeddings` matches rowid in `memories` table
+- **Memory embeddings** — rowid in `memory_embeddings_{provider}` matches rowid in `memories` table
 - **OverseerError** — single error type, implements `IntoResponse` for HTTP and maps to `McpError` in MCP layer
+
+## Embedding Providers
+
+Named providers configured in `overseer.toml`. Each gets a `memory_embeddings_{name}` vec0 table.
+
+Supported sources:
+- `stub` — zero vectors for testing (no API key needed)
+- `voyage` — Voyage AI REST API (needs `VOYAGE_API_KEY` env var)
+
+To switch providers, change `[embedding] default = "new_provider"`. Old memories stay in their original table but won't appear in search until re-embedded.

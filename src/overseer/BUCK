@@ -5,6 +5,8 @@ OVERSEER_DEPS = [
     "//third-party:axum",
     "//third-party:base64",
     "//third-party:libsqlite3-sys",
+    "//third-party:regex-lite",
+    "//third-party:ureq",
     "//third-party:rmcp",
     "//third-party:schemars",
     "//third-party:serde",

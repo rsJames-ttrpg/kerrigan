@@ -23,3 +23,5 @@ anyhow = "1"
 base64 = "0.22"
 thiserror = "2"
 tempfile = "3"
+regex-lite = "0.1.9"
+ureq = { version = "3", features = ["json", "rustls"] }

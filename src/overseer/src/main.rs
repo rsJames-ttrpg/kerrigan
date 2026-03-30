@@ -36,12 +36,49 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::open(&db_path).await?;
     tracing::info!("database opened at {:?}", db_path);
 
-    let embedder: Arc<dyn embedding::EmbeddingProvider> = Arc::new(StubEmbedding::new(384));
-    tracing::info!("embedding provider: {}", embedder.model_name());
+    config.embedding.validate()?;
+
+    let mut providers: std::collections::HashMap<String, Arc<dyn embedding::EmbeddingProvider>> =
+        std::collections::HashMap::new();
+
+    for (name, provider_config) in &config.embedding.providers {
+        let provider: Arc<dyn embedding::EmbeddingProvider> = match provider_config.source.as_str()
+        {
+            "stub" => Arc::new(StubEmbedding::new(provider_config.dimensions)),
+            "voyage" => {
+                let model = provider_config
+                    .model
+                    .as_deref()
+                    .expect("voyage provider requires 'model' in config");
+                let api_key_env = provider_config
+                    .api_key_env
+                    .as_deref()
+                    .expect("voyage provider requires 'api_key_env' in config");
+                let api_key = std::env::var(api_key_env)
+                    .unwrap_or_else(|_| panic!("env var '{api_key_env}' not set"));
+                Arc::new(embedding::voyage::VoyageEmbedding::new(
+                    model.to_string(),
+                    api_key,
+                    provider_config.dimensions,
+                ))
+            }
+            other => anyhow::bail!("unknown embedding source: {other}"),
+        };
+        tracing::info!(
+            "embedding provider '{name}': {} ({}d)",
+            provider.model_name(),
+            provider.dimensions()
+        );
+        db::create_embedding_table(&pool, name, provider_config.dimensions).await?;
+        providers.insert(name.clone(), provider);
+    }
+
+    let registry = embedding::EmbeddingRegistry::new(providers, config.embedding.default.clone())?;
+    tracing::info!("default embedding provider: {}", config.embedding.default);
 
     let state = Arc::new(AppState::new(
         pool,
-        embedder,
+        registry,
         config.storage.artifact_path.clone(),
     ));
 

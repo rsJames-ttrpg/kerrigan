@@ -43,6 +43,21 @@ async fn init_pool(opts: SqliteConnectOptions) -> Result<SqlitePool, OverseerErr
     Ok(pool)
 }
 
+pub async fn create_embedding_table(
+    pool: &SqlitePool,
+    provider_name: &str,
+    dimensions: usize,
+) -> Result<(), OverseerError> {
+    let sql = format!(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS memory_embeddings_{provider_name} USING vec0(embedding float[{dimensions}])"
+    );
+    sqlx::raw_sql(&sql)
+        .execute(pool as &SqlitePool)
+        .await
+        .map_err(OverseerError::Storage)?;
+    Ok(())
+}
+
 /// Open (or create) a SQLite database at the given file path.
 pub async fn open(path: &str) -> Result<SqlitePool, OverseerError> {
     let opts = SqliteConnectOptions::from_str(&format!("sqlite:{path}"))
@@ -108,18 +123,48 @@ mod tests {
 
     #[tokio::test]
     async fn test_vec0_extension_loaded() {
-        let pool = open_in_memory().await.expect("pool opens");
-
-        let vtabs: Vec<String> = sqlx::query_scalar(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memory_embeddings'",
+        let pool = open_in_memory_named("db_test_vec0_loaded")
+            .await
+            .expect("pool opens");
+        create_embedding_table(&pool, "vec0test", 128)
+            .await
+            .expect("vec0 table creation should work");
+        let tables: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memory_embeddings_vec0test'",
         )
         .fetch_all(&pool)
         .await
-        .expect("query succeeds");
+        .expect("query");
+        assert!(!tables.is_empty(), "vec0 virtual table should exist");
+    }
 
-        assert!(
-            !vtabs.is_empty(),
-            "memory_embeddings virtual table not found"
-        );
+    #[tokio::test]
+    async fn test_create_embedding_table() {
+        let pool = open_in_memory_named("db_test_create_emb_table")
+            .await
+            .expect("pool opens");
+        create_embedding_table(&pool, "test_provider", 512)
+            .await
+            .expect("create table");
+        let tables: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memory_embeddings_test_provider'",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("query");
+        assert_eq!(tables.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_create_embedding_table_idempotent() {
+        let pool = open_in_memory_named("db_test_emb_idempotent")
+            .await
+            .expect("pool opens");
+        create_embedding_table(&pool, "dup", 384)
+            .await
+            .expect("first create");
+        create_embedding_table(&pool, "dup", 384)
+            .await
+            .expect("second create should be ok");
     }
 }

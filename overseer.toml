@@ -5,3 +5,17 @@ mcp_transport = "http"
 [storage]
 database_path = "data/overseer.db"
 artifact_path = "data/artifacts"
+
+[embedding]
+default = "stub"
+
+[embedding.providers.stub]
+source = "stub"
+dimensions = 384
+
+# Uncomment to use Voyage AI:
+# [embedding.providers.voyage]
+# source = "voyage"
+# model = "voyage-3-lite"
+# dimensions = 512
+# api_key_env = "VOYAGE_API_KEY"
