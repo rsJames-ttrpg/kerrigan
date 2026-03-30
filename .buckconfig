@@ -25,9 +25,3 @@
 
 [build]
   execution_platforms = platforms//:default
-
-[buck2_re_client]
-  engine_address = grpcs://remote.buildbuddy.io
-  action_cache_address = grpcs://remote.buildbuddy.io
-  cas_address = grpcs://remote.buildbuddy.io
-  http_headers = x-buildbuddy-api-key:$BUILDBUDDY_API_KEY
