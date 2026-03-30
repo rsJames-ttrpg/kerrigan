@@ -1,6 +1,6 @@
-CORTEX_SRCS = glob(["src/**/*.rs", "src/**/*.sql"])
+OVERSEER_SRCS = glob(["src/**/*.rs", "src/**/*.sql"])
 
-CORTEX_DEPS = [
+OVERSEER_DEPS = [
     "//third-party:anyhow",
     "//third-party:axum",
     "//third-party:base64",
@@ -23,16 +23,18 @@ CORTEX_DEPS = [
 
 rust_binary(
     name = "overseer",
-    srcs = CORTEX_SRCS,
+    srcs = OVERSEER_SRCS,
     crate_root = "src/main.rs",
-    deps = CORTEX_DEPS,
+    deps = OVERSEER_DEPS,
     visibility = ["PUBLIC"],
 )
 
 rust_test(
     name = "overseer-test",
-    srcs = CORTEX_SRCS,
+    srcs = OVERSEER_SRCS,
     crate_root = "src/main.rs",
-    deps = CORTEX_DEPS,
+    deps = OVERSEER_DEPS + [
+        "//third-party:tempfile",
+    ],
     visibility = ["PUBLIC"],
 )

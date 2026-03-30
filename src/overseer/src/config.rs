@@ -107,3 +107,67 @@ impl Config {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn test_defaults_when_file_missing() {
+        let config = Config::load(std::path::Path::new("nonexistent-config.toml"))
+            .expect("should fall back to defaults");
+        assert_eq!(config.server.http_port, 3100);
+        assert_eq!(config.server.mcp_transport, "stdio");
+        assert_eq!(
+            config.storage.database_path,
+            PathBuf::from("data/overseer.db")
+        );
+        assert_eq!(
+            config.storage.artifact_path,
+            PathBuf::from("data/artifacts")
+        );
+        assert_eq!(config.embedding.provider, "stub");
+        assert_eq!(config.logging.level, "info");
+    }
+
+    #[test]
+    fn test_partial_toml_uses_defaults() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(f, "[server]\nhttp_port = 9000\n").unwrap();
+        let config = Config::load(f.path()).expect("should parse");
+        assert_eq!(config.server.http_port, 9000);
+        assert_eq!(config.server.mcp_transport, "stdio"); // default
+        assert_eq!(config.embedding.provider, "stub"); // default
+    }
+
+    #[test]
+    fn test_full_toml() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"
+[server]
+http_port = 8080
+mcp_transport = "http"
+
+[storage]
+database_path = "/tmp/test.db"
+artifact_path = "/tmp/arts"
+
+[embedding]
+provider = "local"
+
+[logging]
+level = "debug"
+"#
+        )
+        .unwrap();
+        let config = Config::load(f.path()).expect("should parse");
+        assert_eq!(config.server.http_port, 8080);
+        assert_eq!(config.server.mcp_transport, "http");
+        assert_eq!(config.storage.database_path, PathBuf::from("/tmp/test.db"));
+        assert_eq!(config.embedding.provider, "local");
+        assert_eq!(config.logging.level, "debug");
+    }
+}

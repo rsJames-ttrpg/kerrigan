@@ -17,11 +17,13 @@ use crate::error::OverseerError;
 /// but we register it via the opaque-pointer / transmute pattern that SQLite's
 /// own extension-loading infrastructure uses.
 fn register_vec_extension() {
-    unsafe {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(|| unsafe {
         libsqlite3_sys::sqlite3_auto_extension(Some(std::mem::transmute(
             sqlite_vec::sqlite3_vec_init as *const (),
         )));
-    }
+    });
 }
 
 async fn init_pool(opts: SqliteConnectOptions) -> Result<SqlitePool, OverseerError> {

@@ -97,20 +97,19 @@ pub async fn create_job_definition(
     let config_json =
         serde_json::to_string(&config).map_err(|e| OverseerError::Internal(e.to_string()))?;
 
-    sqlx::query(
-        "INSERT INTO job_definitions (id, name, description, config) VALUES (?1, ?2, ?3, ?4)",
+    let row = sqlx::query(
+        "INSERT INTO job_definitions (id, name, description, config) VALUES (?1, ?2, ?3, ?4) \
+         RETURNING id, name, description, config, created_at, updated_at",
     )
     .bind(&id)
     .bind(name)
     .bind(description)
     .bind(&config_json)
-    .execute(pool)
+    .fetch_one(pool)
     .await
     .map_err(OverseerError::Storage)?;
 
-    get_job_definition(pool, &id)
-        .await?
-        .ok_or_else(|| OverseerError::NotFound(format!("job_definition {id}")))
+    Ok(row_to_job_definition(&row))
 }
 
 pub async fn get_job_definition(pool: &SqlitePool, id: &str) -> Result<Option<JobDefinition>> {
@@ -146,21 +145,20 @@ pub async fn start_job_run(
 ) -> Result<JobRun> {
     let id = Uuid::new_v4().to_string();
 
-    sqlx::query(
+    let row = sqlx::query(
         "INSERT INTO job_runs (id, definition_id, parent_id, status, triggered_by, started_at) \
-         VALUES (?1, ?2, ?3, 'running', ?4, datetime('now'))",
+         VALUES (?1, ?2, ?3, 'running', ?4, datetime('now')) \
+         RETURNING id, definition_id, parent_id, status, triggered_by, result, error, started_at, completed_at",
     )
     .bind(&id)
     .bind(definition_id)
     .bind(parent_id)
     .bind(triggered_by)
-    .execute(pool)
+    .fetch_one(pool)
     .await
     .map_err(OverseerError::Storage)?;
 
-    get_job_run(pool, &id)
-        .await?
-        .ok_or_else(|| OverseerError::NotFound(format!("job_run {id}")))
+    Ok(row_to_job_run(&row))
 }
 
 pub async fn get_job_run(pool: &SqlitePool, id: &str) -> Result<Option<JobRun>> {
@@ -254,18 +252,19 @@ pub async fn create_task(
 ) -> Result<Task> {
     let id = Uuid::new_v4().to_string();
 
-    sqlx::query("INSERT INTO tasks (id, subject, run_id, assigned_to) VALUES (?1, ?2, ?3, ?4)")
-        .bind(&id)
-        .bind(subject)
-        .bind(run_id)
-        .bind(assigned_to)
-        .execute(pool)
-        .await
-        .map_err(OverseerError::Storage)?;
+    let row = sqlx::query(
+        "INSERT INTO tasks (id, subject, run_id, assigned_to) VALUES (?1, ?2, ?3, ?4) \
+         RETURNING id, run_id, subject, status, assigned_to, output, created_at, updated_at",
+    )
+    .bind(&id)
+    .bind(subject)
+    .bind(run_id)
+    .bind(assigned_to)
+    .fetch_one(pool)
+    .await
+    .map_err(OverseerError::Storage)?;
 
-    get_task(pool, &id)
-        .await?
-        .ok_or_else(|| OverseerError::NotFound(format!("task {id}")))
+    Ok(row_to_task(&row))
 }
 
 pub async fn get_task(pool: &SqlitePool, id: &str) -> Result<Option<Task>> {
@@ -484,5 +483,57 @@ mod tests {
             .await
             .expect("list by agent");
         assert_eq!(tasks_by_agent.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_update_job_run_nonexistent() {
+        let pool = make_pool("jobs_test_update_run_notfound").await;
+        let result = update_job_run(&pool, "no-such-id", Some("completed"), None, None).await;
+        assert!(matches!(result, Err(OverseerError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_update_task_nonexistent() {
+        let pool = make_pool("jobs_test_update_task_notfound").await;
+        let result = update_task(&pool, "no-such-id", Some("completed"), None, None).await;
+        assert!(matches!(result, Err(OverseerError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_terminal_statuses_set_completed_at() {
+        let pool = make_pool("jobs_test_terminal_statuses").await;
+        let def = make_definition(&pool, "test-terminal").await;
+
+        for status in ["failed", "cancelled"] {
+            let run = start_job_run(&pool, &def.id, "agent", None)
+                .await
+                .expect("start run");
+            assert!(run.completed_at.is_none());
+
+            let updated = update_job_run(&pool, &run.id, Some(status), None, None)
+                .await
+                .expect("update run");
+            assert_eq!(updated.status, status);
+            assert!(
+                updated.completed_at.is_some(),
+                "{status} should set completed_at"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_non_terminal_status_no_completed_at() {
+        let pool = make_pool("jobs_test_non_terminal").await;
+        let def = make_definition(&pool, "test-non-terminal").await;
+
+        let run = start_job_run(&pool, &def.id, "agent", None)
+            .await
+            .expect("start run");
+
+        let updated = update_job_run(&pool, &run.id, Some("pending"), None, None)
+            .await
+            .expect("update run");
+        assert_eq!(updated.status, "pending");
+        assert!(updated.completed_at.is_none());
     }
 }

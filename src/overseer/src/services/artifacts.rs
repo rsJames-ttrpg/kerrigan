@@ -25,14 +25,22 @@ impl ArtifactService {
         data: &[u8],
         run_id: Option<&str>,
     ) -> Result<db::ArtifactMetadata> {
-        // Insert metadata first to get an ID
-        let metadata =
-            db::insert_artifact(&self.pool, name, content_type, data.len() as i64, run_id).await?;
-
-        // Write blob to filesystem at <artifact_path>/<id>
-        let dest = self.artifact_path.join(&metadata.id);
+        // Write blob first — if this fails, no orphaned DB row
+        let id = uuid::Uuid::new_v4().to_string();
+        let dest = self.artifact_path.join(&id);
         fs::create_dir_all(&self.artifact_path).await?;
         fs::write(&dest, data).await?;
+
+        // Insert metadata now that the blob is safely on disk
+        let metadata = db::insert_artifact(
+            &self.pool,
+            &id,
+            name,
+            content_type,
+            data.len() as i64,
+            run_id,
+        )
+        .await?;
 
         Ok(metadata)
     }

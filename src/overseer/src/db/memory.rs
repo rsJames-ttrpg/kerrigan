@@ -50,6 +50,8 @@ pub async fn insert_memory(
     let tags_json =
         serde_json::to_string(tags).map_err(|e| OverseerError::Internal(e.to_string()))?;
 
+    let mut tx = pool.begin().await.map_err(OverseerError::Storage)?;
+
     // Insert into memories table and get the rowid
     let rowid: i64 = sqlx::query_scalar(
         "INSERT INTO memories (id, content, embedding_model, source, tags, expires_at) \
@@ -62,7 +64,7 @@ pub async fn insert_memory(
     .bind(source)
     .bind(&tags_json)
     .bind(expires_at)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(OverseerError::Storage)?;
 
@@ -71,9 +73,11 @@ pub async fn insert_memory(
     sqlx::query("INSERT INTO memory_embeddings (rowid, embedding) VALUES (?1, ?2)")
         .bind(rowid)
         .bind(embedding_bytes)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(OverseerError::Storage)?;
+
+    tx.commit().await.map_err(OverseerError::Storage)?;
 
     get_memory(pool, &id).await
 }
@@ -93,14 +97,26 @@ pub async fn get_memory(pool: &SqlitePool, id: &str) -> Result<Memory> {
 }
 
 pub async fn delete_memory(pool: &SqlitePool, id: &str) -> Result<()> {
-    // Delete from memories table. Orphaned embeddings in the vec0 virtual table
-    // are harmless since search_memories joins with memories, which filters them out.
-    // (Deleting from vec0 tables has quirks with the validity blob in in-memory DBs)
+    // Get the rowid first so we can clean up the embedding
+    let rowid: Option<i64> = sqlx::query_scalar("SELECT rowid FROM memories WHERE id = ?1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
+
     sqlx::query("DELETE FROM memories WHERE id = ?1")
         .bind(id)
         .execute(pool)
         .await
         .map_err(OverseerError::Storage)?;
+
+    // Clean up the vec0 embedding row to avoid KNN scan bloat
+    if let Some(rowid) = rowid {
+        let _ = sqlx::query("DELETE FROM memory_embeddings WHERE rowid = ?1")
+            .bind(rowid)
+            .execute(pool)
+            .await;
+    }
 
     Ok(())
 }
@@ -176,7 +192,7 @@ pub async fn insert_memory_link(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::open_in_memory;
+    use crate::db::open_in_memory_named;
 
     fn make_embedding(val: f32) -> Vec<f32> {
         vec![val; 384]
@@ -184,7 +200,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_insert_and_get_memory() {
-        let pool = open_in_memory().await.expect("pool opens");
+        let pool = open_in_memory_named("mem_test_insert_get")
+            .await
+            .expect("pool opens");
         let tags = vec!["test".to_string(), "demo".to_string()];
         let embedding = make_embedding(0.1);
 
@@ -216,7 +234,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_memory() {
-        let pool = open_in_memory().await.expect("pool opens");
+        let pool = open_in_memory_named("mem_test_delete")
+            .await
+            .expect("pool opens");
         let embedding = make_embedding(0.0);
 
         let memory = insert_memory(
@@ -244,7 +264,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_search_memories() {
-        let pool = open_in_memory().await.expect("pool opens");
+        let pool = open_in_memory_named("mem_test_search")
+            .await
+            .expect("pool opens");
 
         // Insert 3 memories with distinct embeddings
         let emb_a = make_embedding(1.0);
@@ -276,8 +298,113 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_delete_memory_cleans_up_embeddings() {
+        let pool = open_in_memory_named("mem_test_delete_cleanup")
+            .await
+            .expect("pool opens");
+        let embedding = make_embedding(0.5);
+
+        let memory = insert_memory(&pool, "will delete", &embedding, "stub", "test", &[], None)
+            .await
+            .expect("insert succeeds");
+
+        // Get the rowid for this memory
+        let rowid: i64 = sqlx::query_scalar("SELECT rowid FROM memories WHERE id = ?1")
+            .bind(&memory.id)
+            .fetch_one(&pool)
+            .await
+            .expect("rowid exists");
+
+        // Verify embedding exists before delete
+        let count_before: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM memory_embeddings WHERE rowid = ?1")
+                .bind(rowid)
+                .fetch_one(&pool)
+                .await
+                .expect("count query");
+        assert_eq!(count_before, 1);
+
+        delete_memory(&pool, &memory.id)
+            .await
+            .expect("delete succeeds");
+
+        // Verify embedding is gone after delete
+        let count_after: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM memory_embeddings WHERE rowid = ?1")
+                .bind(rowid)
+                .fetch_one(&pool)
+                .await
+                .expect("count query");
+        assert_eq!(count_after, 0);
+    }
+
+    #[tokio::test]
+    async fn test_search_memories_with_tag_filter() {
+        let pool = open_in_memory_named("mem_test_search_tags")
+            .await
+            .expect("pool opens");
+
+        let emb = make_embedding(1.0);
+        insert_memory(
+            &pool,
+            "tagged a",
+            &emb,
+            "stub",
+            "test",
+            &["alpha".into()],
+            None,
+        )
+        .await
+        .expect("insert a");
+        insert_memory(
+            &pool,
+            "tagged b",
+            &emb,
+            "stub",
+            "test",
+            &["beta".into()],
+            None,
+        )
+        .await
+        .expect("insert b");
+        insert_memory(
+            &pool,
+            "tagged both",
+            &emb,
+            "stub",
+            "test",
+            &["alpha".into(), "beta".into()],
+            None,
+        )
+        .await
+        .expect("insert both");
+        insert_memory(&pool, "no tags", &emb, "stub", "test", &[], None)
+            .await
+            .expect("insert none");
+
+        let query = make_embedding(1.0);
+        let alpha_results = search_memories(&pool, &query, Some(&["alpha".into()]), 10)
+            .await
+            .expect("search with alpha tag");
+        assert_eq!(alpha_results.len(), 2); // "tagged a" and "tagged both"
+
+        let beta_results = search_memories(&pool, &query, Some(&["beta".into()]), 10)
+            .await
+            .expect("search with beta tag");
+        assert_eq!(beta_results.len(), 2); // "tagged b" and "tagged both"
+
+        // Empty filter returns all
+        let all_results = search_memories(&pool, &query, Some(&[]), 10)
+            .await
+            .expect("search with empty filter");
+        assert_eq!(all_results.len(), 4);
+    }
+
+    #[tokio::test]
     async fn test_memory_link() {
-        let pool = open_in_memory().await.expect("pool opens");
+        let pool = open_in_memory_named("mem_test_link")
+            .await
+            .expect("pool opens");
         let emb = make_embedding(0.0);
 
         let mem1 = insert_memory(&pool, "memory 1", &emb, "stub", "test", &[], None)

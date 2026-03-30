@@ -39,3 +39,50 @@ impl IntoResponse for OverseerError {
 }
 
 pub type Result<T> = std::result::Result<T, OverseerError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+
+    async fn status_and_body(err: OverseerError) -> (StatusCode, serde_json::Value) {
+        let response = err.into_response();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        (status, body)
+    }
+
+    #[tokio::test]
+    async fn test_not_found_is_404() {
+        let (status, body) = status_and_body(OverseerError::NotFound("thing".into())).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body["error"], "thing");
+    }
+
+    #[tokio::test]
+    async fn test_validation_is_400() {
+        let (status, body) = status_and_body(OverseerError::Validation("bad input".into())).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"], "bad input");
+    }
+
+    #[tokio::test]
+    async fn test_internal_is_500() {
+        let (status, _) = status_and_body(OverseerError::Internal("boom".into())).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_embedding_is_500() {
+        let (status, _) = status_and_body(OverseerError::Embedding("fail".into())).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_io_is_500() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "gone");
+        let (status, _) = status_and_body(OverseerError::Io(io_err)).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+}

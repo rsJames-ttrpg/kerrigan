@@ -1,5 +1,4 @@
 use sqlx::{Row, SqlitePool};
-use uuid::Uuid;
 
 use crate::error::{OverseerError, Result};
 
@@ -26,29 +25,27 @@ fn row_to_artifact(row: &sqlx::sqlite::SqliteRow) -> ArtifactMetadata {
 
 pub async fn insert_artifact(
     pool: &SqlitePool,
+    id: &str,
     name: &str,
     content_type: &str,
     size: i64,
     run_id: Option<&str>,
 ) -> Result<ArtifactMetadata> {
-    let id = Uuid::new_v4().to_string();
-
-    sqlx::query(
+    let row = sqlx::query(
         "INSERT INTO artifacts (id, name, content_type, size, run_id) \
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+         VALUES (?1, ?2, ?3, ?4, ?5) \
+         RETURNING id, name, content_type, size, run_id, created_at",
     )
-    .bind(&id)
+    .bind(id)
     .bind(name)
     .bind(content_type)
     .bind(size)
     .bind(run_id)
-    .execute(pool)
+    .fetch_one(pool)
     .await
     .map_err(OverseerError::Storage)?;
 
-    get_artifact(pool, &id)
-        .await?
-        .ok_or_else(|| OverseerError::NotFound(format!("artifact {id}")))
+    Ok(row_to_artifact(&row))
 }
 
 pub async fn get_artifact(pool: &SqlitePool, id: &str) -> Result<Option<ArtifactMetadata>> {
@@ -93,9 +90,16 @@ mod tests {
             .await
             .expect("pool opens");
 
-        let artifact = insert_artifact(&pool, "report.pdf", "application/pdf", 1024, None)
-            .await
-            .expect("insert succeeds");
+        let artifact = insert_artifact(
+            &pool,
+            "test-id-1",
+            "report.pdf",
+            "application/pdf",
+            1024,
+            None,
+        )
+        .await
+        .expect("insert succeeds");
 
         assert!(!artifact.id.is_empty());
         assert_eq!(artifact.name, "report.pdf");
@@ -139,13 +143,13 @@ mod tests {
             .await
             .expect("start run");
 
-        insert_artifact(&pool, "file1.txt", "text/plain", 100, Some(&run.id))
+        insert_artifact(&pool, "id-1", "file1.txt", "text/plain", 100, Some(&run.id))
             .await
             .expect("insert 1");
-        insert_artifact(&pool, "file2.txt", "text/plain", 200, Some(&run.id))
+        insert_artifact(&pool, "id-2", "file2.txt", "text/plain", 200, Some(&run.id))
             .await
             .expect("insert 2");
-        insert_artifact(&pool, "file3.txt", "text/plain", 300, None)
+        insert_artifact(&pool, "id-3", "file3.txt", "text/plain", 300, None)
             .await
             .expect("insert 3");
 

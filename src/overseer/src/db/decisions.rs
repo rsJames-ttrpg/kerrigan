@@ -43,9 +43,10 @@ pub async fn log_decision(
     let tags_json =
         serde_json::to_string(tags).map_err(|e| OverseerError::Internal(e.to_string()))?;
 
-    sqlx::query(
+    let row = sqlx::query(
         "INSERT INTO decisions (id, agent, context, decision, reasoning, tags, run_id) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+         RETURNING id, agent, context, decision, reasoning, tags, run_id, created_at",
     )
     .bind(&id)
     .bind(agent)
@@ -54,13 +55,11 @@ pub async fn log_decision(
     .bind(reasoning)
     .bind(&tags_json)
     .bind(run_id)
-    .execute(pool)
+    .fetch_one(pool)
     .await
     .map_err(OverseerError::Storage)?;
 
-    get_decision(pool, &id)
-        .await?
-        .ok_or_else(|| OverseerError::NotFound(format!("decision {id}")))
+    Ok(row_to_decision(&row))
 }
 
 pub async fn get_decision(pool: &SqlitePool, id: &str) -> Result<Option<Decision>> {
@@ -82,6 +81,13 @@ pub async fn query_decisions(
     tags: Option<&[String]>,
     limit: i64,
 ) -> Result<Vec<Decision>> {
+    // Over-fetch to compensate for post-filtering by tags
+    let fetch_limit = if tags.is_some_and(|t| !t.is_empty()) {
+        (limit * 10).max(100)
+    } else {
+        limit
+    };
+
     let rows = sqlx::query(
         "SELECT id, agent, context, decision, reasoning, tags, run_id, created_at \
          FROM decisions \
@@ -90,20 +96,20 @@ pub async fn query_decisions(
          LIMIT ?2",
     )
     .bind(agent)
-    .bind(limit)
+    .bind(fetch_limit)
     .fetch_all(pool)
     .await
     .map_err(OverseerError::Storage)?;
 
     let mut results: Vec<Decision> = rows.iter().map(row_to_decision).collect();
 
-    // Post-filter by tags in Rust
     if let Some(filter_tags) = tags {
         if !filter_tags.is_empty() {
             results.retain(|d| filter_tags.iter().any(|ft| d.tags.contains(ft)));
         }
     }
 
+    results.truncate(limit as usize);
     Ok(results)
 }
 
@@ -203,6 +209,61 @@ mod tests {
             .expect("query by beta");
         // dec2 and dec3 have beta tag
         assert_eq!(beta_results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_query_decisions_limit_with_tag_filter() {
+        let pool = open_in_memory_named("decisions_test_limit_tags")
+            .await
+            .expect("pool opens");
+
+        let target_tag = vec!["target".to_string()];
+        let other_tag = vec!["other".to_string()];
+
+        // Insert 5 with target tag, 20 with other tag
+        for i in 0..5 {
+            log_decision(
+                &pool,
+                "agent",
+                "ctx",
+                &format!("target-{i}"),
+                "r",
+                &target_tag,
+                None,
+            )
+            .await
+            .expect("log target");
+        }
+        for i in 0..20 {
+            log_decision(
+                &pool,
+                "agent",
+                "ctx",
+                &format!("other-{i}"),
+                "r",
+                &other_tag,
+                None,
+            )
+            .await
+            .expect("log other");
+        }
+
+        // Query with limit=3 and tag filter — should get exactly 3
+        let results = query_decisions(&pool, None, Some(&target_tag), 3)
+            .await
+            .expect("query succeeds");
+        assert_eq!(results.len(), 3);
+        assert!(
+            results
+                .iter()
+                .all(|d| d.tags.contains(&"target".to_string()))
+        );
+
+        // Query with limit=10 and tag filter — only 5 exist, should get 5
+        let results = query_decisions(&pool, None, Some(&target_tag), 10)
+            .await
+            .expect("query succeeds");
+        assert_eq!(results.len(), 5);
     }
 
     #[tokio::test]
