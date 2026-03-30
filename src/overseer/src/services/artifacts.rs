@@ -28,12 +28,25 @@ impl ArtifactService {
     ) -> Result<ArtifactMetadata> {
         let id = uuid::Uuid::new_v4().to_string();
         let path = ObjectPath::from(format!("artifacts/{id}"));
+
         self.store
             .put(&path, PutPayload::from(data.to_vec()))
             .await?;
-        self.db
+
+        match self
+            .db
             .insert_artifact(&id, name, content_type, data.len() as i64, run_id)
             .await
+        {
+            Ok(metadata) => Ok(metadata),
+            Err(e) => {
+                // Attempt cleanup of orphaned blob
+                if let Err(cleanup_err) = self.store.delete(&path).await {
+                    tracing::warn!(artifact_id = %id, error = %cleanup_err, "failed to clean up orphaned blob after DB insert failure");
+                }
+                Err(e)
+            }
+        }
     }
 
     pub async fn get(&self, id: &str) -> Result<(ArtifactMetadata, Vec<u8>)> {

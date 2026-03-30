@@ -37,7 +37,10 @@ impl PostgresDatabase {
 
 fn row_to_memory(row: &sqlx::postgres::PgRow) -> Memory {
     let tags_json: serde_json::Value = row.get("tags");
-    let tags: Vec<String> = serde_json::from_value(tags_json).unwrap_or_default();
+    let tags: Vec<String> = serde_json::from_value(tags_json).unwrap_or_else(|e| {
+        tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "failed to deserialize tags, defaulting to empty");
+        Vec::new()
+    });
     Memory {
         id: row.get("id"),
         content: row.get("content"),
@@ -111,7 +114,10 @@ fn row_to_task(row: &sqlx::postgres::PgRow) -> Task {
 
 fn row_to_decision(row: &sqlx::postgres::PgRow) -> Decision {
     let tags_json: serde_json::Value = row.get("tags");
-    let tags: Vec<String> = serde_json::from_value(tags_json).unwrap_or_default();
+    let tags: Vec<String> = serde_json::from_value(tags_json).unwrap_or_else(|e| {
+        tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "failed to deserialize tags, defaulting to empty");
+        Vec::new()
+    });
     Decision {
         id: row.get("id"),
         agent: row.get("agent"),

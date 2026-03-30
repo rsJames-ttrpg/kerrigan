@@ -9,7 +9,10 @@ use crate::error::{OverseerError, Result};
 
 fn row_to_decision(row: &sqlx::sqlite::SqliteRow) -> Decision {
     let tags_json: String = row.get("tags");
-    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_else(|e| {
+        tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "failed to deserialize tags, defaulting to empty");
+        Vec::new()
+    });
     Decision {
         id: row.get("id"),
         agent: row.get("agent"),

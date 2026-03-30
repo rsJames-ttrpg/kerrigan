@@ -9,8 +9,10 @@ use crate::error::{OverseerError, Result};
 
 fn row_to_job_definition(row: &sqlx::sqlite::SqliteRow) -> JobDefinition {
     let config_json: String = row.get("config");
-    let config: serde_json::Value =
-        serde_json::from_str(&config_json).unwrap_or(serde_json::Value::Null);
+    let config: serde_json::Value = serde_json::from_str(&config_json).unwrap_or_else(|e| {
+        tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "failed to deserialize config, defaulting to null");
+        serde_json::Value::Null
+    });
     JobDefinition {
         id: row.get("id"),
         name: row.get("name"),
@@ -23,9 +25,12 @@ fn row_to_job_definition(row: &sqlx::sqlite::SqliteRow) -> JobDefinition {
 
 fn row_to_job_run(row: &sqlx::sqlite::SqliteRow) -> JobRun {
     let result_json: Option<String> = row.get("result");
-    let result = result_json
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok());
+    let result = result_json.as_deref().and_then(|s| {
+        serde_json::from_str(s).unwrap_or_else(|e| {
+            tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "failed to deserialize result, defaulting to null");
+            None
+        })
+    });
     JobRun {
         id: row.get("id"),
         definition_id: row.get("definition_id"),
@@ -41,9 +46,12 @@ fn row_to_job_run(row: &sqlx::sqlite::SqliteRow) -> JobRun {
 
 fn row_to_task(row: &sqlx::sqlite::SqliteRow) -> Task {
     let output_json: Option<String> = row.get("output");
-    let output = output_json
-        .as_deref()
-        .and_then(|s| serde_json::from_str(s).ok());
+    let output = output_json.as_deref().and_then(|s| {
+        serde_json::from_str(s).unwrap_or_else(|e| {
+            tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "failed to deserialize output, defaulting to null");
+            None
+        })
+    });
     Task {
         id: row.get("id"),
         run_id: row.get("run_id"),
