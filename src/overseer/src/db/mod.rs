@@ -101,7 +101,7 @@ pub(crate) async fn trait_conformance_suite(db: Arc<dyn Database>) {
         .start_job_run(&def.id, "test-agent", None)
         .await
         .expect("start run");
-    assert_eq!(run.status, "running");
+    assert_eq!(run.status, models::JobRunStatus::Running);
 
     let updated = db
         .update_job_run(
@@ -112,7 +112,7 @@ pub(crate) async fn trait_conformance_suite(db: Arc<dyn Database>) {
         )
         .await
         .expect("update run");
-    assert_eq!(updated.status, "completed");
+    assert_eq!(updated.status, models::JobRunStatus::Completed);
     assert!(updated.completed_at.is_some());
 
     // Tasks
@@ -120,13 +120,13 @@ pub(crate) async fn trait_conformance_suite(db: Arc<dyn Database>) {
         .create_task("do something", Some(&run.id), Some("agent"))
         .await
         .expect("create task");
-    assert_eq!(task.status, "pending");
+    assert_eq!(task.status, models::TaskStatus::Pending);
 
     let updated_task = db
         .update_task(&task.id, Some("completed"), None, None)
         .await
         .expect("update task");
-    assert_eq!(updated_task.status, "completed");
+    assert_eq!(updated_task.status, models::TaskStatus::Completed);
 
     // Decisions
     let dec = db

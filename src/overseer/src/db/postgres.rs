@@ -81,7 +81,10 @@ fn row_to_job_run(row: &sqlx::postgres::PgRow) -> JobRun {
         id: row.get("id"),
         definition_id: row.get("definition_id"),
         parent_id: row.get("parent_id"),
-        status: row.get("status"),
+        status: row
+            .get::<String, _>("status")
+            .parse()
+            .unwrap_or(JobRunStatus::Pending),
         triggered_by: row.get("triggered_by"),
         result,
         error: row.get("error"),
@@ -100,7 +103,10 @@ fn row_to_task(row: &sqlx::postgres::PgRow) -> Task {
         id: row.get("id"),
         run_id: row.get("run_id"),
         subject: row.get("subject"),
-        status: row.get("status"),
+        status: row
+            .get::<String, _>("status")
+            .parse()
+            .unwrap_or(TaskStatus::Pending),
         assigned_to: row.get("assigned_to"),
         output,
         created_at: row
@@ -229,10 +235,12 @@ impl Database for PostgresDatabase {
 
         tx.commit().await.map_err(OverseerError::Storage)?;
 
-        self.get_memory(&id).await
+        self.get_memory(&id)
+            .await?
+            .ok_or_else(|| OverseerError::Internal("memory not found after insert".to_string()))
     }
 
-    async fn get_memory(&self, id: &str) -> Result<Memory> {
+    async fn get_memory(&self, id: &str) -> Result<Option<Memory>> {
         let (sql, values) = Query::select()
             .columns([
                 Memories::Id,
@@ -251,10 +259,9 @@ impl Database for PostgresDatabase {
         let row = sqlx::query_with(&sql, values)
             .fetch_optional(&self.pool)
             .await
-            .map_err(OverseerError::Storage)?
-            .ok_or_else(|| OverseerError::NotFound(format!("memory {id}")))?;
+            .map_err(OverseerError::Storage)?;
 
-        Ok(row_to_memory(&row))
+        Ok(row.as_ref().map(row_to_memory))
     }
 
     async fn delete_memory(&self, _provider_name: &str, id: &str) -> Result<()> {
@@ -540,9 +547,13 @@ impl Database for PostgresDatabase {
             .map(|v| serde_json::to_string(v).map_err(|e| OverseerError::Internal(e.to_string())))
             .transpose()?;
 
-        let terminal_statuses = ["completed", "failed", "cancelled"];
-        let is_terminal = status
-            .map(|s| terminal_statuses.contains(&s))
+        let parsed_status = status
+            .map(|s| s.parse::<JobRunStatus>())
+            .transpose()
+            .map_err(OverseerError::Validation)?;
+        let is_terminal = parsed_status
+            .as_ref()
+            .map(|s| s.is_terminal())
             .unwrap_or(false);
 
         if status.is_none() && result.is_none() && error.is_none() {
@@ -556,8 +567,8 @@ impl Database for PostgresDatabase {
         let mut query = Query::update();
         query.table(JobRuns::Table);
 
-        if let Some(s) = status {
-            query.value(JobRuns::Status, s);
+        if let Some(ref s) = parsed_status {
+            query.value(JobRuns::Status, s.to_string());
         }
         if let Some(ref r) = result_str {
             query.value(JobRuns::Result, r.as_str());

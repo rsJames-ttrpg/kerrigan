@@ -18,7 +18,7 @@ pub trait Database: Send + Sync {
         expires_at: Option<&str>,
     ) -> Result<Memory>;
 
-    async fn get_memory(&self, id: &str) -> Result<Memory>;
+    async fn get_memory(&self, id: &str) -> Result<Option<Memory>>;
 
     async fn delete_memory(&self, provider_name: &str, id: &str) -> Result<()>;
 

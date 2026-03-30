@@ -138,7 +138,7 @@ mod tests {
             .start_job_run(&def.id, "agent-1", None)
             .await
             .expect("start run");
-        assert_eq!(run.status, "running");
+        assert_eq!(run.status, crate::db::models::JobRunStatus::Running);
 
         let updated = svc
             .update_job_run(
@@ -149,7 +149,7 @@ mod tests {
             )
             .await
             .expect("update run");
-        assert_eq!(updated.status, "completed");
+        assert_eq!(updated.status, crate::db::models::JobRunStatus::Completed);
         assert!(updated.completed_at.is_some());
 
         let runs = svc
@@ -179,7 +179,7 @@ mod tests {
             .create_task("do the thing", Some(&run.id), Some("agent-svc-task"))
             .await
             .expect("create task");
-        assert_eq!(task.status, "pending");
+        assert_eq!(task.status, crate::db::models::TaskStatus::Pending);
 
         let updated = svc
             .update_task(
@@ -190,7 +190,7 @@ mod tests {
             )
             .await
             .expect("update task");
-        assert_eq!(updated.status, "completed");
+        assert_eq!(updated.status, crate::db::models::TaskStatus::Completed);
 
         let tasks = svc
             .list_tasks(None, None, Some(&run.id))

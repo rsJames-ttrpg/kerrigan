@@ -83,10 +83,12 @@ pub async fn insert_memory(
 
     tx.commit().await.map_err(OverseerError::Storage)?;
 
-    get_memory(pool, &id).await
+    get_memory(pool, &id)
+        .await?
+        .ok_or_else(|| OverseerError::Internal("memory not found after insert".to_string()))
 }
 
-pub async fn get_memory(pool: &SqlitePool, id: &str) -> Result<Memory> {
+pub async fn get_memory(pool: &SqlitePool, id: &str) -> Result<Option<Memory>> {
     let (sql, values) = Query::select()
         .columns([
             Memories::Id,
@@ -105,10 +107,9 @@ pub async fn get_memory(pool: &SqlitePool, id: &str) -> Result<Memory> {
     let row = sqlx::query_with(&sql, values)
         .fetch_optional(pool)
         .await
-        .map_err(OverseerError::Storage)?
-        .ok_or_else(|| OverseerError::NotFound(format!("memory {id}")))?;
+        .map_err(OverseerError::Storage)?;
 
-    Ok(row_to_memory(&row))
+    Ok(row.as_ref().map(row_to_memory))
 }
 
 pub async fn delete_memory(pool: &SqlitePool, provider_name: &str, id: &str) -> Result<()> {
@@ -258,7 +259,10 @@ mod tests {
         assert!(memory.expires_at.is_none());
 
         // Fetch back
-        let fetched = get_memory(&pool, &memory.id).await.expect("get succeeds");
+        let fetched = get_memory(&pool, &memory.id)
+            .await
+            .expect("get succeeds")
+            .expect("memory exists");
         assert_eq!(fetched.id, memory.id);
         assert_eq!(fetched.content, memory.content);
         assert_eq!(fetched.tags, memory.tags);
@@ -291,10 +295,10 @@ mod tests {
             .await
             .expect("delete succeeds");
 
-        let result = get_memory(&pool, &memory.id).await;
+        let result = get_memory(&pool, &memory.id).await.expect("get succeeds");
         assert!(
-            matches!(result, Err(OverseerError::NotFound(_))),
-            "expected NotFound, got: {result:?}"
+            result.is_none(),
+            "expected None after delete, got: {result:?}"
         );
     }
 

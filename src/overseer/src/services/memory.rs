@@ -53,7 +53,11 @@ impl MemoryService {
     }
 
     pub async fn delete(&self, id: &str) -> Result<()> {
-        let memory = self.db.get_memory(id).await?;
+        let memory = self
+            .db
+            .get_memory(id)
+            .await?
+            .ok_or_else(|| crate::error::OverseerError::NotFound(format!("memory {id}")))?;
         self.db.delete_memory(&memory.embedding_model, id).await
     }
 }

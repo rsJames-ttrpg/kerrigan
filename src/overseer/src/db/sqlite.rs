@@ -107,7 +107,7 @@ impl Database for SqliteDatabase {
         .await
     }
 
-    async fn get_memory(&self, id: &str) -> Result<Memory> {
+    async fn get_memory(&self, id: &str) -> Result<Option<Memory>> {
         super::memory::get_memory(&self.pool, id).await
     }
 

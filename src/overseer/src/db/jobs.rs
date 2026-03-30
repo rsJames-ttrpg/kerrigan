@@ -3,7 +3,7 @@ use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
-pub use super::models::{JobDefinition, JobRun, Task};
+pub use super::models::{JobDefinition, JobRun, JobRunStatus, Task, TaskStatus};
 use super::tables::{JobDefinitions, JobRuns, Tasks};
 use crate::error::{OverseerError, Result};
 
@@ -35,7 +35,10 @@ fn row_to_job_run(row: &sqlx::sqlite::SqliteRow) -> JobRun {
         id: row.get("id"),
         definition_id: row.get("definition_id"),
         parent_id: row.get("parent_id"),
-        status: row.get("status"),
+        status: row
+            .get::<String, _>("status")
+            .parse()
+            .unwrap_or(JobRunStatus::Pending),
         triggered_by: row.get("triggered_by"),
         result,
         error: row.get("error"),
@@ -56,7 +59,10 @@ fn row_to_task(row: &sqlx::sqlite::SqliteRow) -> Task {
         id: row.get("id"),
         run_id: row.get("run_id"),
         subject: row.get("subject"),
-        status: row.get("status"),
+        status: row
+            .get::<String, _>("status")
+            .parse()
+            .unwrap_or(TaskStatus::Pending),
         assigned_to: row.get("assigned_to"),
         output,
         created_at: row.get("created_at"),
@@ -236,9 +242,13 @@ pub async fn update_job_run(
         .map(|v| serde_json::to_string(v).map_err(|e| OverseerError::Internal(e.to_string())))
         .transpose()?;
 
-    let terminal_statuses = ["completed", "failed", "cancelled"];
-    let is_terminal = status
-        .map(|s| terminal_statuses.contains(&s))
+    let parsed_status = status
+        .map(|s| s.parse::<JobRunStatus>())
+        .transpose()
+        .map_err(OverseerError::Validation)?;
+    let is_terminal = parsed_status
+        .as_ref()
+        .map(|s| s.is_terminal())
         .unwrap_or(false);
 
     if status.is_none() && result.is_none() && error.is_none() {
@@ -251,8 +261,8 @@ pub async fn update_job_run(
     let mut query = Query::update();
     query.table(JobRuns::Table);
 
-    if let Some(s) = status {
-        query.value(JobRuns::Status, s);
+    if let Some(ref s) = parsed_status {
+        query.value(JobRuns::Status, s.to_string());
     }
     if let Some(ref r) = result_json {
         query.value(JobRuns::Result, r.as_str());
@@ -504,7 +514,7 @@ mod tests {
         let run = start_job_run(&pool, &def.id, "agent-1", None)
             .await
             .expect("start run");
-        assert_eq!(run.status, "running");
+        assert_eq!(run.status, JobRunStatus::Running);
         assert!(run.started_at.is_some());
         assert!(run.completed_at.is_none());
 
@@ -517,7 +527,7 @@ mod tests {
         )
         .await
         .expect("update run");
-        assert_eq!(updated.status, "completed");
+        assert_eq!(updated.status, JobRunStatus::Completed);
         assert!(updated.completed_at.is_some());
         assert_eq!(updated.result.as_ref().unwrap()["items"], 42);
 
@@ -565,7 +575,7 @@ mod tests {
         .await
         .expect("create task");
         assert_eq!(task.subject, "do something");
-        assert_eq!(task.status, "pending");
+        assert_eq!(task.status, TaskStatus::Pending);
         assert_eq!(task.run_id.as_deref(), Some(run.id.as_str()));
 
         let fetched = get_task(&pool, &task.id)
@@ -583,7 +593,7 @@ mod tests {
         )
         .await
         .expect("update task");
-        assert_eq!(updated.status, "completed");
+        assert_eq!(updated.status, TaskStatus::Completed);
         assert_eq!(updated.output.as_ref().unwrap()["done"], true);
 
         let tasks_by_run = list_tasks(&pool, None, None, Some(&run.id))
@@ -630,7 +640,7 @@ mod tests {
             let updated = update_job_run(&pool, &run.id, Some(status), None, None)
                 .await
                 .expect("update run");
-            assert_eq!(updated.status, status);
+            assert_eq!(updated.status, status.parse::<JobRunStatus>().unwrap());
             assert!(
                 updated.completed_at.is_some(),
                 "{status} should set completed_at"
@@ -650,7 +660,7 @@ mod tests {
         let updated = update_job_run(&pool, &run.id, Some("pending"), None, None)
             .await
             .expect("update run");
-        assert_eq!(updated.status, "pending");
+        assert_eq!(updated.status, JobRunStatus::Pending);
         assert!(updated.completed_at.is_none());
     }
 }
