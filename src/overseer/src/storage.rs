@@ -22,14 +22,20 @@ pub fn create_object_store(config: &StorageConfig) -> Result<Arc<dyn ObjectStore
             if let Some(endpoint) = &s3.endpoint {
                 builder = builder.with_endpoint(endpoint);
             }
-            if let Some(key_env) = &s3.access_key_env
-                && let Ok(key) = std::env::var(key_env)
-            {
+            if let Some(key_env) = &s3.access_key_env {
+                let key = std::env::var(key_env).map_err(|_| {
+                    OverseerError::Validation(format!(
+                        "S3 access_key_env '{key_env}' configured but environment variable not set"
+                    ))
+                })?;
                 builder = builder.with_access_key_id(key);
             }
-            if let Some(secret_env) = &s3.secret_key_env
-                && let Ok(secret) = std::env::var(secret_env)
-            {
+            if let Some(secret_env) = &s3.secret_key_env {
+                let secret = std::env::var(secret_env).map_err(|_| {
+                    OverseerError::Validation(format!(
+                        "S3 secret_key_env '{secret_env}' configured but environment variable not set"
+                    ))
+                })?;
                 builder = builder.with_secret_access_key(secret);
             }
         }

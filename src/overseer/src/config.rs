@@ -39,9 +39,9 @@ fn default_mcp_transport() -> String {
 
 #[derive(Debug, Deserialize)]
 pub struct StorageConfig {
-    #[serde(default = "default_database_url")]
+    #[serde(default = "default_database_url", alias = "database_path")]
     pub database_url: String,
-    #[serde(default = "default_artifact_url")]
+    #[serde(default = "default_artifact_url", alias = "artifact_path")]
     pub artifact_url: String,
     #[serde(default)]
     pub s3: Option<S3Config>,
@@ -269,6 +269,23 @@ api_key_env = "VOYAGE_API_KEY"
         assert_eq!(config.embedding.default, "stub");
         assert_eq!(config.embedding.providers.len(), 1);
         assert!(config.embedding.providers.contains_key("stub"));
+    }
+
+    #[test]
+    fn test_old_storage_field_names_still_parse() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"
+[storage]
+database_path = "sqlite:///tmp/old.db"
+artifact_path = "file:///tmp/old-arts"
+"#
+        )
+        .unwrap();
+        let config = Config::load(f.path()).expect("should parse with old field names");
+        assert_eq!(config.storage.database_url, "sqlite:///tmp/old.db");
+        assert_eq!(config.storage.artifact_url, "file:///tmp/old-arts");
     }
 
     #[test]
