@@ -25,3 +25,4 @@ thiserror = "2"
 tempfile = "3"
 regex-lite = "0.1.9"
 ureq = { version = "3", features = ["json", "rustls"] }
+async-trait = "0.1.89"

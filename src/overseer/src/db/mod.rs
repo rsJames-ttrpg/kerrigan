@@ -3,6 +3,9 @@ pub mod decisions;
 pub mod jobs;
 pub mod memory;
 pub mod models;
+mod trait_def;
+#[allow(unused_imports)]
+pub use trait_def::Database;
 
 #[allow(unused_imports)]
 pub use models::*;

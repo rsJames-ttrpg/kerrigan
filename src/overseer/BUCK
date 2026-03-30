@@ -2,6 +2,7 @@ OVERSEER_SRCS = glob(["src/**/*.rs", "src/**/*.sql"])
 
 OVERSEER_DEPS = [
     "//third-party:anyhow",
+    "//third-party:async-trait",
     "//third-party:axum",
     "//third-party:base64",
     "//third-party:libsqlite3-sys",
