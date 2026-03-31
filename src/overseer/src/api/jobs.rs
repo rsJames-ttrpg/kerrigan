@@ -14,6 +14,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/definitions", post(create_job_definition))
         .route("/definitions", get(list_job_definitions))
+        .route("/definitions/{id}", get(get_job_definition))
         .route("/runs", post(start_job_run))
         .route("/runs", get(list_job_runs))
         .route("/runs/{id}", patch(update_job_run))
@@ -53,6 +54,20 @@ async fn create_job_definition(
 async fn list_job_definitions(State(state): State<Arc<AppState>>) -> Result<Json<Value>> {
     let results = state.jobs.list_job_definitions().await?;
     Ok(Json(serde_json::to_value(results).map_err(|e| {
+        crate::error::OverseerError::Internal(e.to_string())
+    })?))
+}
+
+async fn get_job_definition(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let result = state
+        .jobs
+        .get_job_definition(&id)
+        .await?
+        .ok_or_else(|| crate::error::OverseerError::NotFound(format!("job_definition {id}")))?;
+    Ok(Json(serde_json::to_value(result).map_err(|e| {
         crate::error::OverseerError::Internal(e.to_string())
     })?))
 }
