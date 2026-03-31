@@ -1,5 +1,6 @@
 pub mod artifacts;
 pub mod decisions;
+pub mod hatchery;
 pub mod jobs;
 pub mod memory;
 
@@ -15,6 +16,7 @@ pub struct AppState {
     pub jobs: jobs::JobService,
     pub decisions: decisions::DecisionService,
     pub artifacts: artifacts::ArtifactService,
+    pub hatchery: hatchery::HatcheryService,
 }
 
 impl AppState {
@@ -27,7 +29,8 @@ impl AppState {
             memory: memory::MemoryService::new(db.clone(), registry),
             jobs: jobs::JobService::new(db.clone()),
             decisions: decisions::DecisionService::new(db.clone()),
-            artifacts: artifacts::ArtifactService::new(db, store),
+            artifacts: artifacts::ArtifactService::new(db.clone(), store),
+            hatchery: hatchery::HatcheryService::new(db),
         }
     }
 }
