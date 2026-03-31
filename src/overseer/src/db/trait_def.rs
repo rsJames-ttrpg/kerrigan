@@ -135,7 +135,40 @@ pub trait ArtifactStore: Send + Sync {
     async fn list_artifacts(&self, run_id: Option<&str>) -> Result<Vec<ArtifactMetadata>>;
 }
 
+#[async_trait]
+pub trait HatcheryStore: Send + Sync {
+    async fn register_hatchery(
+        &self,
+        name: &str,
+        capabilities: serde_json::Value,
+        max_concurrency: i32,
+    ) -> Result<Hatchery>;
+
+    async fn get_hatchery(&self, id: &str) -> Result<Option<Hatchery>>;
+
+    async fn get_hatchery_by_name(&self, name: &str) -> Result<Option<Hatchery>>;
+
+    async fn heartbeat_hatchery(
+        &self,
+        id: &str,
+        status: &str,
+        active_drones: i32,
+    ) -> Result<Hatchery>;
+
+    async fn list_hatcheries(&self, status: Option<&str>) -> Result<Vec<Hatchery>>;
+
+    async fn deregister_hatchery(&self, id: &str) -> Result<()>;
+
+    async fn assign_job_to_hatchery(&self, job_run_id: &str, hatchery_id: &str) -> Result<JobRun>;
+
+    async fn list_hatchery_job_runs(
+        &self,
+        hatchery_id: &str,
+        status: Option<&str>,
+    ) -> Result<Vec<JobRun>>;
+}
+
 /// Convenience supertrait combining all domain stores.
-/// Blanket-implemented for any type that implements all four.
-pub trait Database: MemoryStore + JobStore + DecisionStore + ArtifactStore {}
-impl<T: MemoryStore + JobStore + DecisionStore + ArtifactStore> Database for T {}
+/// Blanket-implemented for any type that implements all five.
+pub trait Database: MemoryStore + JobStore + DecisionStore + ArtifactStore + HatcheryStore {}
+impl<T: MemoryStore + JobStore + DecisionStore + ArtifactStore + HatcheryStore> Database for T {}

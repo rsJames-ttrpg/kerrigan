@@ -1,5 +1,6 @@
 pub mod artifacts;
 pub mod decisions;
+pub mod hatcheries;
 pub mod jobs;
 pub mod memory;
 pub mod models;
@@ -10,7 +11,7 @@ mod trait_def;
 pub use postgres::PostgresDatabase;
 pub use sqlite::SqliteDatabase;
 #[allow(unused_imports)]
-pub use trait_def::{ArtifactStore, Database, DecisionStore, JobStore, MemoryStore};
+pub use trait_def::{ArtifactStore, Database, DecisionStore, HatcheryStore, JobStore, MemoryStore};
 
 #[allow(unused_imports)]
 pub use models::*;
@@ -148,6 +149,57 @@ pub(crate) async fn trait_conformance_suite(db: Arc<dyn Database>) {
         .await
         .expect("query decisions");
     assert!(!queried.is_empty());
+
+    // Hatcheries
+    let hatchery = db
+        .register_hatchery(
+            "conformance-hatchery",
+            serde_json::json!({"arch": "x86_64"}),
+            4,
+        )
+        .await
+        .expect("register hatchery");
+    assert_eq!(hatchery.name, "conformance-hatchery");
+    assert_eq!(hatchery.status, models::HatcheryStatus::Online);
+
+    let fetched_h = db.get_hatchery(&hatchery.id).await.expect("get hatchery");
+    assert!(fetched_h.is_some());
+
+    let by_name = db
+        .get_hatchery_by_name("conformance-hatchery")
+        .await
+        .expect("get by name");
+    assert!(by_name.is_some());
+
+    let heartbeated = db
+        .heartbeat_hatchery(&hatchery.id, "degraded", 2)
+        .await
+        .expect("heartbeat");
+    assert_eq!(heartbeated.status, models::HatcheryStatus::Degraded);
+
+    let hatcheries = db.list_hatcheries(None).await.expect("list hatcheries");
+    assert!(!hatcheries.is_empty());
+
+    let assigned = db
+        .assign_job_to_hatchery(&run.id, &hatchery.id)
+        .await
+        .expect("assign job");
+    assert_eq!(assigned.id, run.id);
+
+    let h_runs = db
+        .list_hatchery_job_runs(&hatchery.id, None)
+        .await
+        .expect("list hatchery runs");
+    assert!(!h_runs.is_empty());
+
+    db.deregister_hatchery(&hatchery.id)
+        .await
+        .expect("deregister");
+    let gone = db
+        .get_hatchery(&hatchery.id)
+        .await
+        .expect("get after delete");
+    assert!(gone.is_none());
 }
 
 #[cfg(test)]

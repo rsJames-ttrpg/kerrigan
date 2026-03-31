@@ -157,6 +157,48 @@ pub struct GetArtifactParams {
     pub id: String,
 }
 
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RegisterHatcheryParams {
+    #[schemars(description = "Unique name for this hatchery instance")]
+    pub name: String,
+    #[serde(default = "serde_json::Value::default")]
+    #[schemars(description = "JSON describing available architectures, drone types, etc.")]
+    pub capabilities: serde_json::Value,
+    #[serde(default = "default_max_concurrency")]
+    #[schemars(description = "Maximum number of concurrent drones (default 1)")]
+    pub max_concurrency: i32,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct HeartbeatHatcheryParams {
+    #[schemars(description = "Hatchery ID")]
+    pub id: String,
+    #[schemars(description = "Current status: online, degraded, or offline")]
+    pub status: String,
+    #[schemars(description = "Number of currently running drone sessions")]
+    pub active_drones: i32,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ListHatcheriesParams {
+    #[schemars(description = "Filter by status")]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DeregisterHatcheryParams {
+    #[schemars(description = "Hatchery ID to deregister")]
+    pub id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct AssignJobToHatcheryParams {
+    #[schemars(description = "Job run ID to assign")]
+    pub job_run_id: String,
+    #[schemars(description = "Hatchery ID to assign the job to")]
+    pub hatchery_id: String,
+}
+
 // ──────────────────────────────── defaults ─────────────────────────────────
 
 fn default_limit() -> usize {
@@ -165,6 +207,10 @@ fn default_limit() -> usize {
 
 fn default_limit_i64() -> i64 {
     20
+}
+
+fn default_max_concurrency() -> i32 {
+    1
 }
 
 // ──────────────────────────── MCP server struct ────────────────────────────
@@ -383,6 +429,86 @@ impl OverseerMcp {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let json = serde_json::to_string_pretty(&results).unwrap_or_else(|e| e.to_string());
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    // ── hatcheries ──────────────────────────────────────────────────────────
+
+    #[tool(description = "Register a new hatchery instance with Overseer")]
+    async fn register_hatchery(
+        &self,
+        Parameters(p): Parameters<RegisterHatcheryParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .state
+            .hatchery
+            .register(&p.name, p.capabilities, p.max_concurrency)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let json = serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string());
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(
+        description = "Send a heartbeat from a hatchery, updating its status and active drone count"
+    )]
+    async fn heartbeat_hatchery(
+        &self,
+        Parameters(p): Parameters<HeartbeatHatcheryParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .state
+            .hatchery
+            .heartbeat(&p.id, &p.status, p.active_drones)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let json = serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string());
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(description = "List registered hatcheries, optionally filtered by status")]
+    async fn list_hatcheries(
+        &self,
+        Parameters(p): Parameters<ListHatcheriesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let results = self
+            .state
+            .hatchery
+            .list(p.status.as_deref())
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let json = serde_json::to_string_pretty(&results).unwrap_or_else(|e| e.to_string());
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(description = "Deregister a hatchery instance")]
+    async fn deregister_hatchery(
+        &self,
+        Parameters(p): Parameters<DeregisterHatcheryParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.state
+            .hatchery
+            .deregister(&p.id)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Hatchery {} deregistered",
+            p.id
+        ))]))
+    }
+
+    #[tool(description = "Assign a job run to a specific hatchery for execution")]
+    async fn assign_job_to_hatchery(
+        &self,
+        Parameters(p): Parameters<AssignJobToHatcheryParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .state
+            .hatchery
+            .assign_job(&p.job_run_id, &p.hatchery_id)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let json = serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string());
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 

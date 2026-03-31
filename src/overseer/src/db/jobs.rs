@@ -24,7 +24,7 @@ fn row_to_job_definition(row: &sqlx::sqlite::SqliteRow) -> JobDefinition {
     }
 }
 
-fn row_to_job_run(row: &sqlx::sqlite::SqliteRow) -> JobRun {
+pub(crate) fn row_to_job_run(row: &sqlx::sqlite::SqliteRow) -> JobRun {
     let result_json: Option<String> = row.get("result");
     let result = result_json.as_deref().and_then(|s| {
         serde_json::from_str(s).unwrap_or_else(|e| {

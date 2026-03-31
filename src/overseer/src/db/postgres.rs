@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::models::*;
 use super::tables::*;
-use super::trait_def::{ArtifactStore, DecisionStore, JobStore, MemoryStore};
+use super::trait_def::{ArtifactStore, DecisionStore, HatcheryStore, JobStore, MemoryStore};
 use crate::error::{OverseerError, Result};
 
 /// A PostgreSQL-backed implementation of the `Database` trait.
@@ -995,6 +995,59 @@ impl ArtifactStore for PostgresDatabase {
             .map_err(OverseerError::Storage)?;
 
         Ok(rows.iter().map(row_to_artifact).collect())
+    }
+}
+
+#[async_trait]
+impl HatcheryStore for PostgresDatabase {
+    async fn register_hatchery(
+        &self,
+        _name: &str,
+        _capabilities: serde_json::Value,
+        _max_concurrency: i32,
+    ) -> crate::error::Result<Hatchery> {
+        Err(OverseerError::Internal("not yet implemented".into()))
+    }
+
+    async fn get_hatchery(&self, _id: &str) -> crate::error::Result<Option<Hatchery>> {
+        Err(OverseerError::Internal("not yet implemented".into()))
+    }
+
+    async fn get_hatchery_by_name(&self, _name: &str) -> crate::error::Result<Option<Hatchery>> {
+        Err(OverseerError::Internal("not yet implemented".into()))
+    }
+
+    async fn heartbeat_hatchery(
+        &self,
+        _id: &str,
+        _status: &str,
+        _active_drones: i32,
+    ) -> crate::error::Result<Hatchery> {
+        Err(OverseerError::Internal("not yet implemented".into()))
+    }
+
+    async fn list_hatcheries(&self, _status: Option<&str>) -> crate::error::Result<Vec<Hatchery>> {
+        Err(OverseerError::Internal("not yet implemented".into()))
+    }
+
+    async fn deregister_hatchery(&self, _id: &str) -> crate::error::Result<()> {
+        Err(OverseerError::Internal("not yet implemented".into()))
+    }
+
+    async fn assign_job_to_hatchery(
+        &self,
+        _job_run_id: &str,
+        _hatchery_id: &str,
+    ) -> crate::error::Result<JobRun> {
+        Err(OverseerError::Internal("not yet implemented".into()))
+    }
+
+    async fn list_hatchery_job_runs(
+        &self,
+        _hatchery_id: &str,
+        _status: Option<&str>,
+    ) -> crate::error::Result<Vec<JobRun>> {
+        Err(OverseerError::Internal("not yet implemented".into()))
     }
 }
 
