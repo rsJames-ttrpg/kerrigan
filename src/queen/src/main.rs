@@ -1,4 +1,6 @@
 mod config;
+mod messages;
+mod notifier;
 
 use anyhow::Result;
 use clap::Parser;
