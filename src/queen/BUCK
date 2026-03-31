@@ -1,0 +1,31 @@
+QUEEN_SRCS = glob(["src/**/*.rs"])
+
+QUEEN_DEPS = [
+    "//third-party:anyhow",
+    "//third-party:async-trait",
+    "//third-party:chrono",
+    "//third-party:clap",
+    "//third-party:reqwest",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:tokio",
+    "//third-party:toml",
+    "//third-party:tracing",
+    "//third-party:tracing-subscriber",
+]
+
+rust_binary(
+    name = "queen",
+    srcs = QUEEN_SRCS,
+    crate_root = "src/main.rs",
+    deps = QUEEN_DEPS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "queen-test",
+    srcs = QUEEN_SRCS,
+    crate_root = "src/main.rs",
+    deps = QUEEN_DEPS,
+    visibility = ["PUBLIC"],
+)
