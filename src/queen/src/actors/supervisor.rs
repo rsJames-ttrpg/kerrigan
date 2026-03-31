@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -93,9 +93,38 @@ async fn spawn_drone(
     active: &mut HashMap<String, DroneHandle>,
     request: SpawnRequest,
     default_timeout: Duration,
-    drone_dir: &PathBuf,
+    drone_dir: &Path,
 ) {
     tracing::info!(job_run_id = %request.job_run_id, drone_type = %request.drone_type, "spawning drone");
+
+    if request.drone_type.contains('/')
+        || request.drone_type.contains('\\')
+        || request.drone_type.contains("..")
+    {
+        tracing::error!(
+            job_run_id = %request.job_run_id,
+            drone_type = %request.drone_type,
+            "invalid drone_type: contains path separator"
+        );
+        if let Err(e) = client
+            .update_job_run(
+                &request.job_run_id,
+                Some("failed"),
+                None,
+                Some("invalid drone_type"),
+            )
+            .await
+        {
+            tracing::error!(job_run_id = %request.job_run_id, error = %e, "failed to update job run in overseer");
+        }
+        notifier
+            .notify(QueenEvent::DroneFailed {
+                job_run_id: request.job_run_id,
+                error: "invalid drone_type".to_string(),
+            })
+            .await;
+        return;
+    }
 
     let binary = drone_dir.join(&request.drone_type);
     let mut process = match tokio::process::Command::new(&binary)
@@ -107,14 +136,17 @@ async fn spawn_drone(
         Ok(child) => child,
         Err(e) => {
             tracing::error!(job_run_id = %request.job_run_id, binary = %binary.display(), error = %e, "failed to spawn drone process");
-            let _ = client
+            if let Err(e) = client
                 .update_job_run(
                     &request.job_run_id,
                     Some("failed"),
                     None,
                     Some(&format!("failed to spawn {}: {e}", binary.display())),
                 )
-                .await;
+                .await
+            {
+                tracing::error!(job_run_id = %request.job_run_id, error = %e, "failed to update job run in overseer");
+            }
             notifier
                 .notify(QueenEvent::DroneFailed {
                     job_run_id: request.job_run_id,
@@ -279,9 +311,12 @@ async fn drain_protocol_messages(
                                 "failed"
                             };
                             let result_value = serde_json::to_value(&output).ok();
-                            let _ = client
+                            if let Err(e) = client
                                 .update_job_run(id, Some(status), result_value, None)
-                                .await;
+                                .await
+                            {
+                                tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
+                            }
 
                             let exit_code = output.exit_code;
                             if exit_code == 0 {
@@ -309,9 +344,12 @@ async fn drain_protocol_messages(
                                 error = %err.message,
                                 "drone reported error"
                             );
-                            let _ = client
+                            if let Err(e) = client
                                 .update_job_run(id, Some("failed"), None, Some(&err.message))
-                                .await;
+                                .await
+                            {
+                                tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
+                            }
                             notifier
                                 .notify(QueenEvent::DroneFailed {
                                     job_run_id: id.clone(),
@@ -347,24 +385,114 @@ async fn check_drones(
         // Check if process exited (without a Result message)
         match handle.process.try_wait() {
             Ok(Some(status)) => {
-                let exit_code = status.code().unwrap_or(-1);
-                tracing::warn!(job_run_id = %id, exit_code, "drone process exited unexpectedly (no Result message)");
-                let _ = client
-                    .update_job_run(
-                        id,
-                        Some("failed"),
-                        None,
-                        Some(&format!(
-                            "process exited unexpectedly with code {exit_code}"
-                        )),
-                    )
-                    .await;
-                notifier
-                    .notify(QueenEvent::DroneFailed {
-                        job_run_id: id.clone(),
-                        error: format!("unexpected exit code {exit_code}"),
-                    })
-                    .await;
+                // Drain remaining protocol messages — drone may have sent Result just before exiting
+                let mut got_result = false;
+                while let Ok(msg) = handle.protocol_rx.try_recv() {
+                    match msg {
+                        DroneMessage::Result(output) => {
+                            tracing::info!(job_run_id = %id, exit_code = output.exit_code, "drone completed with result");
+
+                            let conversation_bytes =
+                                serde_json::to_vec_pretty(&output.conversation).unwrap_or_default();
+                            if let Err(e) = client
+                                .store_artifact(
+                                    &format!("{id}-conversation.json"),
+                                    "application/json",
+                                    &conversation_bytes,
+                                    Some(id),
+                                )
+                                .await
+                            {
+                                tracing::warn!(job_run_id = %id, error = %e, "failed to store conversation artifact");
+                            }
+
+                            let result_value = serde_json::to_value(&output).ok();
+                            let run_status = if output.exit_code == 0 {
+                                "completed"
+                            } else {
+                                "failed"
+                            };
+                            let error = if output.exit_code != 0 {
+                                Some(format!("drone exited with code {}", output.exit_code))
+                            } else {
+                                None
+                            };
+
+                            if let Err(e) = client
+                                .update_job_run(
+                                    id,
+                                    Some(run_status),
+                                    result_value,
+                                    error.as_deref(),
+                                )
+                                .await
+                            {
+                                tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
+                            }
+
+                            if output.exit_code == 0 {
+                                notifier
+                                    .notify(QueenEvent::DroneCompleted {
+                                        job_run_id: id.clone(),
+                                        exit_code: output.exit_code,
+                                    })
+                                    .await;
+                            } else {
+                                notifier
+                                    .notify(QueenEvent::DroneFailed {
+                                        job_run_id: id.clone(),
+                                        error: format!("exit code {}", output.exit_code),
+                                    })
+                                    .await;
+                            }
+
+                            got_result = true;
+                        }
+                        DroneMessage::Error(e) => {
+                            tracing::error!(job_run_id = %id, error = %e.message, "drone reported error");
+                            if let Err(e) = client
+                                .update_job_run(id, Some("failed"), None, Some(&e.message))
+                                .await
+                            {
+                                tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
+                            }
+                            notifier
+                                .notify(QueenEvent::DroneFailed {
+                                    job_run_id: id.clone(),
+                                    error: e.message,
+                                })
+                                .await;
+                            got_result = true;
+                        }
+                        _ => {} // Ignore progress/auth at this point
+                    }
+                }
+
+                if !got_result {
+                    // Process exited without sending Result — treat as unexpected
+                    let exit_code = status.code().unwrap_or(-1);
+                    tracing::warn!(job_run_id = %id, exit_code, "drone process exited without sending result");
+                    if let Err(e) = client
+                        .update_job_run(
+                            id,
+                            Some("failed"),
+                            None,
+                            Some(&format!(
+                                "process exited unexpectedly with code {exit_code}"
+                            )),
+                        )
+                        .await
+                    {
+                        tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
+                    }
+                    notifier
+                        .notify(QueenEvent::DroneFailed {
+                            job_run_id: id.clone(),
+                            error: format!("unexpected exit code {exit_code}"),
+                        })
+                        .await;
+                }
+
                 completed.push(id.clone());
                 continue;
             }
@@ -380,9 +508,12 @@ async fn check_drones(
             tracing::warn!(job_run_id = %id, "drone timed out, killing");
             let _ = handle.process.kill().await;
             let _ = handle.process.wait().await;
-            let _ = client
+            if let Err(e) = client
                 .update_job_run(id, Some("failed"), None, Some("timed out"))
-                .await;
+                .await
+            {
+                tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
+            }
             notifier
                 .notify(QueenEvent::DroneTimedOut {
                     job_run_id: id.clone(),
@@ -413,9 +544,12 @@ async fn shutdown_all(client: &OverseerClient, active: &mut HashMap<String, Dron
         tracing::info!(job_run_id = %id, "killing drone for shutdown");
         let _ = handle.process.kill().await;
         let _ = handle.process.wait().await;
-        let _ = client
+        if let Err(e) = client
             .update_job_run(&id, Some("cancelled"), None, Some("queen shutting down"))
-            .await;
+            .await
+        {
+            tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
+        }
     }
     // ShuttingDown notification is sent from main.rs only
 }

@@ -34,9 +34,7 @@ pub async fn run(
             }
         };
 
-        let mut current_ids: HashSet<String> = HashSet::new();
         for run in runs {
-            current_ids.insert(run.id.clone());
             if known_runs.contains(&run.id) {
                 continue;
             }
@@ -62,12 +60,26 @@ pub async fn run(
                 .unwrap_or("claude-drone")
                 .to_string();
 
-            let repo_url = def
-                .config
-                .get("repo_url")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            let repo_url = match def.config.get("repo_url").and_then(|v| v.as_str()) {
+                Some(url) if !url.is_empty() => url.to_string(),
+                _ => {
+                    tracing::warn!(
+                        job_run_id = %run.id,
+                        definition_id = %run.definition_id,
+                        "job definition missing required 'repo_url' in config, skipping"
+                    );
+                    let _ = client
+                        .update_job_run(
+                            &run.id,
+                            Some("failed"),
+                            None,
+                            Some("missing repo_url in job config"),
+                        )
+                        .await;
+                    known_runs.insert(run.id);
+                    continue;
+                }
+            };
 
             let branch = def
                 .config
@@ -75,12 +87,26 @@ pub async fn run(
                 .and_then(|v| v.as_str())
                 .map(String::from);
 
-            let task = def
-                .config
-                .get("task")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            let task = match def.config.get("task").and_then(|v| v.as_str()) {
+                Some(t) if !t.is_empty() => t.to_string(),
+                _ => {
+                    tracing::warn!(
+                        job_run_id = %run.id,
+                        definition_id = %run.definition_id,
+                        "job definition missing required 'task' in config, skipping"
+                    );
+                    let _ = client
+                        .update_job_run(
+                            &run.id,
+                            Some("failed"),
+                            None,
+                            Some("missing task in job config"),
+                        )
+                        .await;
+                    known_runs.insert(run.id);
+                    continue;
+                }
+            };
 
             let request = SpawnRequest {
                 job_run_id: run.id.clone(),
@@ -95,7 +121,8 @@ pub async fn run(
                 tracing::warn!("supervisor channel closed, stopping poller");
                 return;
             }
+
+            known_runs.insert(run.id);
         }
-        known_runs = current_ids;
     }
 }
