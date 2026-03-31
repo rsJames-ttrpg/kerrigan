@@ -2,6 +2,7 @@ QUEEN_SRCS = glob(["src/**/*.rs"])
 
 QUEEN_DEPS = [
     "//third-party:anyhow",
+    "//third-party:base64",
     "//src/drone-sdk:drone-sdk",
     "//third-party:async-trait",
     "//third-party:chrono",
