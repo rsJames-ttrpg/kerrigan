@@ -44,6 +44,7 @@ exec "$RUSTFMT_DIR/bin/rustfmt" "\\$@"
 WRAPPER
         chmod +x $OUT
     """,
+    labels = ["uses_local_filesystem_abspaths"],
     executable = True,
     visibility = ["PUBLIC"],
 )
