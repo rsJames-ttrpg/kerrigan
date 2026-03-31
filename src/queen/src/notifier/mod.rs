@@ -27,6 +27,11 @@ pub enum QueenEvent {
     DroneTimedOut {
         job_run_id: String,
     },
+    AuthRequested {
+        job_run_id: String,
+        url: String,
+        message: String,
+    },
     CreepStarted,
     CreepDied {
         restart_in_secs: u64,

@@ -6,6 +6,9 @@ pub struct SpawnRequest {
     pub job_run_id: String,
     pub drone_type: String,
     pub job_config: Value,
+    pub repo_url: String,
+    pub branch: Option<String>,
+    pub task: String,
 }
 
 #[derive(Debug)]
@@ -16,12 +19,4 @@ pub struct StatusQuery;
 pub struct StatusResponse {
     pub active_drones: i32,
     pub queued_jobs: i32,
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct DroneCompleted {
-    pub job_run_id: String,
-    pub exit_code: Option<i32>,
-    pub success: bool,
 }

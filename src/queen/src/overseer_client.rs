@@ -41,6 +41,15 @@ pub struct TaskResponse {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct JobDefinitionResponse {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub config: Value,
+}
+
 // ── Request types ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
@@ -185,6 +194,18 @@ impl OverseerClient {
             .await?
             .error_for_status()?
             .json::<Vec<TaskResponse>>()
+            .await?;
+        Ok(response)
+    }
+
+    pub async fn get_job_definition(&self, id: &str) -> Result<JobDefinitionResponse> {
+        let response = self
+            .client
+            .get(format!("{}/api/jobs/definitions/{id}", self.base_url))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<JobDefinitionResponse>()
             .await?;
         Ok(response)
     }

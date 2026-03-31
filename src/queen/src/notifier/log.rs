@@ -23,6 +23,13 @@ impl Notifier for LogNotifier {
             } => {
                 tracing::info!(%job_run_id, %exit_code, "drone completed");
             }
+            QueenEvent::AuthRequested {
+                job_run_id,
+                url,
+                message,
+            } => {
+                tracing::warn!(%job_run_id, %url, %message, "drone requires auth - visit URL to approve");
+            }
             QueenEvent::DroneFailed { job_run_id, error } => {
                 tracing::warn!(%job_run_id, %error, "drone failed");
             }

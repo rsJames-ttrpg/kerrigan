@@ -41,12 +41,54 @@ pub async fn run(
                 continue;
             }
 
-            let drone_type = run.triggered_by.clone();
+            // Fetch the job definition to get drone_type, repo, and task details
+            let def = match client.get_job_definition(&run.definition_id).await {
+                Ok(def) => def,
+                Err(e) => {
+                    tracing::warn!(
+                        job_run_id = %run.id,
+                        definition_id = %run.definition_id,
+                        error = %e,
+                        "failed to fetch job definition, skipping run"
+                    );
+                    continue;
+                }
+            };
+
+            let drone_type = def
+                .config
+                .get("drone_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("claude-drone")
+                .to_string();
+
+            let repo_url = def
+                .config
+                .get("repo_url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let branch = def
+                .config
+                .get("branch")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+
+            let task = def
+                .config
+                .get("task")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
 
             let request = SpawnRequest {
                 job_run_id: run.id.clone(),
                 drone_type,
-                job_config: run.result.unwrap_or(serde_json::json!({})),
+                job_config: def.config.clone(),
+                repo_url,
+                branch,
+                task,
             };
 
             if spawn_tx.send(request).await.is_err() {
