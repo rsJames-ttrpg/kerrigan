@@ -29,9 +29,11 @@ def _hermetic_rust_toolchain_impl(ctx: AnalysisContext) -> list[Provider]:
                 # Copy std libs for the target (merge contents, not the directory itself)
                 "mkdir -p \"$SYSROOT\"/lib/rustlib/\"$TARGET\";",
                 "cp -rfL \"$STD_DIST\"/lib/rustlib/\"$TARGET\"/* \"$SYSROOT\"/lib/rustlib/\"$TARGET\"/;",
-                # Create clippy-driver wrapper with LD_LIBRARY_PATH
+                # Copy clippy-driver binary into sysroot and create a wrapper
+                # that finds it relative to itself (so it works on both local and RE).
                 "mkdir -p \"$SYSROOT\"/bin;",
-                "printf '#!/usr/bin/env bash\\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")/..\" && pwd)\"\\nexport LD_LIBRARY_PATH=\"$SCRIPT_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\\nexec \"%s/bin/clippy-driver\" \"$@\"\\n' \"$CLIPPY_DIST\" > \"$SYSROOT\"/bin/clippy-driver;",
+                "cp -L \"$CLIPPY_DIST\"/bin/clippy-driver \"$SYSROOT\"/bin/clippy-driver-bin;",
+                "printf '#!/usr/bin/env bash\\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")/..\" && pwd)\"\\nexport LD_LIBRARY_PATH=\"$SCRIPT_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\\nexec \"$SCRIPT_DIR/bin/clippy-driver-bin\" \"$@\"\\n' > \"$SYSROOT\"/bin/clippy-driver;",
                 "chmod +x \"$SYSROOT\"/bin/clippy-driver;",
                 delimiter = " ",
             ),
