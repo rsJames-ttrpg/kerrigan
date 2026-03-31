@@ -1,0 +1,23 @@
+[package]
+name = "creep"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tonic = "0.13"
+tonic-health = "0.13"
+prost = "0.13"
+notify = "8"
+ignore = "0.4"
+blake3 = "1"
+glob-match = "0.2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "signal", "time"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+tempfile = "3"
+
+[build-dependencies]
+tonic-build = "0.13"
