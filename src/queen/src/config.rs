@@ -21,6 +21,10 @@ pub struct Cli {
     /// Maximum concurrent drones
     #[arg(long, env = "QUEEN_MAX_CONCURRENCY")]
     pub max_concurrency: Option<i32>,
+
+    /// Directory where drone workspaces are created
+    #[arg(long, env = "QUEEN_DRONE_DIR")]
+    pub drone_dir: Option<String>,
 }
 
 fn default_overseer_url() -> String {
@@ -67,6 +71,10 @@ fn default_notification_backend() -> String {
     "log".to_string()
 }
 
+fn default_drone_dir() -> String {
+    "./drones".to_string()
+}
+
 #[derive(Debug, Deserialize)]
 pub struct QueenConfig {
     pub name: String,
@@ -82,6 +90,8 @@ pub struct QueenConfig {
     pub drone_timeout: String,
     #[serde(default = "default_stall_threshold")]
     pub stall_threshold: u64,
+    #[serde(default = "default_drone_dir")]
+    pub drone_dir: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -168,6 +178,9 @@ impl Config {
         if let Some(max) = cli.max_concurrency {
             self.queen.max_concurrency = max;
         }
+        if let Some(dir) = &cli.drone_dir {
+            self.queen.drone_dir = dir.clone();
+        }
     }
 }
 
@@ -204,6 +217,7 @@ name = "test-hatchery"
         assert_eq!(config.creep.health_port, 9090);
         assert_eq!(config.creep.restart_delay, 5);
         assert_eq!(config.notifications.backend, "log");
+        assert_eq!(config.queen.drone_dir, "./drones");
     }
 
     #[test]
@@ -337,6 +351,7 @@ max_concurrency = 4
             name: Some("override-name".to_string()),
             overseer_url: Some("http://other:3100".to_string()),
             max_concurrency: Some(16),
+            drone_dir: None,
         };
 
         config.apply_overrides(&cli);

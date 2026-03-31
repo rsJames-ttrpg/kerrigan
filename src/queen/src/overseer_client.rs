@@ -41,7 +41,24 @@ pub struct TaskResponse {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct JobDefinitionResponse {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub config: Value,
+}
+
 // ── Request types ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+struct StoreArtifactRequest {
+    name: String,
+    content_type: String,
+    data: String,
+    run_id: Option<String>,
+}
 
 #[derive(Debug, Serialize)]
 pub struct RegisterRequest {
@@ -177,6 +194,7 @@ impl OverseerClient {
         Ok(response)
     }
 
+    #[allow(dead_code)]
     pub async fn get_tasks_for_run(&self, run_id: &str) -> Result<Vec<TaskResponse>> {
         let response = self
             .client
@@ -185,6 +203,45 @@ impl OverseerClient {
             .await?
             .error_for_status()?
             .json::<Vec<TaskResponse>>()
+            .await?;
+        Ok(response)
+    }
+
+    pub async fn get_job_definition(&self, id: &str) -> Result<JobDefinitionResponse> {
+        let response = self
+            .client
+            .get(format!("{}/api/jobs/definitions/{id}", self.base_url))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<JobDefinitionResponse>()
+            .await?;
+        Ok(response)
+    }
+
+    pub async fn store_artifact(
+        &self,
+        name: &str,
+        content_type: &str,
+        data: &[u8],
+        run_id: Option<&str>,
+    ) -> Result<Value> {
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(data);
+        let body = StoreArtifactRequest {
+            name: name.to_string(),
+            content_type: content_type.to_string(),
+            data: encoded,
+            run_id: run_id.map(String::from),
+        };
+        let response = self
+            .client
+            .post(format!("{}/api/artifacts", self.base_url))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<Value>()
             .await?;
         Ok(response)
     }

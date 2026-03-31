@@ -4,6 +4,7 @@ mod messages;
 mod notifier;
 mod overseer_client;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -86,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
     let supervisor_client = client.clone();
     let supervisor_notifier = notifier.clone();
     let max_concurrency = config.queen.max_concurrency;
+    let drone_dir = PathBuf::from(&config.queen.drone_dir);
     let supervisor_token = token.clone();
     let supervisor_handle = tokio::spawn(async move {
         actors::supervisor::run(
@@ -94,6 +96,7 @@ async fn main() -> anyhow::Result<()> {
             max_concurrency,
             default_timeout,
             stall_threshold,
+            drone_dir,
             spawn_rx,
             status_query_rx,
             supervisor_token,

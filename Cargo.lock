@@ -1742,8 +1742,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64",
  "chrono",
  "clap",
+ "drone-sdk",
  "reqwest",
  "serde",
  "serde_json",
