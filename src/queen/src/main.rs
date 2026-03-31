@@ -1,6 +1,7 @@
 mod config;
 mod messages;
 mod notifier;
+mod overseer_client;
 
 use anyhow::Result;
 use clap::Parser;
