@@ -13,10 +13,7 @@
   fbcode_macros = none
   buck = none
 
-# Uses a copy of the prelude bundled with the buck2 binary. You can alternatively delete this
-# section and vendor a copy of the prelude to the `prelude` directory of your project.
-[external_cells]
-  prelude = bundled
+# Vendored prelude (patched transitive_dependency_symlinks.py mkdir + symlink bugs)
 
 [parser]
   target_platform_detector_spec = target:root//...->platforms//:default \
@@ -25,3 +22,15 @@
 
 [build]
   execution_platforms = platforms//:default
+
+[project]
+  remote_enabled = true
+
+[buck2]
+sqlite_materializer_state = true
+digest_algorithms = SHA256
+
+[buck2_re_client]
+  engine_address = remote.buildbuddy.io
+  action_cache_address = remote.buildbuddy.io
+  cas_address = remote.buildbuddy.io

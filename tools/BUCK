@@ -44,6 +44,7 @@ exec "$RUSTFMT_DIR/bin/rustfmt" "\\$@"
 WRAPPER
         chmod +x $OUT
     """,
+    labels = ["uses_local_filesystem_abspaths"],
     executable = True,
     visibility = ["PUBLIC"],
 )
@@ -71,6 +72,7 @@ genrule(
         host = REINDEER_HOST,
         sha256 = REINDEER_SHA256,
     ),
+    labels = ["network_access"],
     executable = True,
     visibility = ["PUBLIC"],
 )

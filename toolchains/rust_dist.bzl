@@ -25,13 +25,15 @@ def _hermetic_rust_toolchain_impl(ctx: AnalysisContext) -> list[Provider]:
                 "SYSROOT=\"$1\"; RUSTC_DIST=\"$2\"; STD_DIST=\"$3\"; TARGET=\"$4\"; CLIPPY_DIST=\"$5\";",
                 "mkdir -p \"$SYSROOT\"/lib/rustlib;",
                 # Copy rustc's own libs (codegen backends, etc.)
-                "cp -rL \"$RUSTC_DIST\"/lib/* \"$SYSROOT\"/lib/ 2>/dev/null || true;",
+                "cp -rfL \"$RUSTC_DIST\"/lib/* \"$SYSROOT\"/lib/ 2>/dev/null || true;",
                 # Copy std libs for the target (merge contents, not the directory itself)
                 "mkdir -p \"$SYSROOT\"/lib/rustlib/\"$TARGET\";",
-                "cp -rL \"$STD_DIST\"/lib/rustlib/\"$TARGET\"/* \"$SYSROOT\"/lib/rustlib/\"$TARGET\"/;",
-                # Create clippy-driver wrapper with LD_LIBRARY_PATH
+                "cp -rfL \"$STD_DIST\"/lib/rustlib/\"$TARGET\"/* \"$SYSROOT\"/lib/rustlib/\"$TARGET\"/;",
+                # Copy clippy-driver binary into sysroot and create a wrapper
+                # that finds it relative to itself (so it works on both local and RE).
                 "mkdir -p \"$SYSROOT\"/bin;",
-                "printf '#!/usr/bin/env bash\\nexport LD_LIBRARY_PATH=\"%s/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\\nexec \"%s/bin/clippy-driver\" \"$@\"\\n' \"$(cd \"$SYSROOT\" && pwd)\" \"$CLIPPY_DIST\" > \"$SYSROOT\"/bin/clippy-driver;",
+                "cp -L \"$CLIPPY_DIST\"/bin/clippy-driver \"$SYSROOT\"/bin/clippy-driver-bin;",
+                "printf '#!/usr/bin/env bash\\nSCRIPT_DIR=\"$(cd \"$(dirname \"$0\")/..\" && pwd)\"\\nexport LD_LIBRARY_PATH=\"$SCRIPT_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\"\\nexec \"$SCRIPT_DIR/bin/clippy-driver-bin\" \"$@\"\\n' > \"$SYSROOT\"/bin/clippy-driver;",
                 "chmod +x \"$SYSROOT\"/bin/clippy-driver;",
                 delimiter = " ",
             ),
@@ -81,7 +83,7 @@ hermetic_rust_toolchain = rule(
         "rustc_target_triple": attrs.string(default = "x86_64-unknown-linux-gnu"),
         "host_triple": attrs.string(default = "x86_64-unknown-linux-gnu"),
         "default_edition": attrs.string(default = "2024"),
-        "rustc_flags": attrs.list(attrs.arg(), default = []),
+        "rustc_flags": attrs.list(attrs.string(), default = []),
         "use_bundled_linker": attrs.bool(default = False),
     },
 )
