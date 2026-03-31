@@ -1744,6 +1744,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "clap",
+ "drone-sdk",
  "reqwest",
  "serde",
  "serde_json",
