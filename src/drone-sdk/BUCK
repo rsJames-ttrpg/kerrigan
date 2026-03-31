@@ -1,0 +1,24 @@
+SDK_SRCS = glob(["src/**/*.rs"])
+
+SDK_DEPS = [
+    "//third-party:anyhow",
+    "//third-party:async-trait",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:tokio",
+    "//third-party:tracing",
+]
+
+rust_library(
+    name = "drone-sdk",
+    srcs = SDK_SRCS,
+    deps = SDK_DEPS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "drone-sdk-test",
+    srcs = SDK_SRCS,
+    deps = SDK_DEPS,
+    visibility = ["PUBLIC"],
+)
