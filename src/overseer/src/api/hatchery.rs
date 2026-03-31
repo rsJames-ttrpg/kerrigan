@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -19,7 +19,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/{id}/heartbeat", post(heartbeat_hatchery))
         .route("/{id}", delete(deregister_hatchery))
         .route("/{id}/jobs", get(list_hatchery_jobs))
-        .route("/{id}/jobs/{job_run_id}", post(assign_job))
+        .route("/{id}/jobs/{job_run_id}", put(assign_job))
 }
 
 // ── Request / response types ─────────────────────────────────────────────────

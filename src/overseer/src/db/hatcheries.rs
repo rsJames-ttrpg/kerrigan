@@ -10,15 +10,20 @@ use crate::error::{OverseerError, Result};
 
 fn row_to_hatchery(row: &sqlx::sqlite::SqliteRow) -> Hatchery {
     let caps_json: String = row.get("capabilities");
-    let capabilities: serde_json::Value =
-        serde_json::from_str(&caps_json).unwrap_or(serde_json::Value::Object(Default::default()));
+    let capabilities: serde_json::Value = serde_json::from_str(&caps_json).unwrap_or_else(|e| {
+        tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "failed to deserialize capabilities, defaulting to empty");
+        serde_json::Value::Object(Default::default())
+    });
     Hatchery {
         id: row.get("id"),
         name: row.get("name"),
         status: row
             .get::<String, _>("status")
             .parse()
-            .unwrap_or(HatcheryStatus::Offline),
+            .unwrap_or_else(|e| {
+                tracing::warn!(id = %row.get::<String, _>("id"), error = %e, "invalid hatchery status, defaulting to offline");
+                HatcheryStatus::Offline
+            }),
         capabilities,
         max_concurrency: row.get("max_concurrency"),
         active_drones: row.get("active_drones"),
@@ -69,7 +74,14 @@ pub async fn register_hatchery(
     let row = sqlx::query_with(&sql, values)
         .fetch_one(pool)
         .await
-        .map_err(OverseerError::Storage)?;
+        .map_err(|e| match &e {
+            sqlx::Error::Database(db_err)
+                if db_err.message().contains("UNIQUE constraint failed") =>
+            {
+                OverseerError::Validation(format!("hatchery name '{name}' already exists"))
+            }
+            _ => OverseerError::Storage(e),
+        })?;
 
     Ok(row_to_hatchery(&row))
 }
@@ -416,6 +428,9 @@ mod tests {
         make_hatchery(&pool, "duplicate-name").await;
 
         let result = register_hatchery(&pool, "duplicate-name", serde_json::json!({}), 2).await;
-        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(crate::error::OverseerError::Validation(_))
+        ));
     }
 }
