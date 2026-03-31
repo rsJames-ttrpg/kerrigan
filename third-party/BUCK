@@ -1939,6 +1939,96 @@ http_archive(
     visibility = [],
 )
 
+alias(
+    name = "dirs",
+    actual = ":dirs-6",
+    visibility = ["PUBLIC"],
+)
+
+cargo.rust_library(
+    name = "dirs-6",
+    srcs = [":dirs-6.0.0.crate"],
+    crate = "dirs",
+    crate_root = "dirs-6.0.0.crate/src/lib.rs",
+    edition = "2015",
+    env = {
+        "CARGO_BIN_NAME": "dirs",
+        "CARGO_CRATE_NAME": "dirs",
+        "CARGO_MANIFEST_DIR": "dirs-6.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Simon Ochsenreither <simon@ochsenreither.de>",
+        "CARGO_PKG_DESCRIPTION": "A tiny low-level library that provides platform-specific standard locations of directories for config, cache and other data on Linux, Windows, macOS and Redox by leveraging the mechanisms defined by the XDG base/user directory specifications on Linux, the Known Folder API on Windows, and the Standard Directory guidelines on macOS.",
+        "CARGO_PKG_NAME": "dirs",
+        "CARGO_PKG_REPOSITORY": "https://github.com/soc/dirs-rs",
+        "CARGO_PKG_VERSION": "6.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "6",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+    deps = [":dirs-sys-0.5"],
+)
+
+http_archive(
+    name = "dirs-6.0.0.crate",
+    sha256 = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e",
+    strip_prefix = "dirs-6.0.0",
+    urls = ["https://static.crates.io/crates/dirs/6.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "dirs-sys-0.5",
+    srcs = [":dirs-sys-0.5.0.crate"],
+    crate = "dirs_sys",
+    crate_root = "dirs-sys-0.5.0.crate/src/lib.rs",
+    edition = "2015",
+    env = {
+        "CARGO_BIN_NAME": "dirs_sys",
+        "CARGO_CRATE_NAME": "dirs_sys",
+        "CARGO_MANIFEST_DIR": "dirs-sys-0.5.0.crate",
+        "CARGO_PKG_AUTHORS": "Simon Ochsenreither <simon@ochsenreither.de>",
+        "CARGO_PKG_DESCRIPTION": "System-level helper functions for the dirs and directories crates.",
+        "CARGO_PKG_NAME": "dirs-sys",
+        "CARGO_PKG_REPOSITORY": "https://github.com/dirs-dev/dirs-sys-rs",
+        "CARGO_PKG_VERSION": "0.5.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "5",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    platform = {
+        "linux-arm64": dict(
+            deps = [":libc-0.2"],
+        ),
+        "linux-x86_64": dict(
+            deps = [":libc-0.2"],
+        ),
+        "macos-arm64": dict(
+            deps = [":libc-0.2"],
+        ),
+        "macos-x86_64": dict(
+            deps = [":libc-0.2"],
+        ),
+        "windows-gnu": dict(
+            deps = [":windows-sys-0.61"],
+        ),
+        "windows-msvc": dict(
+            deps = [":windows-sys-0.61"],
+        ),
+    },
+    visibility = [],
+    deps = [":option-ext-0.2"],
+)
+
+http_archive(
+    name = "dirs-sys-0.5.0.crate",
+    sha256 = "e01a3366d27ee9890022452ee61b2b63a67e6f13f58900b651ff5665f0bb1fab",
+    strip_prefix = "dirs-sys-0.5.0",
+    urls = ["https://static.crates.io/crates/dirs-sys/0.5.0/download"],
+    visibility = [],
+)
+
 cargo.rust_library(
     name = "displaydoc-0.2",
     srcs = [":displaydoc-0.2.5.crate"],
@@ -5563,6 +5653,37 @@ http_archive(
     sha256 = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe",
     strip_prefix = "openssl-probe-0.2.1",
     urls = ["https://static.crates.io/crates/openssl-probe/0.2.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "option-ext-0.2",
+    srcs = [":option-ext-0.2.0.crate"],
+    crate = "option_ext",
+    crate_root = "option-ext-0.2.0.crate/src/lib.rs",
+    edition = "2015",
+    env = {
+        "CARGO_BIN_NAME": "option_ext",
+        "CARGO_CRATE_NAME": "option_ext",
+        "CARGO_MANIFEST_DIR": "option-ext-0.2.0.crate",
+        "CARGO_PKG_AUTHORS": "Simon Ochsenreither <simon@ochsenreither.de>",
+        "CARGO_PKG_DESCRIPTION": "Extends `Option` with additional operations",
+        "CARGO_PKG_NAME": "option-ext",
+        "CARGO_PKG_REPOSITORY": "https://github.com/soc/option-ext.git",
+        "CARGO_PKG_VERSION": "0.2.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "2",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+)
+
+http_archive(
+    name = "option-ext-0.2.0.crate",
+    sha256 = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d",
+    strip_prefix = "option-ext-0.2.0",
+    urls = ["https://static.crates.io/crates/option-ext/0.2.0/download"],
     visibility = [],
 )
 
@@ -11379,6 +11500,7 @@ cargo.rust_library(
         "Wdk_System_IO",
         "Win32",
         "Win32_Foundation",
+        "Win32_Globalization",
         "Win32_Networking",
         "Win32_Networking_WinSock",
         "Win32_Security",

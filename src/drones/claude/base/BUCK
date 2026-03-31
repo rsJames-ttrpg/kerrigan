@@ -1,0 +1,39 @@
+CLAUDE_DRONE_SRCS = glob(["src/**/*.rs"])
+
+# Config files live in src/config/ and must be listed in mapped_srcs so that
+# Buck2 copies them into the __srcs sandbox alongside the .rs files, making
+# them accessible to include_bytes! at compile time.
+CLAUDE_DRONE_MAPPED_SRCS = {
+    "src/config/settings.json": "src/config/settings.json",
+    "src/config/CLAUDE.md": "src/config/CLAUDE.md",
+}
+
+CLAUDE_DRONE_DEPS = [
+    "//src/drone-sdk:drone-sdk",
+    "//third-party:anyhow",
+    "//third-party:async-trait",
+    "//third-party:dirs",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:tokio",
+    "//third-party:tracing",
+    "//third-party:tracing-subscriber",
+]
+
+rust_binary(
+    name = "claude-drone",
+    srcs = CLAUDE_DRONE_SRCS,
+    mapped_srcs = CLAUDE_DRONE_MAPPED_SRCS,
+    crate_root = "src/main.rs",
+    deps = CLAUDE_DRONE_DEPS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "claude-drone-test",
+    srcs = CLAUDE_DRONE_SRCS,
+    mapped_srcs = CLAUDE_DRONE_MAPPED_SRCS,
+    crate_root = "src/main.rs",
+    deps = CLAUDE_DRONE_DEPS,
+    visibility = ["PUBLIC"],
+)
