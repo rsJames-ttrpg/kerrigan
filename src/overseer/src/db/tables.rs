@@ -45,6 +45,7 @@ pub enum JobRuns {
     Error,
     StartedAt,
     CompletedAt,
+    HatcheryId,
 }
 
 #[derive(Iden)]
@@ -82,4 +83,18 @@ pub enum Artifacts {
     Size,
     RunId,
     CreatedAt,
+}
+
+#[derive(Iden)]
+pub enum Hatcheries {
+    Table,
+    Id,
+    Name,
+    Status,
+    Capabilities,
+    MaxConcurrency,
+    ActiveDrones,
+    LastHeartbeatAt,
+    CreatedAt,
+    UpdatedAt,
 }

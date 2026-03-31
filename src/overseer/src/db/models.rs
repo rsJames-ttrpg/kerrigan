@@ -84,6 +84,36 @@ impl FromStr for TaskStatus {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HatcheryStatus {
+    Online,
+    Degraded,
+    Offline,
+}
+
+impl fmt::Display for HatcheryStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Online => write!(f, "online"),
+            Self::Degraded => write!(f, "degraded"),
+            Self::Offline => write!(f, "offline"),
+        }
+    }
+}
+
+impl FromStr for HatcheryStatus {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        match s {
+            "online" => Ok(Self::Online),
+            "degraded" => Ok(Self::Degraded),
+            "offline" => Ok(Self::Offline),
+            other => Err(format!("invalid hatchery status: {other}")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Memory {
     pub id: String,
@@ -157,4 +187,35 @@ pub struct ArtifactMetadata {
     pub size: i64,
     pub run_id: Option<String>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Hatchery {
+    pub id: String,
+    pub name: String,
+    pub status: HatcheryStatus,
+    pub capabilities: serde_json::Value,
+    pub max_concurrency: i32,
+    pub active_drones: i32,
+    pub last_heartbeat_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hatchery_status_roundtrip() {
+        for s in ["online", "degraded", "offline"] {
+            let status: HatcheryStatus = s.parse().unwrap();
+            assert_eq!(status.to_string(), s);
+        }
+    }
+
+    #[test]
+    fn test_hatchery_status_invalid() {
+        assert!("bogus".parse::<HatcheryStatus>().is_err());
+    }
 }
