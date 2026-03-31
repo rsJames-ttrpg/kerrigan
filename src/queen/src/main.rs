@@ -1,3 +1,4 @@
+mod actors;
 mod config;
 mod messages;
 mod notifier;

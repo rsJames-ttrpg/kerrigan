@@ -35,6 +35,7 @@ pub struct TaskResponse {
     pub status: String,
     pub assigned_to: Option<String>,
     pub output: Option<Value>,
+    pub updated_at: String,
 }
 
 // ── Request types ─────────────────────────────────────────────────────────────
