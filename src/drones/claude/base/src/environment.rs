@@ -16,8 +16,17 @@ const CLAUDE_MD: &[u8] = include_bytes!("config/CLAUDE.md");
 /// - `/tmp/drone-{id}/.claude/settings.json` — embedded settings
 /// - `/tmp/drone-{id}/CLAUDE.md` — embedded system prompt
 /// - `/tmp/drone-{id}/.claude/.credentials.json` — symlink to real credentials
-/// - `/tmp/drone-{id}/workspace/` — working directory for git clone
+///
+/// Note: workspace (`/tmp/drone-{id}/workspace/`) is NOT pre-created here —
+/// `git clone` creates it during `clone_repo()`.
 pub async fn create_home(job_run_id: &str) -> Result<DroneEnvironment> {
+    if !job_run_id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        anyhow::bail!("invalid job_run_id: contains disallowed characters: {job_run_id}");
+    }
+
     let home = PathBuf::from(format!("/tmp/drone-{job_run_id}"));
     let claude_dir = home.join(".claude");
     let workspace = home.join("workspace");
@@ -26,9 +35,7 @@ pub async fn create_home(job_run_id: &str) -> Result<DroneEnvironment> {
     fs::create_dir_all(&claude_dir)
         .await
         .with_context(|| format!("failed to create .claude dir at {}", claude_dir.display()))?;
-    fs::create_dir_all(&workspace)
-        .await
-        .with_context(|| format!("failed to create workspace dir at {}", workspace.display()))?;
+    // Note: workspace is intentionally NOT pre-created — git clone creates it
 
     // Write embedded settings.json
     fs::write(claude_dir.join("settings.json"), SETTINGS_JSON)
@@ -83,7 +90,9 @@ pub async fn clone_repo(repo_url: &str, branch: Option<&str>, workspace: &Path) 
     if let Some(b) = branch {
         cmd.arg("--branch").arg(b);
     }
-    cmd.arg(repo_url).arg(workspace);
+    cmd.arg("--");
+    cmd.arg(repo_url);
+    cmd.arg(workspace);
 
     let output = cmd.output().await.context("failed to spawn git clone")?;
 
@@ -117,7 +126,11 @@ mod tests {
             env.home.join(".claude").exists(),
             ".claude dir should exist"
         );
-        assert!(env.workspace.exists(), "workspace dir should exist");
+        // workspace is intentionally NOT pre-created (git clone creates it)
+        assert!(
+            !env.workspace.exists(),
+            "workspace dir should not be pre-created"
+        );
 
         // Embedded files written
         let settings = fs::read(env.home.join(".claude/settings.json"))
@@ -138,6 +151,17 @@ mod tests {
 
         cleanup(&env.home).await;
         assert!(!env.home.exists(), "home should be removed after cleanup");
+    }
+
+    #[tokio::test]
+    async fn test_create_home_rejects_invalid_id() {
+        let result = create_home("../evil/path").await;
+        assert!(
+            result.is_err(),
+            "should reject job_run_id with path traversal"
+        );
+        let result2 = create_home("id with spaces").await;
+        assert!(result2.is_err(), "should reject job_run_id with spaces");
     }
 
     #[tokio::test]

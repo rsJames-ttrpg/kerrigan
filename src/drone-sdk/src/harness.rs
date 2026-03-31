@@ -1,46 +1,48 @@
+use std::io::Write;
+
 use crate::protocol::*;
 use crate::runner::DroneRunner;
-use std::sync::{Arc, Mutex};
-use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 pub struct QueenChannel {
-    writer: Arc<Mutex<io::Stdout>>,
-    reader: Arc<Mutex<BufReader<io::Stdin>>>,
+    writer: std::io::Stdout,
+    reader: std::io::BufReader<std::io::Stdin>,
 }
 
 impl QueenChannel {
     fn new() -> Self {
         Self {
-            writer: Arc::new(Mutex::new(io::stdout())),
-            reader: Arc::new(Mutex::new(BufReader::new(io::stdin()))),
+            writer: std::io::stdout(),
+            reader: std::io::BufReader::new(std::io::stdin()),
         }
     }
 
-    async fn send(&self, msg: &DroneMessage) -> anyhow::Result<()> {
+    fn send(&mut self, msg: &DroneMessage) -> anyhow::Result<()> {
         let mut line = serde_json::to_string(msg)?;
         line.push('\n');
-        let mut writer = self.writer.lock().unwrap();
-        writer.write_all(line.as_bytes()).await?;
-        writer.flush().await?;
+        self.writer.write_all(line.as_bytes())?;
+        self.writer.flush()?;
         Ok(())
     }
 
-    async fn recv(&self) -> anyhow::Result<QueenMessage> {
+    fn recv(&mut self) -> anyhow::Result<QueenMessage> {
+        use std::io::BufRead;
         let mut line = String::new();
-        let mut reader = self.reader.lock().unwrap();
-        reader.read_line(&mut line).await?;
-        let msg: QueenMessage = serde_json::from_str(line.trim())?;
+        let bytes_read = self.reader.read_line(&mut line)?;
+        if bytes_read == 0 {
+            anyhow::bail!("queen disconnected (stdin closed)");
+        }
+        let msg: QueenMessage = serde_json::from_str(line.trim()).map_err(|e| {
+            anyhow::anyhow!("failed to parse queen message: {e}, raw: {:?}", line.trim())
+        })?;
         Ok(msg)
     }
 
-    pub async fn request_auth(&self, url: &str, message: &str) -> anyhow::Result<bool> {
+    pub fn request_auth(&mut self, url: &str, message: &str) -> anyhow::Result<bool> {
         self.send(&DroneMessage::AuthRequest(AuthRequest {
             url: url.to_string(),
             message: message.to_string(),
-        }))
-        .await?;
-
-        let msg = self.recv().await?;
+        }))?;
+        let msg = self.recv()?;
         match msg {
             QueenMessage::AuthResponse(resp) => Ok(resp.approved),
             QueenMessage::Cancel {} => anyhow::bail!("cancelled by queen"),
@@ -48,19 +50,18 @@ impl QueenChannel {
         }
     }
 
-    pub async fn progress(&self, status: &str, detail: &str) -> anyhow::Result<()> {
+    pub fn progress(&mut self, status: &str, detail: &str) -> anyhow::Result<()> {
         self.send(&DroneMessage::Progress(Progress {
             status: status.to_string(),
             detail: Some(detail.to_string()),
         }))
-        .await
     }
 }
 
 pub async fn run(runner: impl DroneRunner) -> anyhow::Result<()> {
-    let channel = QueenChannel::new();
+    let mut channel = QueenChannel::new();
 
-    let msg = channel.recv().await?;
+    let msg = channel.recv()?;
     let job = match msg {
         QueenMessage::Job(spec) => spec,
         _ => anyhow::bail!("expected Job message from queen, got: {:?}", msg),
@@ -71,33 +72,27 @@ pub async fn run(runner: impl DroneRunner) -> anyhow::Result<()> {
     let env = match runner.setup(&job).await {
         Ok(env) => env,
         Err(e) => {
-            channel
-                .send(&DroneMessage::Error(DroneError {
-                    message: format!("setup failed: {e}"),
-                }))
-                .await?;
+            channel.send(&DroneMessage::Error(DroneError {
+                message: format!("setup failed: {e}"),
+            }))?;
             return Err(e);
         }
     };
 
-    channel
-        .progress("setup_complete", "environment ready")
-        .await?;
+    channel.progress("setup_complete", "environment ready")?;
 
-    let result = match runner.execute(&env, &channel).await {
+    let result = match runner.execute(&env, &mut channel).await {
         Ok(output) => output,
         Err(e) => {
-            channel
-                .send(&DroneMessage::Error(DroneError {
-                    message: format!("execution failed: {e}"),
-                }))
-                .await?;
+            channel.send(&DroneMessage::Error(DroneError {
+                message: format!("execution failed: {e}"),
+            }))?;
             runner.teardown(&env).await;
             return Err(e);
         }
     };
 
-    channel.send(&DroneMessage::Result(result)).await?;
+    channel.send(&DroneMessage::Result(result))?;
     runner.teardown(&env).await;
 
     tracing::info!(job_run_id = %job.job_run_id, "drone finished");

@@ -8,6 +8,7 @@ use drone_sdk::protocol::{DroneEnvironment, DroneOutput, GitRefs, JobSpec};
 use drone_sdk::runner::DroneRunner;
 use tokio::fs;
 use tokio::process::Command;
+use tokio::time::{Duration, timeout};
 
 use crate::environment;
 
@@ -25,7 +26,7 @@ impl DroneRunner for ClaudeDrone {
     async fn execute(
         &self,
         env: &DroneEnvironment,
-        _channel: &QueenChannel,
+        _channel: &mut QueenChannel,
     ) -> Result<DroneOutput> {
         let task = fs::read_to_string(env.home.join(".task"))
             .await
@@ -52,7 +53,11 @@ impl DroneRunner for ClaudeDrone {
             .context("failed to spawn claude CLI")?;
 
         // Write task to stdin, then close it
-        if let Some(mut stdin) = child.stdin.take() {
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("failed to acquire stdin pipe for claude process"))?;
+        {
             use tokio::io::AsyncWriteExt;
             stdin
                 .write_all(task.as_bytes())
@@ -61,17 +66,48 @@ impl DroneRunner for ClaudeDrone {
             // stdin dropped here, closing the pipe
         }
 
-        let output = child
-            .wait_with_output()
-            .await
-            .context("failed to wait for claude process")?;
+        let timeout_duration = Duration::from_secs(7200); // 2 hours default
+        let output: std::process::Output =
+            match timeout(timeout_duration, child.wait_with_output()).await {
+                Ok(result) => result.context("failed to wait for claude process")?,
+                Err(_) => {
+                    tracing::error!("claude CLI timed out after {:?}", timeout_duration);
+                    // child is dropped here which sends SIGKILL
+                    anyhow::bail!("claude CLI timed out after {:?}", timeout_duration);
+                }
+            };
 
         let exit_code = output.status.code().unwrap_or(-1);
         let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr_text = String::from_utf8_lossy(&output.stderr);
 
-        // Parse stdout as JSON conversation; fall back to raw string on parse failure
-        let conversation = serde_json::from_str::<serde_json::Value>(&stdout)
-            .unwrap_or_else(|_| serde_json::Value::String(stdout.into_owned()));
+        if !stderr_text.is_empty() {
+            tracing::debug!(stderr = %stderr_text, "claude CLI stderr");
+        }
+
+        if exit_code != 0 {
+            tracing::warn!(
+                exit_code,
+                stderr = %stderr_text,
+                "claude CLI exited with non-zero status"
+            );
+        }
+
+        // Parse stdout as JSON conversation; log and fall back to structured error on parse failure
+        let conversation = match serde_json::from_str::<serde_json::Value>(&stdout) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    stdout_len = stdout.len(),
+                    "failed to parse claude stdout as JSON; returning raw output"
+                );
+                serde_json::json!({
+                    "raw_output": stdout.to_string(),
+                    "parse_error": e.to_string()
+                })
+            }
+        };
 
         let git_refs = collect_git_refs(&env.workspace).await;
 
@@ -90,43 +126,46 @@ impl DroneRunner for ClaudeDrone {
 
 /// Collect git branch name and PR URL from the workspace.
 async fn collect_git_refs(workspace: &Path) -> GitRefs {
-    let branch = get_branch(workspace).await;
-    let pr_url = get_pr_url(workspace).await;
-    GitRefs { branch, pr_url }
-}
-
-async fn get_branch(workspace: &Path) -> Option<String> {
-    let output = Command::new("git")
+    let branch = match Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(workspace)
         .output()
         .await
-        .ok()?;
-
-    if output.status.success() {
-        let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if branch.is_empty() || branch == "HEAD" {
-            None
-        } else {
-            Some(branch)
+    {
+        Ok(o) if o.status.success() => {
+            let b = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if b.is_empty() || b == "HEAD" {
+                None
+            } else {
+                Some(b)
+            }
         }
-    } else {
-        None
-    }
-}
+        Ok(o) => {
+            tracing::debug!(exit_code = ?o.status.code(), "git rev-parse failed");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to run git rev-parse");
+            None
+        }
+    };
 
-async fn get_pr_url(workspace: &Path) -> Option<String> {
-    let output = Command::new("gh")
+    let pr_url = match Command::new("gh")
         .args(["pr", "view", "--json", "url", "-q", ".url"])
         .current_dir(workspace)
         .output()
         .await
-        .ok()?;
+    {
+        Ok(o) if o.status.success() => {
+            let url = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if url.is_empty() { None } else { Some(url) }
+        }
+        Ok(_) => None, // gh pr view returns non-zero when no PR exists — expected
+        Err(e) => {
+            tracing::debug!(error = %e, "gh CLI not available");
+            None
+        }
+    };
 
-    if output.status.success() {
-        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if url.is_empty() { None } else { Some(url) }
-    } else {
-        None
-    }
+    GitRefs { branch, pr_url }
 }

@@ -16,7 +16,7 @@ pub trait DroneRunner: Send + Sync {
     async fn execute(
         &self,
         env: &DroneEnvironment,
-        channel: &QueenChannel,
+        channel: &mut QueenChannel,
     ) -> anyhow::Result<DroneOutput>;
 
     async fn teardown(&self, env: &DroneEnvironment);
