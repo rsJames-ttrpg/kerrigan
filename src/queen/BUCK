@@ -26,6 +26,8 @@ rust_test(
     name = "queen-test",
     srcs = QUEEN_SRCS,
     crate_root = "src/main.rs",
-    deps = QUEEN_DEPS,
+    deps = QUEEN_DEPS + [
+        "//third-party:tempfile",
+    ],
     visibility = ["PUBLIC"],
 )
