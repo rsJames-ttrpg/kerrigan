@@ -1,10 +1,10 @@
-load("@prelude//platforms:defs.bzl", "execution_platform", "host_configuration")
+load("@prelude//platforms:defs.bzl", "host_configuration")
+load(":defs.bzl", "buildbuddy_platforms")
 
-execution_platform(
+buildbuddy_platforms(
     name = "default",
     cpu_configuration = host_configuration.cpu,
     os_configuration = host_configuration.os,
-    use_windows_path_separators = False,
     visibility = ["PUBLIC"],
 )
 
