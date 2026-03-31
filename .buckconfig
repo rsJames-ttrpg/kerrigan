@@ -23,6 +23,9 @@
 [build]
   execution_platforms = platforms//:default
 
+[project]
+  remote_enabled = true
+
 [buck2]
 sqlite_materializer_state = true
 digest_algorithms = SHA256
@@ -31,4 +34,3 @@ digest_algorithms = SHA256
   engine_address = remote.buildbuddy.io
   action_cache_address = remote.buildbuddy.io
   cas_address = remote.buildbuddy.io
-  http_headers = x-buildbuddy-api-key:$BUILDBUDDY_API_KEY

@@ -2,14 +2,14 @@ load("@prelude//platforms:defs.bzl", "host_configuration")
 
 def _executor_config():
     """Return a CommandExecutorConfig with RE enabled only when configured."""
-    if read_config("buck2_re_client", "engine_address"):
+    if read_root_config("project", "remote_enabled", None):
         return CommandExecutorConfig(
             local_enabled = True,
             remote_enabled = True,
             use_limited_hybrid = True,
             remote_execution_properties = {
                 "OSFamily": "Linux",
-                "container-image": "docker://gcr.io/flame-public/rbe-ubuntu20-04:latest",
+                "container-image": "docker://gcr.io/flame-public/rbe-ubuntu24-04:latest",
             },
             remote_execution_use_case = "buck2-default",
             remote_output_paths = "output_paths",

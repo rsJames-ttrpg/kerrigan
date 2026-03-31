@@ -8,7 +8,7 @@ Kerrigan is a personal agentic development platform built around Claude Code. It
 
 ## Build System
 
-**Buck2** is the primary build system with hermetic toolchains (no system rustc dependency).
+**Buck2** (`2026-01-19` release) is the primary build system with hermetic toolchains (no system rustc dependency). Pinned to this version because `2026-03-15` has a sqlite materializer bug (panics on duplicate inserts for directory outputs).
 
 - **Build overseer:** `buck2 build root//src/overseer:overseer`
 - **Run overseer:** `buck2 run root//src/overseer:overseer`
@@ -16,6 +16,31 @@ Kerrigan is a personal agentic development platform built around Claude Code. It
 - **Clean:** `buck2 clean`
 
 Cargo is still available for local dev convenience (`cargo check` / `cargo test` from `src/overseer/`), but Buck2 is authoritative for builds.
+
+### Remote Execution (BuildBuddy)
+
+Builds can execute remotely on BuildBuddy workers for shared caching and faster CI.
+
+- **Auth:** Set `export BUCK2_RE_HTTP_HEADERS="x-buildbuddy-api-key:<KEY>"` in your shell. No secrets in `.buckconfig`.
+- **Enable/disable:** `[project] remote_enabled = true` in `.buckconfig`. Set to `false` for local-only builds.
+- **Fallback:** When `BUCK2_RE_HTTP_HEADERS` is unset or BuildBuddy is unreachable, builds fall back to local execution automatically (`local_enabled = True` in hybrid mode).
+- **Container image:** Workers use `gcr.io/flame-public/rbe-ubuntu24-04:latest`. Must have glibc >= host system (build scripts are compiled locally, uploaded, and run on workers).
+
+### Vendored Prelude
+
+The Buck2 prelude is vendored in `prelude/` (not using `bundled`). Patches applied on top of the `2026-01-19` tag:
+
+- `prelude/rust/tools/transitive_dependency_symlinks.py` — `mkdir(exist_ok=True)` + symlink force-replace (upstream bug)
+- `prelude/rust/tools/{buildscript_run,rustc_action,extract_link_action}.py` — `from __future__ import annotations` (Python 3.8 compat for older worker images)
+- `prelude/rust/cargo_buildscript.bzl` — added `OPT_LEVEL` and `DEBUG` env vars (cc-rs build scripts need them)
+
+**Do not switch back to `prelude = bundled`** without verifying the upstream bugs are fixed.
+
+### Starlark gotchas
+
+- `read_config()` in a non-root cell (like `platforms/`) reads that cell's config, not root `.buckconfig`. Use `read_root_config()` instead.
+- `[buck2_re_client]` is consumed by the binary — not readable from Starlark via `read_config()`/`read_root_config()`.
+- `rustc_flags` must use `attrs.string()` not `attrs.arg()` — the prelude calls `.startswith()` on them.
 
 ## Components
 
@@ -45,9 +70,11 @@ Default edition and nightly features are set in the toolchain — don't override
 ## Platforms
 
 Defined in `platforms/BUCK`:
-- **default** — auto-detected host platform (execution platform)
+- **default** — hybrid local+remote execution platform (host CPU/OS constraints, BuildBuddy RE when configured)
 - **linux-x86_64** — explicit x86_64 Linux target
 - **linux-aarch64** — RPi cross-compilation target
+
+The default platform must have CPU/OS constraints populated or `select()` in the prelude's `cargo_package.bzl` can't resolve platform-specific deps (like `libc`). Empty constraints = everything falls to `DEFAULT: None`.
 
 Cross-compile with: `buck2 build root//src/overseer:overseer --target-platforms platforms//:linux-aarch64`
 
@@ -86,7 +113,8 @@ Clippy runs via `buck2 build 'root//src/overseer:overseer[clippy.txt]'` — the 
 
 ```
 Cargo.toml                # Workspace root (members = all src/* crates)
-.buckconfig               # Buck2 cell/toolchain config (uses bundled prelude)
+.buckconfig               # Buck2 cell/toolchain config (vendored prelude, RE config)
+prelude/                  # Vendored Buck2 prelude (2026-01-19 tag, patched — do not edit casually)
 .buckroot                 # Buck2 project root marker
 reindeer.toml             # Reindeer config (hybrid mode, reads workspace Cargo.toml)
 platforms/BUCK            # Target and execution platform definitions

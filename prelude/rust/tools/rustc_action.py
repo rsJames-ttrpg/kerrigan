@@ -17,6 +17,8 @@
 #
 # This is closely coupled to `_rustc_invoke` in `build.bzl`
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import json

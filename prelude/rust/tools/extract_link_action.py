@@ -15,6 +15,8 @@
 # an artifact between this action and the deferred link action. See the comments in
 # `process_link_args()` for more details.
 
+from __future__ import annotations
+
 import argparse
 import os
 import shutil

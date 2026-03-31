@@ -71,6 +71,7 @@ genrule(
         host = REINDEER_HOST,
         sha256 = REINDEER_SHA256,
     ),
+    labels = ["network_access"],
     executable = True,
     visibility = ["PUBLIC"],
 )
