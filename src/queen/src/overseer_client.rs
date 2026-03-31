@@ -7,6 +7,7 @@ use tokio::sync::RwLock;
 // ── Response types ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct HatcheryResponse {
     pub id: String,
     pub name: String,
@@ -17,6 +18,7 @@ pub struct HatcheryResponse {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct JobRunResponse {
     pub id: String,
     pub definition_id: String,
@@ -28,6 +30,7 @@ pub struct JobRunResponse {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct TaskResponse {
     pub id: String,
     pub run_id: Option<String>,
@@ -78,6 +81,7 @@ impl OverseerClient {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn hatchery_id(&self) -> Option<String> {
         self.hatchery_id.read().await.clone()
     }

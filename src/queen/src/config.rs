@@ -108,6 +108,7 @@ impl Default for CreepConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct NotificationConfig {
     #[serde(default = "default_notification_backend")]
     pub backend: String,
@@ -127,6 +128,7 @@ pub struct Config {
     #[serde(default)]
     pub creep: CreepConfig,
     #[serde(default)]
+    #[allow(dead_code)]
     pub notifications: NotificationConfig,
 }
 

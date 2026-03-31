@@ -9,6 +9,7 @@ use crate::messages::{SpawnRequest, StatusQuery, StatusResponse};
 use crate::notifier::{Notifier, QueenEvent};
 use crate::overseer_client::OverseerClient;
 
+#[allow(dead_code)]
 struct DroneHandle {
     job_run_id: String,
     drone_type: String,
@@ -205,14 +206,13 @@ async fn check_drones(
         }
 
         // Update last_activity from Overseer task data
-        if let Ok(tasks) = client.get_tasks_for_run(id).await {
-            if let Some(latest) = tasks.last() {
-                if let Ok(updated) = chrono::DateTime::parse_from_rfc3339(&latest.updated_at) {
-                    let age = chrono::Utc::now() - updated.to_utc();
-                    if age.num_seconds() < stall_threshold.as_secs() as i64 {
-                        handle.last_activity = now;
-                    }
-                }
+        if let Ok(tasks) = client.get_tasks_for_run(id).await
+            && let Some(latest) = tasks.last()
+            && let Ok(updated) = chrono::DateTime::parse_from_rfc3339(&latest.updated_at)
+        {
+            let age = chrono::Utc::now() - updated.to_utc();
+            if age.num_seconds() < stall_threshold.as_secs() as i64 {
+                handle.last_activity = now;
             }
         }
     }
