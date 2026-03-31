@@ -11,6 +11,7 @@ use clap::Parser;
 use config::{Cli, Config};
 use notifier::log::LogNotifier;
 use overseer_client::OverseerClient;
+use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -40,39 +41,52 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    // 2. Start Creep in background (non-blocking)
+    // 2. Create cancellation token for graceful shutdown
+    let token = CancellationToken::new();
+
+    // 3. Start Creep in background (non-blocking)
     let creep_notifier = notifier.clone();
     let creep_config = config.creep;
+    let creep_token = token.clone();
     tokio::spawn(async move {
-        actors::creep_manager::run(creep_config, creep_notifier).await;
+        actors::creep_manager::run(creep_config, creep_notifier, creep_token).await;
     });
 
-    // 3. Channels
+    // 4. Channels
     let (spawn_tx, spawn_rx) = tokio::sync::mpsc::channel(32);
     let (status_query_tx, status_query_rx) = tokio::sync::mpsc::channel(8);
 
-    // 4. Start Heartbeat actor
+    // 5. Start Heartbeat actor
     let heartbeat_client = client.clone();
     let heartbeat_interval = config.queen.heartbeat_interval;
+    let heartbeat_token = token.clone();
     tokio::spawn(async move {
-        actors::heartbeat::run(heartbeat_client, heartbeat_interval, status_query_tx).await;
+        actors::heartbeat::run(
+            heartbeat_client,
+            heartbeat_interval,
+            status_query_tx,
+            heartbeat_token,
+        )
+        .await;
     });
 
-    // 5. Start Poller actor
+    // 6. Start Poller actor
     let poller_client = client.clone();
     let poll_interval = config.queen.poll_interval;
+    let poller_token = token.clone();
     tokio::spawn(async move {
-        actors::poller::run(poller_client, poll_interval, spawn_tx).await;
+        actors::poller::run(poller_client, poll_interval, spawn_tx, poller_token).await;
     });
 
-    // 6. Parse timeout duration
+    // 7. Parse timeout duration
     let default_timeout = parse_duration(&config.queen.drone_timeout)?;
     let stall_threshold = Duration::from_secs(config.queen.stall_threshold);
 
-    // 7. Start Supervisor actor
+    // 8. Start Supervisor actor
     let supervisor_client = client.clone();
     let supervisor_notifier = notifier.clone();
     let max_concurrency = config.queen.max_concurrency;
+    let supervisor_token = token.clone();
     let supervisor_handle = tokio::spawn(async move {
         actors::supervisor::run(
             supervisor_client,
@@ -82,16 +96,20 @@ async fn main() -> anyhow::Result<()> {
             stall_threshold,
             spawn_rx,
             status_query_rx,
+            supervisor_token,
         )
         .await;
     });
 
-    // 8. Await Ctrl+C
+    // 9. Await Ctrl+C
     tokio::signal::ctrl_c().await?;
     tracing::info!("shutdown signal received");
 
-    // Dropping channels causes actors to stop
-    drop(supervisor_handle);
+    // Cancel all actors
+    token.cancel();
+
+    // Wait for supervisor to finish (it will kill drones and exit)
+    let _ = supervisor_handle.await;
 
     // Deregister from Overseer
     if let Err(e) = client.deregister().await {

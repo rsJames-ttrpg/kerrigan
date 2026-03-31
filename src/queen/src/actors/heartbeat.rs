@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use tokio::sync::{mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
 
 use crate::messages::{StatusQuery, StatusResponse};
 use crate::overseer_client::OverseerClient;
@@ -10,11 +11,18 @@ pub async fn run(
     client: OverseerClient,
     interval_secs: u64,
     status_tx: mpsc::Sender<(StatusQuery, oneshot::Sender<StatusResponse>)>,
+    token: CancellationToken,
 ) {
     let mut ticker = tokio::time::interval(Duration::from_secs(interval_secs));
 
     loop {
-        ticker.tick().await;
+        tokio::select! {
+            _ = ticker.tick() => {}
+            _ = token.cancelled() => {
+                tracing::info!("heartbeat actor cancelled");
+                return;
+            }
+        }
 
         let (resp_tx, resp_rx) = oneshot::channel();
         if status_tx.send((StatusQuery, resp_tx)).await.is_err() {

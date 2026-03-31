@@ -138,7 +138,24 @@ impl Config {
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let config: Config =
             toml::from_str(&contents).with_context(|| format!("parsing {}", path.display()))?;
+        config.validate()?;
         Ok(config)
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if self.queen.name.is_empty() {
+            anyhow::bail!("queen.name must not be empty");
+        }
+        if self.queen.max_concurrency <= 0 {
+            anyhow::bail!("queen.max_concurrency must be greater than 0");
+        }
+        if self.queen.heartbeat_interval == 0 {
+            anyhow::bail!("queen.heartbeat_interval must be greater than 0");
+        }
+        if self.queen.poll_interval == 0 {
+            anyhow::bail!("queen.poll_interval must be greater than 0");
+        }
+        Ok(())
     }
 
     pub fn apply_overrides(&mut self, cli: &Cli) {
@@ -225,6 +242,82 @@ backend = "slack"
         assert_eq!(config.creep.health_port, 9999);
         assert_eq!(config.creep.restart_delay, 10);
         assert_eq!(config.notifications.backend, "slack");
+    }
+
+    #[test]
+    fn test_validate_empty_name() {
+        let f = write_toml(
+            r#"
+[queen]
+name = ""
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(err.to_string().contains("queen.name must not be empty"));
+    }
+
+    #[test]
+    fn test_validate_zero_max_concurrency() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+max_concurrency = 0
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("queen.max_concurrency must be greater than 0")
+        );
+    }
+
+    #[test]
+    fn test_validate_zero_heartbeat_interval() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+heartbeat_interval = 0
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("queen.heartbeat_interval must be greater than 0")
+        );
+    }
+
+    #[test]
+    fn test_validate_zero_poll_interval() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+poll_interval = 0
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("queen.poll_interval must be greater than 0")
+        );
+    }
+
+    #[test]
+    fn test_validate_negative_max_concurrency() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+max_concurrency = -1
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("queen.max_concurrency must be greater than 0")
+        );
     }
 
     #[test]

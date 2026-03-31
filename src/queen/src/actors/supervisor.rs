@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use tokio::process::Child;
 use tokio::sync::{mpsc, oneshot};
+use tokio_util::sync::CancellationToken;
 
 use crate::messages::{SpawnRequest, StatusQuery, StatusResponse};
 use crate::notifier::{Notifier, QueenEvent};
@@ -19,6 +20,7 @@ struct DroneHandle {
     last_activity: Instant,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     client: OverseerClient,
     notifier: Arc<dyn Notifier>,
@@ -27,10 +29,12 @@ pub async fn run(
     stall_threshold: Duration,
     mut spawn_rx: mpsc::Receiver<SpawnRequest>,
     mut status_rx: mpsc::Receiver<(StatusQuery, oneshot::Sender<StatusResponse>)>,
+    token: CancellationToken,
 ) {
     let mut active: HashMap<String, DroneHandle> = HashMap::new();
     let mut queue: VecDeque<SpawnRequest> = VecDeque::new();
-    let mut health_ticker = tokio::time::interval(Duration::from_secs(30));
+    // Reduced from 30s to 5s for faster drone completion detection
+    let mut health_ticker = tokio::time::interval(Duration::from_secs(5));
 
     loop {
         tokio::select! {
@@ -62,6 +66,11 @@ pub async fn run(
                 }
             }
 
+            _ = token.cancelled() => {
+                tracing::info!("supervisor cancelled, shutting down drones");
+                break;
+            }
+
             else => {
                 tracing::info!("all channels closed, supervisor exiting");
                 break;
@@ -69,7 +78,7 @@ pub async fn run(
         }
     }
 
-    shutdown_all(&client, &notifier, &mut active).await;
+    shutdown_all(&client, &mut active).await;
 }
 
 async fn spawn_drone(
@@ -179,10 +188,23 @@ async fn check_drones(
             }
         }
 
+        // Update last_activity from Overseer task data BEFORE checking stall threshold
+        // to avoid spurious stall warnings on newly started drones
+        if let Ok(tasks) = client.get_tasks_for_run(id).await
+            && let Some(latest) = tasks.last()
+            && let Ok(updated) = chrono::DateTime::parse_from_rfc3339(&latest.updated_at)
+        {
+            let age = chrono::Utc::now() - updated.to_utc();
+            if age.num_seconds() < stall_threshold.as_secs() as i64 {
+                handle.last_activity = now;
+            }
+        }
+
         // Check timeout
         if now.duration_since(handle.started_at) > handle.timeout {
             tracing::warn!(job_run_id = %id, "drone timed out, killing");
             let _ = handle.process.kill().await;
+            let _ = handle.process.wait().await;
             let _ = client
                 .update_job_run(id, Some("failed"), None, Some("timed out"))
                 .await;
@@ -204,17 +226,6 @@ async fn check_drones(
                 })
                 .await;
         }
-
-        // Update last_activity from Overseer task data
-        if let Ok(tasks) = client.get_tasks_for_run(id).await
-            && let Some(latest) = tasks.last()
-            && let Ok(updated) = chrono::DateTime::parse_from_rfc3339(&latest.updated_at)
-        {
-            let age = chrono::Utc::now() - updated.to_utc();
-            if age.num_seconds() < stall_threshold.as_secs() as i64 {
-                handle.last_activity = now;
-            }
-        }
     }
 
     for id in completed {
@@ -222,17 +233,14 @@ async fn check_drones(
     }
 }
 
-async fn shutdown_all(
-    client: &OverseerClient,
-    notifier: &Arc<dyn Notifier>,
-    active: &mut HashMap<String, DroneHandle>,
-) {
+async fn shutdown_all(client: &OverseerClient, active: &mut HashMap<String, DroneHandle>) {
     for (id, mut handle) in active.drain() {
         tracing::info!(job_run_id = %id, "killing drone for shutdown");
         let _ = handle.process.kill().await;
+        let _ = handle.process.wait().await;
         let _ = client
             .update_job_run(&id, Some("cancelled"), None, Some("queen shutting down"))
             .await;
     }
-    notifier.notify(QueenEvent::ShuttingDown).await;
+    // ShuttingDown notification is sent from main.rs only
 }

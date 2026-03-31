@@ -9,6 +9,7 @@ QUEEN_DEPS = [
     "//third-party:serde",
     "//third-party:serde_json",
     "//third-party:tokio",
+    "//third-party:tokio-util",
     "//third-party:toml",
     "//third-party:tracing",
     "//third-party:tracing-subscriber",
