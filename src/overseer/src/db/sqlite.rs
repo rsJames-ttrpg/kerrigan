@@ -4,7 +4,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;
 
 use super::models::*;
-use super::trait_def::{ArtifactStore, DecisionStore, JobStore, MemoryStore};
+use super::trait_def::{ArtifactStore, DecisionStore, HatcheryStore, JobStore, MemoryStore};
 use crate::error::{OverseerError, Result};
 
 /// Load the sqlite-vec extension into every new SQLite connection.
@@ -282,5 +282,54 @@ impl ArtifactStore for SqliteDatabase {
 
     async fn list_artifacts(&self, run_id: Option<&str>) -> Result<Vec<ArtifactMetadata>> {
         super::artifacts::list_artifacts(&self.pool, run_id).await
+    }
+}
+
+#[async_trait]
+impl HatcheryStore for SqliteDatabase {
+    async fn register_hatchery(
+        &self,
+        name: &str,
+        capabilities: serde_json::Value,
+        max_concurrency: i32,
+    ) -> Result<Hatchery> {
+        super::hatcheries::register_hatchery(&self.pool, name, capabilities, max_concurrency).await
+    }
+
+    async fn get_hatchery(&self, id: &str) -> Result<Option<Hatchery>> {
+        super::hatcheries::get_hatchery(&self.pool, id).await
+    }
+
+    async fn get_hatchery_by_name(&self, name: &str) -> Result<Option<Hatchery>> {
+        super::hatcheries::get_hatchery_by_name(&self.pool, name).await
+    }
+
+    async fn heartbeat_hatchery(
+        &self,
+        id: &str,
+        status: &str,
+        active_drones: i32,
+    ) -> Result<Hatchery> {
+        super::hatcheries::heartbeat_hatchery(&self.pool, id, status, active_drones).await
+    }
+
+    async fn list_hatcheries(&self, status: Option<&str>) -> Result<Vec<Hatchery>> {
+        super::hatcheries::list_hatcheries(&self.pool, status).await
+    }
+
+    async fn deregister_hatchery(&self, id: &str) -> Result<()> {
+        super::hatcheries::deregister_hatchery(&self.pool, id).await
+    }
+
+    async fn assign_job_to_hatchery(&self, job_run_id: &str, hatchery_id: &str) -> Result<JobRun> {
+        super::hatcheries::assign_job_to_hatchery(&self.pool, job_run_id, hatchery_id).await
+    }
+
+    async fn list_hatchery_job_runs(
+        &self,
+        hatchery_id: &str,
+        status: Option<&str>,
+    ) -> Result<Vec<JobRun>> {
+        super::hatcheries::list_hatchery_job_runs(&self.pool, hatchery_id, status).await
     }
 }

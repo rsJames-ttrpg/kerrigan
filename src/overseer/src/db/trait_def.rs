@@ -159,11 +159,7 @@ pub trait HatcheryStore: Send + Sync {
 
     async fn deregister_hatchery(&self, id: &str) -> Result<()>;
 
-    async fn assign_job_to_hatchery(
-        &self,
-        job_run_id: &str,
-        hatchery_id: &str,
-    ) -> Result<JobRun>;
+    async fn assign_job_to_hatchery(&self, job_run_id: &str, hatchery_id: &str) -> Result<JobRun>;
 
     async fn list_hatchery_job_runs(
         &self,
