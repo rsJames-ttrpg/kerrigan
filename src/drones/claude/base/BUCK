@@ -1,0 +1,30 @@
+CLAUDE_DRONE_SRCS = glob(["src/**/*.rs"])
+
+CLAUDE_DRONE_DEPS = [
+    "//src/drone-sdk:drone-sdk",
+    "//third-party:anyhow",
+    "//third-party:async-trait",
+    "//third-party:dirs",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:tokio",
+    "//third-party:tracing",
+    "//third-party:tracing-subscriber",
+]
+
+rust_binary(
+    name = "claude-drone",
+    srcs = CLAUDE_DRONE_SRCS,
+    crate_root = "src/main.rs",
+    deps = CLAUDE_DRONE_DEPS,
+    resources = glob(["config/**"]),
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "claude-drone-test",
+    srcs = CLAUDE_DRONE_SRCS,
+    crate_root = "src/main.rs",
+    deps = CLAUDE_DRONE_DEPS,
+    visibility = ["PUBLIC"],
+)
