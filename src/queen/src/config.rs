@@ -1,0 +1,348 @@
+use anyhow::{Context, Result};
+use clap::Parser;
+use serde::Deserialize;
+use std::path::PathBuf;
+
+#[derive(Parser, Debug)]
+#[command(name = "queen", about = "Queen hatchery manager")]
+pub struct Cli {
+    /// Path to config file
+    #[arg(long, default_value = "hatchery.toml")]
+    pub config: PathBuf,
+
+    /// Hatchery name
+    #[arg(long, env = "QUEEN_NAME")]
+    pub name: Option<String>,
+
+    /// Overseer base URL
+    #[arg(long, env = "QUEEN_OVERSEER_URL")]
+    pub overseer_url: Option<String>,
+
+    /// Maximum concurrent drones
+    #[arg(long, env = "QUEEN_MAX_CONCURRENCY")]
+    pub max_concurrency: Option<i32>,
+}
+
+fn default_overseer_url() -> String {
+    "http://localhost:3100".to_string()
+}
+
+fn default_heartbeat_interval() -> u64 {
+    30
+}
+
+fn default_poll_interval() -> u64 {
+    10
+}
+
+fn default_max_concurrency() -> i32 {
+    4
+}
+
+fn default_drone_timeout() -> String {
+    "2h".to_string()
+}
+
+fn default_stall_threshold() -> u64 {
+    300
+}
+
+fn default_creep_binary() -> String {
+    "./creep".to_string()
+}
+
+fn default_health_port() -> u16 {
+    9090
+}
+
+fn default_restart_delay() -> u64 {
+    5
+}
+
+fn default_creep_enabled() -> bool {
+    true
+}
+
+fn default_notification_backend() -> String {
+    "log".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct QueenConfig {
+    pub name: String,
+    #[serde(default = "default_overseer_url")]
+    pub overseer_url: String,
+    #[serde(default = "default_heartbeat_interval")]
+    pub heartbeat_interval: u64,
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval: u64,
+    #[serde(default = "default_max_concurrency")]
+    pub max_concurrency: i32,
+    #[serde(default = "default_drone_timeout")]
+    pub drone_timeout: String,
+    #[serde(default = "default_stall_threshold")]
+    pub stall_threshold: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreepConfig {
+    #[serde(default = "default_creep_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_creep_binary")]
+    pub binary: String,
+    #[serde(default = "default_health_port")]
+    pub health_port: u16,
+    #[serde(default = "default_restart_delay")]
+    pub restart_delay: u64,
+}
+
+impl Default for CreepConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_creep_enabled(),
+            binary: default_creep_binary(),
+            health_port: default_health_port(),
+            restart_delay: default_restart_delay(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct NotificationConfig {
+    #[serde(default = "default_notification_backend")]
+    pub backend: String,
+}
+
+impl Default for NotificationConfig {
+    fn default() -> Self {
+        Self {
+            backend: default_notification_backend(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Config {
+    pub queen: QueenConfig,
+    #[serde(default)]
+    pub creep: CreepConfig,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub notifications: NotificationConfig,
+}
+
+impl Config {
+    pub fn load(path: &std::path::Path) -> Result<Self> {
+        let contents =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let config: Config =
+            toml::from_str(&contents).with_context(|| format!("parsing {}", path.display()))?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if self.queen.name.is_empty() {
+            anyhow::bail!("queen.name must not be empty");
+        }
+        if self.queen.max_concurrency <= 0 {
+            anyhow::bail!("queen.max_concurrency must be greater than 0");
+        }
+        if self.queen.heartbeat_interval == 0 {
+            anyhow::bail!("queen.heartbeat_interval must be greater than 0");
+        }
+        if self.queen.poll_interval == 0 {
+            anyhow::bail!("queen.poll_interval must be greater than 0");
+        }
+        Ok(())
+    }
+
+    pub fn apply_overrides(&mut self, cli: &Cli) {
+        if let Some(name) = &cli.name {
+            self.queen.name = name.clone();
+        }
+        if let Some(url) = &cli.overseer_url {
+            self.queen.overseer_url = url.clone();
+        }
+        if let Some(max) = cli.max_concurrency {
+            self.queen.max_concurrency = max;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    fn write_toml(contents: &str) -> NamedTempFile {
+        let mut f = NamedTempFile::new().unwrap();
+        write!(f, "{}", contents).unwrap();
+        f
+    }
+
+    #[test]
+    fn test_parse_minimal_config() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test-hatchery"
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert_eq!(config.queen.name, "test-hatchery");
+        assert_eq!(config.queen.overseer_url, "http://localhost:3100");
+        assert_eq!(config.queen.heartbeat_interval, 30);
+        assert_eq!(config.queen.poll_interval, 10);
+        assert_eq!(config.queen.max_concurrency, 4);
+        assert_eq!(config.queen.drone_timeout, "2h");
+        assert_eq!(config.queen.stall_threshold, 300);
+        assert!(config.creep.enabled);
+        assert_eq!(config.creep.binary, "./creep");
+        assert_eq!(config.creep.health_port, 9090);
+        assert_eq!(config.creep.restart_delay, 5);
+        assert_eq!(config.notifications.backend, "log");
+    }
+
+    #[test]
+    fn test_parse_full_config() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "prod-hatchery"
+overseer_url = "http://overseer:3100"
+heartbeat_interval = 60
+poll_interval = 5
+max_concurrency = 8
+drone_timeout = "4h"
+stall_threshold = 600
+
+[creep]
+enabled = false
+binary = "/usr/local/bin/creep"
+health_port = 9999
+restart_delay = 10
+
+[notifications]
+backend = "slack"
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert_eq!(config.queen.name, "prod-hatchery");
+        assert_eq!(config.queen.overseer_url, "http://overseer:3100");
+        assert_eq!(config.queen.heartbeat_interval, 60);
+        assert_eq!(config.queen.poll_interval, 5);
+        assert_eq!(config.queen.max_concurrency, 8);
+        assert_eq!(config.queen.drone_timeout, "4h");
+        assert_eq!(config.queen.stall_threshold, 600);
+        assert!(!config.creep.enabled);
+        assert_eq!(config.creep.binary, "/usr/local/bin/creep");
+        assert_eq!(config.creep.health_port, 9999);
+        assert_eq!(config.creep.restart_delay, 10);
+        assert_eq!(config.notifications.backend, "slack");
+    }
+
+    #[test]
+    fn test_validate_empty_name() {
+        let f = write_toml(
+            r#"
+[queen]
+name = ""
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(err.to_string().contains("queen.name must not be empty"));
+    }
+
+    #[test]
+    fn test_validate_zero_max_concurrency() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+max_concurrency = 0
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("queen.max_concurrency must be greater than 0")
+        );
+    }
+
+    #[test]
+    fn test_validate_zero_heartbeat_interval() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+heartbeat_interval = 0
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("queen.heartbeat_interval must be greater than 0")
+        );
+    }
+
+    #[test]
+    fn test_validate_zero_poll_interval() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+poll_interval = 0
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("queen.poll_interval must be greater than 0")
+        );
+    }
+
+    #[test]
+    fn test_validate_negative_max_concurrency() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+max_concurrency = -1
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("queen.max_concurrency must be greater than 0")
+        );
+    }
+
+    #[test]
+    fn test_cli_overrides() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "base-hatchery"
+overseer_url = "http://localhost:3100"
+max_concurrency = 4
+"#,
+        );
+        let mut config = Config::load(f.path()).unwrap();
+
+        let cli = Cli {
+            config: PathBuf::from("hatchery.toml"),
+            name: Some("override-name".to_string()),
+            overseer_url: Some("http://other:3100".to_string()),
+            max_concurrency: Some(16),
+        };
+
+        config.apply_overrides(&cli);
+
+        assert_eq!(config.queen.name, "override-name");
+        assert_eq!(config.queen.overseer_url, "http://other:3100");
+        assert_eq!(config.queen.max_concurrency, 16);
+    }
+}
