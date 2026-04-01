@@ -18,19 +18,26 @@ pub struct ClaudeDrone;
 impl DroneRunner for ClaudeDrone {
     async fn setup(&self, job: &JobSpec) -> Result<DroneEnvironment> {
         let env = environment::create_home(&job.job_run_id).await?;
-        environment::clone_repo(&job.repo_url, job.branch.as_deref(), &env.workspace).await?;
+
+        // Configure secrets BEFORE clone — git clone needs credentials for HTTPS
+        if let Some(secrets) = job.config.get("secrets") {
+            if let Some(pat) = secrets.get("github_pat").and_then(|v| v.as_str()) {
+                environment::configure_github_auth(&env.home, pat).await?;
+            }
+        }
+
+        environment::clone_repo(
+            &job.repo_url,
+            job.branch.as_deref(),
+            &env.workspace,
+            &env.home,
+        )
+        .await?;
         environment::write_task(&env.home, &job.task).await?;
 
         // Configure Overseer MCP URL if provided in job config
         if let Some(overseer_url) = job.config.get("overseer_url").and_then(|v| v.as_str()) {
             environment::configure_mcp_url(&env.home, overseer_url).await?;
-        }
-
-        // Configure secrets from job config
-        if let Some(secrets) = job.config.get("secrets") {
-            if let Some(pat) = secrets.get("github_pat").and_then(|v| v.as_str()) {
-                environment::configure_github_auth(&env.home, pat).await?;
-            }
         }
 
         // Collect environment variables for the drone session
@@ -190,7 +197,7 @@ impl DroneRunner for ClaudeDrone {
                         };
 
                         let task_text = task.chars().take(200).collect::<String>();
-                        let git_refs = ensure_pr(&env.workspace, &task_text).await;
+                        let git_refs = ensure_pr(&env.workspace, &env.home, &task_text).await;
 
                         return Ok(DroneOutput {
                             exit_code,
@@ -336,9 +343,10 @@ async fn authenticate(
 }
 
 /// Collect git branch name and PR URL from the workspace.
-async fn collect_git_refs(workspace: &Path) -> GitRefs {
+async fn collect_git_refs(workspace: &Path, home: &Path) -> GitRefs {
     let branch = match Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .env("HOME", home)
         .current_dir(workspace)
         .output()
         .await
@@ -363,6 +371,7 @@ async fn collect_git_refs(workspace: &Path) -> GitRefs {
 
     let pr_url = match Command::new("gh")
         .args(["pr", "view", "--json", "url", "-q", ".url"])
+        .env("HOME", home)
         .current_dir(workspace)
         .output()
         .await
@@ -383,10 +392,11 @@ async fn collect_git_refs(workspace: &Path) -> GitRefs {
 
 /// Safety net: ensure uncommitted changes are pushed and a PR exists.
 /// Returns updated GitRefs.
-async fn ensure_pr(workspace: &Path, task: &str) -> GitRefs {
+async fn ensure_pr(workspace: &Path, home: &Path, task: &str) -> GitRefs {
     // 1. Check for uncommitted changes
     let status_output = Command::new("git")
         .args(["status", "--porcelain"])
+        .env("HOME", home)
         .current_dir(workspace)
         .output()
         .await;
@@ -397,6 +407,7 @@ async fn ensure_pr(workspace: &Path, task: &str) -> GitRefs {
             tracing::warn!("uncommitted changes found after Claude Code exit, committing");
             let _ = Command::new("git")
                 .args(["add", "-A"])
+                .env("HOME", home)
                 .current_dir(workspace)
                 .output()
                 .await;
@@ -406,6 +417,7 @@ async fn ensure_pr(workspace: &Path, task: &str) -> GitRefs {
                     "-m",
                     "chore: commit remaining changes from drone session",
                 ])
+                .env("HOME", home)
                 .current_dir(workspace)
                 .output()
                 .await;
@@ -413,7 +425,7 @@ async fn ensure_pr(workspace: &Path, task: &str) -> GitRefs {
     }
 
     // 2. Check if we're on a non-default branch (something to push)
-    let refs = collect_git_refs(workspace).await;
+    let refs = collect_git_refs(workspace, home).await;
     let branch = match &refs.branch {
         Some(b) if b != "main" && b != "master" => b.clone(),
         _ => {
@@ -425,6 +437,7 @@ async fn ensure_pr(workspace: &Path, task: &str) -> GitRefs {
     // 3. Push if not already pushed
     let push_output = Command::new("git")
         .args(["push", "-u", "origin", &branch])
+        .env("HOME", home)
         .current_dir(workspace)
         .output()
         .await;
@@ -453,6 +466,7 @@ async fn ensure_pr(workspace: &Path, task: &str) -> GitRefs {
             "--title", &title,
             "--body", "Automated PR created by Kerrigan drone.\n\nClaude Code did not create a PR during its session. This PR was created as a safety net.",
         ])
+        .env("HOME", home)
         .current_dir(workspace)
         .output()
         .await;

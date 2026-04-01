@@ -182,8 +182,15 @@ pub async fn read_env_vars(home: &Path) -> Result<Vec<(String, String)>> {
 }
 
 /// Shallow-clone a git repository into `workspace`.
-pub async fn clone_repo(repo_url: &str, branch: Option<&str>, workspace: &Path) -> Result<()> {
+/// `home` is the drone's isolated HOME — needed for git credential helper.
+pub async fn clone_repo(
+    repo_url: &str,
+    branch: Option<&str>,
+    workspace: &Path,
+    home: &Path,
+) -> Result<()> {
     let mut cmd = Command::new("git");
+    cmd.env("HOME", home);
     cmd.arg("clone").arg("--depth").arg("1");
     if let Some(b) = branch {
         cmd.arg("--branch").arg(b);
