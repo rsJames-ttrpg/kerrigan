@@ -1,0 +1,14 @@
+[server]
+http_port = 3100
+mcp_transport = "http"
+
+[storage]
+database_url = "sqlite:///data/overseer.db"
+artifact_url = "file:///data/artifacts"
+
+[embedding]
+default = "stub"
+
+[embedding.providers.stub]
+source = "stub"
+dimensions = 384

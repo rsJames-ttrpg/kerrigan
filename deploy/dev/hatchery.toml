@@ -1,0 +1,9 @@
+[queen]
+name = "dev-hatchery"
+overseer_url = "http://localhost:3100"
+drone_dir = "/opt/kerrigan/drones"
+max_concurrency = 1
+drone_timeout = "2h"
+
+[creep]
+enabled = false
