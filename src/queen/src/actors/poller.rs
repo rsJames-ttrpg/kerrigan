@@ -63,14 +63,23 @@ pub async fn run(
                 }
             };
 
-            let drone_type = def
-                .config
+            // Merge config_overrides on top of definition config
+            let mut config = def.config.clone();
+            if let Some(overrides) = &run.config_overrides {
+                if let (Some(base), Some(over)) = (config.as_object_mut(), overrides.as_object()) {
+                    for (k, v) in over {
+                        base.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+
+            let drone_type = config
                 .get("drone_type")
                 .and_then(|v| v.as_str())
                 .unwrap_or("claude-drone")
                 .to_string();
 
-            let repo_url = match def.config.get("repo_url").and_then(|v| v.as_str()) {
+            let repo_url = match config.get("repo_url").and_then(|v| v.as_str()) {
                 Some(url) if !url.is_empty() => url.to_string(),
                 _ => {
                     tracing::warn!(
@@ -91,13 +100,12 @@ pub async fn run(
                 }
             };
 
-            let branch = def
-                .config
+            let branch = config
                 .get("branch")
                 .and_then(|v| v.as_str())
                 .map(String::from);
 
-            let task = match def.config.get("task").and_then(|v| v.as_str()) {
+            let task = match config.get("task").and_then(|v| v.as_str()) {
                 Some(t) if !t.is_empty() => t.to_string(),
                 _ => {
                     tracing::warn!(
@@ -121,7 +129,7 @@ pub async fn run(
             let request = SpawnRequest {
                 job_run_id: run.id.clone(),
                 drone_type,
-                job_config: def.config.clone(),
+                job_config: config,
                 repo_url,
                 branch,
                 task,

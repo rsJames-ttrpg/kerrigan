@@ -26,7 +26,7 @@ enum Command {
         #[arg(long)]
         hatchery: Option<String>,
         /// Job definition name to use
-        #[arg(long, default_value = "spec-from-problem")]
+        #[arg(long, default_value = "default")]
         definition: String,
     },
     /// Show job status
@@ -110,12 +110,22 @@ async fn cmd_submit(
         .ok_or_else(|| anyhow::anyhow!("job definition '{}' not found", definition_name))?;
 
     // 2. Build config overrides
-    let mut config = serde_json::json!({ "problem": problem });
+    // The problem description becomes the task for the drone
+    let mut config = serde_json::json!({ "task": problem });
     for kv in overrides {
         let (key, value) = kv.split_once('=').ok_or_else(|| {
             anyhow::anyhow!("invalid override format '{}', expected key=value", kv)
         })?;
-        config[key] = serde_json::Value::String(value.to_string());
+        // Support nested keys: "secrets.github_pat=xxx" -> {"secrets": {"github_pat": "xxx"}}
+        let parts: Vec<&str> = key.splitn(2, '.').collect();
+        if parts.len() == 2 {
+            if config.get(parts[0]).is_none() {
+                config[parts[0]] = serde_json::json!({});
+            }
+            config[parts[0]][parts[1]] = serde_json::Value::String(value.to_string());
+        } else {
+            config[key] = serde_json::Value::String(value.to_string());
+        }
     }
 
     // 3. Start run

@@ -1,5 +1,6 @@
 mod drone;
 mod environment;
+mod stages;
 
 use tracing_subscriber::EnvFilter;
 

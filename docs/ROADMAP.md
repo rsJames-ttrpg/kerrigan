@@ -62,20 +62,24 @@ Everything else runs autonomously as drone work.
 - Auth: credential mount bypass works; headless OAuth is the remaining gap
 - Depends on: #2
 
-**4. Job submission interface** `[next — overseer client library + CLI/UI]`
-- Overseer client library (Rust crate) — reusable by Queen, CLI, web UI
-- CLI tool: `kerrigan submit`, `kerrigan status`, `kerrigan auth`
-- Simple htmx web UI for job submission and status
-- Replaces the current curl-based job submission
+**4. Job submission interface** `[done — nydus client lib + kerrigan CLI]`
+- `nydus` shared client library (Rust crate) — used by Queen, kerrigan CLI, future htmx UI
+- `kerrigan` CLI: submit, status, approve, reject, auth, log commands
+- Default job definition seeded on Overseer startup
+- Config overrides merged at runtime (Queen poller merges run overrides onto definition config)
+- Install target: `buck2 run root//src/kerrigan:install`
 - Depends on: #3
 
 ### Phase 3: Autonomous Development Loop
 *Submit a problem, get a PR back.*
 
-**5. Drone PR workflow** `[implementation]`
-- claude-drone configures Claude Code to work on a branch, commit, push, create PR
-- Drone hooks handle branch creation and PR submission
-- Git refs (branch, PR URL) reported back in DroneOutput and stored in Overseer
+**5. Drone PR workflow** `[done — first successful drone PR]`
+- CLAUDE.md instructs Claude Code to branch, commit, push, create PR
+- Drone post-execute safety net: commits stragglers, pushes, creates fallback PR
+- Queen enforces PR requirement: exit_code==0 but no PR URL → failed
+- Secrets via job config: `secrets.github_pat` for gh/git auth, `secrets.buildbuddy_api_key` for RE cache
+- Overseer MCP configured in drone settings.json (URL rewritten at runtime)
+- Conversation artifacts gzipped before storage
 - Depends on: #3, #4
 
 **6. Job templates for dev stages** `[spec needed]`
@@ -129,11 +133,11 @@ Everything else runs autonomously as drone work.
 #1 Drone config design ✅
  └→ #2 Vendor drone configs ✅ (base drone, subtypes TODO)
      └→ #3 Integration smoke test ✅ (first drone task completed)
-         ├→ #4 Job submission ← NEXT (client lib + CLI/UI)
-         │   └→ #5 PR workflow
-         │       └→ #6 Job templates
+         ├→ #4 Job submission ✅ (nydus client lib + kerrigan CLI)
+         │   └→ #5 PR workflow ✅ (first successful drone PR)
+         │       └→ #6 Job templates ← NEXT
          │           └→ #7 Job chaining ← DOGFOODING
          └→ #10 Auth flow (partial — cred mount works, headless OAuth TODO)
 ```
 
-Items 4-7 are the remaining critical path. #4 is next: Overseer client library, then CLI and/or htmx UI on top.
+Items 6-7 are the remaining critical path. #6 is next: pre-defined job templates for each stage of the dev loop.

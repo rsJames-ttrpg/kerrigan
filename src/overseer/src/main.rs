@@ -84,6 +84,49 @@ async fn main() -> anyhow::Result<()> {
 
     let state = Arc::new(AppState::new(db, registry, store));
 
+    // Seed job definitions if they don't exist
+    let existing = state.jobs.list_job_definitions().await?;
+    let existing_names: std::collections::HashSet<&str> =
+        existing.iter().map(|d| d.name.as_str()).collect();
+
+    let seed_definitions = [
+        (
+            "default",
+            "Default job definition for ad-hoc tasks",
+            serde_json::json!({ "drone_type": "claude-drone" }),
+        ),
+        (
+            "spec-from-problem",
+            "Generate a design spec from a problem description",
+            serde_json::json!({ "drone_type": "claude-drone", "stage": "spec" }),
+        ),
+        (
+            "plan-from-spec",
+            "Write an implementation plan from a spec",
+            serde_json::json!({ "drone_type": "claude-drone", "stage": "plan" }),
+        ),
+        (
+            "implement-from-plan",
+            "Implement code from an implementation plan",
+            serde_json::json!({ "drone_type": "claude-drone", "stage": "implement" }),
+        ),
+        (
+            "review-pr",
+            "Review a pull request",
+            serde_json::json!({ "drone_type": "claude-drone", "stage": "review" }),
+        ),
+    ];
+
+    for (name, description, def_config) in seed_definitions {
+        if !existing_names.contains(name) {
+            state
+                .jobs
+                .create_job_definition(name, description, def_config)
+                .await?;
+            tracing::info!("seeded job definition: {name}");
+        }
+    }
+
     // HTTP server
     let http_router = api::router(state.clone());
     let http_addr = format!("0.0.0.0:{}", config.server.http_port);
