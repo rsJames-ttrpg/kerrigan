@@ -56,9 +56,17 @@ impl FileWatcher {
         if gitignore_path.exists() {
             builder.add(&gitignore_path);
         }
-        let matcher = builder
-            .build()
-            .unwrap_or_else(|_| ignore::gitignore::Gitignore::empty());
+        let matcher = match builder.build() {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!(
+                    workspace = %workspace.display(),
+                    error = %e,
+                    "failed to parse .gitignore, nothing will be ignored in this workspace"
+                );
+                ignore::gitignore::Gitignore::empty()
+            }
+        };
         self.matchers.insert(workspace_buf.clone(), matcher);
 
         // Create a notify watcher. The closure runs on notify's own OS thread
@@ -66,7 +74,13 @@ impl FileWatcher {
         let tx = self.tx.clone();
         let mut watcher =
             notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                let Ok(event) = res else { return };
+                let event = match res {
+                    Ok(e) => e,
+                    Err(e) => {
+                        eprintln!("creep: notify watcher error: {e}");
+                        return;
+                    }
+                };
                 for path in event.paths {
                     let watch_event = match event.kind {
                         EventKind::Create(_) => WatchEvent::Created(path),
@@ -74,9 +88,9 @@ impl FileWatcher {
                         EventKind::Remove(_) => WatchEvent::Removed(path),
                         _ => continue,
                     };
-                    // blocking_send is correct here: notify's callback thread is
-                    // outside the tokio runtime, so we can block briefly.
-                    let _ = tx.blocking_send(watch_event);
+                    if let Err(e) = tx.try_send(watch_event) {
+                        eprintln!("creep: watcher event dropped: {e}");
+                    }
                 }
             })?;
 

@@ -26,10 +26,14 @@ impl FileIndex {
     }
 
     pub async fn scan_workspace(&self, path: impl AsRef<Path>) -> anyhow::Result<u64> {
-        let root = path.as_ref().to_path_buf();
-        let files = tokio::task::spawn_blocking(move || scan_directory(&root)).await??;
+        let workspace = path.as_ref().to_path_buf();
+        let workspace_for_scan = workspace.clone();
+        let files =
+            tokio::task::spawn_blocking(move || scan_directory(&workspace_for_scan)).await??;
         let count = files.len() as u64;
         let mut map = self.inner.write().await;
+        // Remove stale entries from this workspace before inserting fresh ones.
+        map.retain(|k, _| !k.starts_with(&workspace));
         for meta in files {
             map.insert(meta.path.clone(), meta);
         }
@@ -77,6 +81,7 @@ impl FileIndex {
         map.get(path.as_ref()).cloned()
     }
 
+    #[allow(dead_code)]
     pub async fn len(&self) -> usize {
         self.inner.read().await.len()
     }
@@ -113,8 +118,10 @@ pub fn index_file(path: &Path) -> anyhow::Result<FileMetadata> {
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs() as i64;
     let file_type = detect_file_type(path);
-    let contents = std::fs::read(path)?;
-    let hash = blake3::hash(&contents);
+    let file = std::fs::File::open(path)?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update_reader(&file)?;
+    let hash = hasher.finalize();
     let content_hash = hash.to_hex().to_string();
     Ok(FileMetadata {
         path: path.to_path_buf(),

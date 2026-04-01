@@ -76,7 +76,20 @@ impl FileIndexTrait for FileIndexServiceImpl {
         request: Request<RegisterWorkspaceRequest>,
     ) -> Result<Response<RegisterWorkspaceResponse>, Status> {
         let req = request.into_inner();
+
+        if req.path.is_empty() {
+            return Err(Status::invalid_argument("workspace path must not be empty"));
+        }
         let path = PathBuf::from(&req.path);
+        if !path.is_absolute() {
+            return Err(Status::invalid_argument("workspace path must be absolute"));
+        }
+        if !path.is_dir() {
+            return Err(Status::not_found(format!(
+                "{} is not a directory",
+                path.display()
+            )));
+        }
 
         // Start watching before scanning so no events are lost.
         {
@@ -86,9 +99,17 @@ impl FileIndexTrait for FileIndexServiceImpl {
             })?;
         }
 
-        let files_indexed = self.index.scan_workspace(&path).await.map_err(|e| {
-            Status::internal(format!("failed to scan workspace {}: {e}", path.display()))
-        })?;
+        let files_indexed = match self.index.scan_workspace(&path).await {
+            Ok(n) => n,
+            Err(e) => {
+                let mut guard = self.watcher.lock().await;
+                guard.unwatch(&path);
+                return Err(Status::internal(format!(
+                    "failed to scan workspace {}: {e}",
+                    path.display()
+                )));
+            }
+        };
 
         tracing::info!(
             "registered workspace {} ({files_indexed} files)",
