@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::messages::{SpawnRequest, StatusQuery, StatusResponse};
 use crate::notifier::{Notifier, QueenEvent};
-use crate::overseer_client::OverseerClient;
+use nydus::NydusClient;
 
 #[allow(dead_code)]
 struct DroneHandle {
@@ -27,7 +27,7 @@ struct DroneHandle {
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
-    client: OverseerClient,
+    client: NydusClient,
     notifier: Arc<dyn Notifier>,
     max_concurrency: i32,
     default_timeout: Duration,
@@ -89,7 +89,7 @@ pub async fn run(
 }
 
 async fn spawn_drone(
-    client: &OverseerClient,
+    client: &NydusClient,
     notifier: &Arc<dyn Notifier>,
     active: &mut HashMap<String, DroneHandle>,
     request: SpawnRequest,
@@ -108,7 +108,7 @@ async fn spawn_drone(
             "invalid drone_type: contains path separator"
         );
         if let Err(e) = client
-            .update_job_run(
+            .update_run(
                 &request.job_run_id,
                 Some("failed"),
                 None,
@@ -138,7 +138,7 @@ async fn spawn_drone(
         Err(e) => {
             tracing::error!(job_run_id = %request.job_run_id, binary = %binary.display(), error = %e, "failed to spawn drone process");
             if let Err(e) = client
-                .update_job_run(
+                .update_run(
                     &request.job_run_id,
                     Some("failed"),
                     None,
@@ -257,7 +257,7 @@ async fn spawn_drone(
 }
 
 async fn drain_protocol_messages(
-    client: &OverseerClient,
+    client: &NydusClient,
     notifier: &Arc<dyn Notifier>,
     active: &mut HashMap<String, DroneHandle>,
 ) {
@@ -356,7 +356,7 @@ async fn drain_protocol_messages(
                             };
                             let result_value = serde_json::to_value(&output).ok();
                             if let Err(e) = client
-                                .update_job_run(id, Some(status), result_value, None)
+                                .update_run(id, Some(status), result_value, None)
                                 .await
                             {
                                 tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
@@ -389,7 +389,7 @@ async fn drain_protocol_messages(
                                 "drone reported error"
                             );
                             if let Err(e) = client
-                                .update_job_run(id, Some("failed"), None, Some(&err.message))
+                                .update_run(id, Some("failed"), None, Some(&err.message))
                                 .await
                             {
                                 tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
@@ -417,7 +417,7 @@ async fn drain_protocol_messages(
 }
 
 async fn check_drones(
-    client: &OverseerClient,
+    client: &NydusClient,
     notifier: &Arc<dyn Notifier>,
     active: &mut HashMap<String, DroneHandle>,
     stall_threshold: Duration,
@@ -463,12 +463,7 @@ async fn check_drones(
                             };
 
                             if let Err(e) = client
-                                .update_job_run(
-                                    id,
-                                    Some(run_status),
-                                    result_value,
-                                    error.as_deref(),
-                                )
+                                .update_run(id, Some(run_status), result_value, error.as_deref())
                                 .await
                             {
                                 tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
@@ -495,7 +490,7 @@ async fn check_drones(
                         DroneMessage::Error(e) => {
                             tracing::error!(job_run_id = %id, error = %e.message, "drone reported error");
                             if let Err(e) = client
-                                .update_job_run(id, Some("failed"), None, Some(&e.message))
+                                .update_run(id, Some("failed"), None, Some(&e.message))
                                 .await
                             {
                                 tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
@@ -517,7 +512,7 @@ async fn check_drones(
                     let exit_code = status.code().unwrap_or(-1);
                     tracing::warn!(job_run_id = %id, exit_code, "drone process exited without sending result");
                     if let Err(e) = client
-                        .update_job_run(
+                        .update_run(
                             id,
                             Some("failed"),
                             None,
@@ -553,7 +548,7 @@ async fn check_drones(
             let _ = handle.process.kill().await;
             let _ = handle.process.wait().await;
             if let Err(e) = client
-                .update_job_run(id, Some("failed"), None, Some("timed out"))
+                .update_run(id, Some("failed"), None, Some("timed out"))
                 .await
             {
                 tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
@@ -583,13 +578,13 @@ async fn check_drones(
     }
 }
 
-async fn shutdown_all(client: &OverseerClient, active: &mut HashMap<String, DroneHandle>) {
+async fn shutdown_all(client: &NydusClient, active: &mut HashMap<String, DroneHandle>) {
     for (id, mut handle) in active.drain() {
         tracing::info!(job_run_id = %id, "killing drone for shutdown");
         let _ = handle.process.kill().await;
         let _ = handle.process.wait().await;
         if let Err(e) = client
-            .update_job_run(&id, Some("cancelled"), None, Some("queen shutting down"))
+            .update_run(&id, Some("cancelled"), None, Some("queen shutting down"))
             .await
         {
             tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");

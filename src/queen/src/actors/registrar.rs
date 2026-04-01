@@ -2,20 +2,20 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::notifier::{Notifier, QueenEvent};
-use crate::overseer_client::OverseerClient;
+use nydus::NydusClient;
 
 /// One-shot actor: registers this hatchery with Overseer, retries on failure.
 pub async fn run(
-    client: OverseerClient,
+    client: NydusClient,
     name: String,
     max_concurrency: i32,
     notifier: Arc<dyn Notifier>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<nydus::Hatchery> {
     let capabilities = serde_json::json!({});
 
     loop {
         match client
-            .register(&name, capabilities.clone(), max_concurrency)
+            .register_hatchery(&name, capabilities.clone(), max_concurrency)
             .await
         {
             Ok(hatchery) => {
@@ -25,7 +25,7 @@ pub async fn run(
                         id: hatchery.id.clone(),
                     })
                     .await;
-                return Ok(());
+                return Ok(hatchery);
             }
             Err(e) => {
                 tracing::warn!(error = %e, "failed to register with overseer, retrying in 5s");
