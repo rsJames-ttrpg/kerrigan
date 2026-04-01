@@ -25,13 +25,17 @@ Everything else runs autonomously as drone work.
 | claude-drone (skeleton) | Merged | #5 |
 | Queen-Drone integration | Merged | #6 |
 | Creep v1 (file index gRPC) | Open | #7 |
+| Dev container (all-in-one) | Done | — |
+| Claude CLI bundled in drone | Done | — |
+| Auth flow (stderr streaming, relay) | Done (partial) | — |
+| Job status fix (pending not running) | Done | — |
 
 ## What's Missing
 
 ### Phase 1: Claude Drone Config Design
 *The drone skeleton exists but has no real configuration. This is product design, not just code.*
 
-**1. Drone config and behavior design** `[spec needed]`
+**1. Drone config and behavior design** `[done — spec + implementation]`
 - Permission model — what can the drone do without asking?
 - Tool restrictions — what should it NOT have access to?
 - CLAUDE.md instructions — what makes a drone effective at dev tasks?
@@ -41,25 +45,28 @@ Everything else runs autonomously as drone work.
 - Per-stage configs — spec writing vs implementation vs review need different prompts and tool access
 - Depends on: nothing, can start now
 
-**2. Vendor and bundle drone config** `[implementation]`
-- Populate `src/drones/claude/base/config/` with real settings.json, CLAUDE.md, hooks, MCP configs
-- Create stage-specific drone subtypes: `claude/spec-writer`, `claude/implementer`, `claude/reviewer`
-- Each subtype embeds different instructions and tool permissions
+**2. Vendor and bundle drone config** `[done — base drone working]`
+- Claude CLI hermetically fetched by Buck2, embedded via include_bytes! (~228MB)
+- Drone extracts CLI to temp home, runs it from there
+- Dev container runs Overseer + Queen + drone end-to-end
+- Auth: credential mount works; headless OAuth needs custom implementation
+- Stage-specific subtypes (spec-writer, implementer, reviewer) still TODO
 - Depends on: #1
 
 ### Phase 2: End-to-End Smoke Test
 *Make the full loop actually run: Overseer → Queen → Drone → Claude Code → Output*
 
-**3. Integration testing** `[implementation]`
-- Manually run Overseer + Queen + claude-drone against a real repo
-- Fix whatever breaks (auth, config paths, CLI flags, output parsing, protocol bugs)
-- Pre-authenticate Claude Code on the host so auth isn't needed for first run
+**3. Integration testing** `[done — first successful drone task]`
+- Dev container runs full loop: Overseer → Queen → Drone → Claude CLI → Result
+- Fixed: job run status (pending not running), non-root container, CLI bundling
+- Auth: credential mount bypass works; headless OAuth is the remaining gap
 - Depends on: #2
 
-**4. Job submission interface** `[implementation]`
-- Simple way to create a job definition + start a run with proper config
-- Could be a `queen submit` CLI command, an MCP tool, or a script
-- Needs: drone_type, repo_url, branch, task description
+**4. Job submission interface** `[next — overseer client library + CLI/UI]`
+- Overseer client library (Rust crate) — reusable by Queen, CLI, web UI
+- CLI tool: `kerrigan submit`, `kerrigan status`, `kerrigan auth`
+- Simple htmx web UI for job submission and status
+- Replaces the current curl-based job submission
 - Depends on: #3
 
 ### Phase 3: Autonomous Development Loop
@@ -119,16 +126,14 @@ Everything else runs autonomously as drone work.
 ## Critical Path to Dogfooding
 
 ```
-#1 Drone config design
- └→ #2 Vendor drone configs
-     └→ #3 Integration smoke test
-         ├→ #4 Job submission
+#1 Drone config design ✅
+ └→ #2 Vendor drone configs ✅ (base drone, subtypes TODO)
+     └→ #3 Integration smoke test ✅ (first drone task completed)
+         ├→ #4 Job submission ← NEXT (client lib + CLI/UI)
          │   └→ #5 PR workflow
          │       └→ #6 Job templates
          │           └→ #7 Job chaining ← DOGFOODING
-         └→ #10 Auth flow (parallel)
+         └→ #10 Auth flow (partial — cred mount works, headless OAuth TODO)
 ```
 
-Items 1-7 are the critical path. Everything else improves quality but isn't needed to close the loop.
-
-**First action: Design the drone config (#1)** — this is the linchpin. Without good drone configs, the autonomous loop won't produce good work.
+Items 4-7 are the remaining critical path. #4 is next: Overseer client library, then CLI and/or htmx UI on top.
