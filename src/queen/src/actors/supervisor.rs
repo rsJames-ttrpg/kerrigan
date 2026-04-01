@@ -22,6 +22,7 @@ struct DroneHandle {
     timeout: Duration,
     last_activity: Instant,
     protocol_rx: mpsc::Receiver<DroneMessage>,
+    stdin_tx: Option<mpsc::Sender<QueenMessage>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -157,7 +158,7 @@ async fn spawn_drone(
         }
     };
 
-    // Write JobSpec to stdin via blocking task
+    // Write JobSpec to stdin via blocking task, then keep stdin open for further messages
     let stdin = process.stdin.take().expect("stdin was piped");
     let job_spec = JobSpec {
         job_run_id: request.job_run_id.clone(),
@@ -166,6 +167,7 @@ async fn spawn_drone(
         task: request.task.clone(),
         config: request.job_config.clone(),
     };
+    let (stdin_tx, mut stdin_rx) = mpsc::channel::<QueenMessage>(16);
     let job_run_id_for_stdin = request.job_run_id.clone();
     tokio::task::spawn_blocking(move || {
         let fd: std::os::fd::OwnedFd = stdin.into_owned_fd().expect("take stdin fd");
@@ -178,9 +180,21 @@ async fn spawn_drone(
             }
             Err(e) => {
                 tracing::error!(job_run_id = %job_run_id_for_stdin, error = %e, "failed to write job spec to drone stdin");
+                return;
             }
         }
-        drop(stdin);
+        while let Some(msg) = stdin_rx.blocking_recv() {
+            match serde_json::to_writer(&mut stdin, &msg) {
+                Ok(()) => {
+                    let _ = stdin.write_all(b"\n");
+                    let _ = stdin.flush();
+                }
+                Err(e) => {
+                    tracing::error!(job_run_id = %job_run_id_for_stdin, error = %e, "failed to write message to drone stdin");
+                    break;
+                }
+            }
+        }
     });
 
     // Read protocol messages from stdout via blocking task
@@ -230,6 +244,7 @@ async fn spawn_drone(
         timeout: default_timeout,
         last_activity: now,
         protocol_rx,
+        stdin_tx: Some(stdin_tx),
     };
 
     notifier
@@ -276,6 +291,16 @@ async fn drain_protocol_messages(
                                     message: auth.message,
                                 })
                                 .await;
+                            // Auto-approve: user clicking the URL is the approval
+                            if let Some(tx) = &handle.stdin_tx {
+                                let response =
+                                    QueenMessage::AuthResponse(drone_sdk::protocol::AuthResponse {
+                                        approved: true,
+                                    });
+                                if tx.send(response).await.is_err() {
+                                    tracing::warn!(job_run_id = %id, "failed to send auth response (stdin closed)");
+                                }
+                            }
                         }
                         DroneMessage::Result(output) => {
                             tracing::info!(
