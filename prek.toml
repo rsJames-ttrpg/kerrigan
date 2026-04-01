@@ -39,6 +39,7 @@ name = "buck2 build"
 entry = "buck2 build root//..."
 language = "system"
 pass_filenames = false
+stages = ["pre-push"]
 
 [[repos.hooks]]
 id = "buck2-test"
@@ -46,3 +47,4 @@ name = "buck2 test"
 entry = "buck2 test //src/..."
 language = "system"
 pass_filenames = false
+stages = ["pre-push"]

@@ -36,6 +36,13 @@ impl DroneRunner for ClaudeDrone {
         let claude_md_path = env.home.join("CLAUDE.md");
 
         let claude_bin = env.home.join(".claude/bin/claude");
+
+        // Authenticate if no credentials exist
+        let creds_path = env.home.join(".claude/.credentials.json");
+        if !creds_path.exists() {
+            tracing::info!("no credentials found, running claude auth login");
+            authenticate(&claude_bin, env, channel).await?;
+        }
         let mut child = Command::new(&claude_bin)
             .arg("--print")
             .arg("--output-format")
@@ -79,7 +86,10 @@ impl DroneRunner for ClaudeDrone {
             let mut collected = String::new();
             while let Ok(Some(line)) = lines.next_line().await {
                 tracing::debug!(stderr_line = %line, "claude CLI stderr");
-                if line.contains("claude.ai/") || line.contains("console.anthropic.com/") {
+                if line.contains("claude.ai/")
+                    || line.contains("claude.com/")
+                    || line.contains("console.anthropic.com/")
+                {
                     if let Some(url) = extract_url(&line) {
                         let _ = auth_tx.send(url).await;
                     }
@@ -174,6 +184,104 @@ impl DroneRunner for ClaudeDrone {
 
     async fn teardown(&self, env: &DroneEnvironment) {
         environment::cleanup(&env.home).await;
+    }
+}
+
+/// Run `claude auth login --method claude-ai` and surface the auth URL via the channel.
+async fn authenticate(
+    claude_bin: &Path,
+    env: &DroneEnvironment,
+    channel: &mut QueenChannel,
+) -> Result<()> {
+    let mut child = Command::new(claude_bin)
+        .args(["auth", "login", "--claudeai"])
+        .env("HOME", &env.home)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("failed to spawn claude auth login")?;
+
+    // Stream both stdout and stderr looking for the auth URL
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("no stderr"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("no stdout"))?;
+
+    let (auth_tx, mut auth_rx) = tokio::sync::mpsc::channel::<String>(4);
+    let auth_tx2 = auth_tx.clone();
+
+    // Read stderr lines
+    let stderr_handle = tokio::spawn(async move {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        let mut lines = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            tracing::debug!(stderr_line = %line, "auth stderr");
+            if let Some(url) = extract_url(&line) {
+                if url.contains("claude.ai/")
+                    || url.contains("claude.com/")
+                    || url.contains("console.anthropic.com/")
+                {
+                    let _ = auth_tx.send(url).await;
+                }
+            }
+        }
+    });
+
+    // Read stdout lines (auth URL might appear on either stream)
+    let stdout_handle = tokio::spawn(async move {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        let mut lines = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            tracing::debug!(stdout_line = %line, "auth stdout");
+            if let Some(url) = extract_url(&line) {
+                if url.contains("claude.ai/")
+                    || url.contains("claude.com/")
+                    || url.contains("console.anthropic.com/")
+                {
+                    let _ = auth_tx2.send(url).await;
+                }
+            }
+        }
+    });
+
+    let timeout_duration = Duration::from_secs(300); // 5 min for auth
+
+    let result = timeout(timeout_duration, async {
+        loop {
+            tokio::select! {
+                Some(url) = auth_rx.recv() => {
+                    tracing::info!(url = %url, "auth URL detected");
+                    match channel.request_auth(&url, "Claude CLI requires authentication — visit URL to log in") {
+                        Ok(true) => tracing::info!("auth approved by queen"),
+                        Ok(false) => tracing::warn!("auth denied by queen"),
+                        Err(e) => tracing::warn!(error = %e, "auth request to queen failed"),
+                    }
+                }
+                status = child.wait() => {
+                    let status = status.context("failed to wait for auth process")?;
+                    let _ = stderr_handle.await;
+                    let _ = stdout_handle.await;
+                    if status.success() {
+                        tracing::info!("claude auth login succeeded");
+                        return Ok(());
+                    } else {
+                        let code = status.code().unwrap_or(-1);
+                        anyhow::bail!("claude auth login failed with exit code {code}");
+                    }
+                }
+            }
+        }
+    })
+    .await;
+
+    match result {
+        Ok(inner) => inner,
+        Err(_) => anyhow::bail!("claude auth login timed out after 5 minutes"),
     }
 }
 
