@@ -112,6 +112,75 @@ pub async fn configure_mcp_url(home: &Path, overseer_url: &str) -> Result<()> {
     Ok(())
 }
 
+/// Configure GitHub authentication from a PAT token.
+///
+/// Sets up:
+/// - `~/.config/gh/hosts.yml` for `gh` CLI
+/// - Git credential helper for HTTPS push
+pub async fn configure_github_auth(home: &Path, pat: &str) -> Result<()> {
+    // gh CLI config
+    let gh_config_dir = home.join(".config/gh");
+    fs::create_dir_all(&gh_config_dir)
+        .await
+        .context("failed to create gh config dir")?;
+    let hosts_yml = format!(
+        "github.com:\n    oauth_token: {pat}\n    user: kerrigan-drone\n    git_protocol: https\n"
+    );
+    fs::write(gh_config_dir.join("hosts.yml"), hosts_yml)
+        .await
+        .context("failed to write gh hosts.yml")?;
+
+    // Git credential helper — store the PAT for HTTPS operations
+    let git_credentials = format!("https://kerrigan-drone:{pat}@github.com\n");
+    let creds_file = home.join(".git-credentials");
+    fs::write(&creds_file, git_credentials)
+        .await
+        .context("failed to write .git-credentials")?;
+
+    // Configure git to use the credential store
+    let gitconfig = "[credential]\n    helper = store\n";
+    let gitconfig_path = home.join(".gitconfig");
+    let existing = fs::read_to_string(&gitconfig_path)
+        .await
+        .unwrap_or_default();
+    fs::write(&gitconfig_path, format!("{existing}{gitconfig}"))
+        .await
+        .context("failed to write .gitconfig")?;
+
+    Ok(())
+}
+
+/// Write environment variables to a file that the drone reads during execute.
+pub async fn write_env_vars(home: &Path, vars: &[(String, String)]) -> Result<()> {
+    let content = vars
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(home.join(".drone-env"), content)
+        .await
+        .context("failed to write .drone-env")?;
+    Ok(())
+}
+
+/// Read environment variables from the .drone-env file.
+pub async fn read_env_vars(home: &Path) -> Result<Vec<(String, String)>> {
+    let path = home.join(".drone-env");
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let content = fs::read_to_string(&path)
+        .await
+        .context("failed to read .drone-env")?;
+    Ok(content
+        .lines()
+        .filter_map(|line| {
+            let (k, v) = line.split_once('=')?;
+            Some((k.to_string(), v.to_string()))
+        })
+        .collect())
+}
+
 /// Shallow-clone a git repository into `workspace`.
 pub async fn clone_repo(repo_url: &str, branch: Option<&str>, workspace: &Path) -> Result<()> {
     let mut cmd = Command::new("git");

@@ -26,6 +26,27 @@ impl DroneRunner for ClaudeDrone {
             environment::configure_mcp_url(&env.home, overseer_url).await?;
         }
 
+        // Configure secrets from job config
+        if let Some(secrets) = job.config.get("secrets") {
+            if let Some(pat) = secrets.get("github_pat").and_then(|v| v.as_str()) {
+                environment::configure_github_auth(&env.home, pat).await?;
+            }
+        }
+
+        // Collect environment variables for the drone session
+        let mut env_vars = Vec::new();
+        if let Some(secrets) = job.config.get("secrets") {
+            if let Some(bb_key) = secrets.get("buildbuddy_api_key").and_then(|v| v.as_str()) {
+                env_vars.push((
+                    "BUCK2_RE_HTTP_HEADERS".to_string(),
+                    format!("x-buildbuddy-api-key:{bb_key}"),
+                ));
+            }
+        }
+        if !env_vars.is_empty() {
+            environment::write_env_vars(&env.home, &env_vars).await?;
+        }
+
         Ok(env)
     }
 
@@ -49,8 +70,10 @@ impl DroneRunner for ClaudeDrone {
             tracing::info!("no credentials found, running claude auth login");
             authenticate(&claude_bin, env, channel).await?;
         }
-        let mut child = Command::new(&claude_bin)
-            .arg("--print")
+        let extra_env = environment::read_env_vars(&env.home).await?;
+
+        let mut cmd = Command::new(&claude_bin);
+        cmd.arg("--print")
             .arg("--output-format")
             .arg("json")
             .arg("--dangerously-skip-permissions")
@@ -62,9 +85,13 @@ impl DroneRunner for ClaudeDrone {
             .current_dir(&env.workspace)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("failed to spawn claude CLI")?;
+            .stderr(Stdio::piped());
+
+        for (key, value) in &extra_env {
+            cmd.env(key, value);
+        }
+
+        let mut child = cmd.spawn().context("failed to spawn claude CLI")?;
 
         // Write task to stdin, then close it
         {
