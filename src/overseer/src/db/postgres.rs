@@ -460,7 +460,7 @@ impl JobStore for PostgresDatabase {
                 id.into(),
                 definition_id.into(),
                 parent_id.map(|s| s.to_string()).into(),
-                "running".into(),
+                "pending".into(),
                 triggered_by.into(),
                 Expr::cust("now()"),
             ])

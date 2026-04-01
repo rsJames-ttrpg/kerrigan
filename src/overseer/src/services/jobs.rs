@@ -138,7 +138,7 @@ mod tests {
             .start_job_run(&def.id, "agent-1", None)
             .await
             .expect("start run");
-        assert_eq!(run.status, crate::db::models::JobRunStatus::Running);
+        assert_eq!(run.status, crate::db::models::JobRunStatus::Pending);
 
         let updated = svc
             .update_job_run(

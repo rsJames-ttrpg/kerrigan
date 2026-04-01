@@ -184,7 +184,7 @@ pub async fn start_job_run(
             id.into(),
             definition_id.into(),
             parent_id.map(|s| s.to_string()).into(),
-            "running".into(),
+            "pending".into(),
             triggered_by.into(),
             Expr::cust("datetime('now')"),
         ])
@@ -519,7 +519,7 @@ mod tests {
         let run = start_job_run(&pool, &def.id, "agent-1", None)
             .await
             .expect("start run");
-        assert_eq!(run.status, JobRunStatus::Running);
+        assert_eq!(run.status, JobRunStatus::Pending);
         assert!(run.started_at.is_some());
         assert!(run.completed_at.is_none());
 
