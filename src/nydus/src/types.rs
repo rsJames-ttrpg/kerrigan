@@ -16,6 +16,7 @@ pub struct JobRun {
     pub parent_id: Option<String>,
     pub status: String,
     pub triggered_by: String,
+    pub config_overrides: Option<Value>,
     pub result: Option<Value>,
     pub error: Option<String>,
 }
