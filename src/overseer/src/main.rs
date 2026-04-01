@@ -84,6 +84,22 @@ async fn main() -> anyhow::Result<()> {
 
     let state = Arc::new(AppState::new(db, registry, store));
 
+    // Seed default job definition if it doesn't exist
+    let existing = state.jobs.list_job_definitions().await?;
+    if !existing.iter().any(|d| d.name == "default") {
+        state
+            .jobs
+            .create_job_definition(
+                "default",
+                "Default job definition for ad-hoc tasks",
+                serde_json::json!({
+                    "drone_type": "claude-drone"
+                }),
+            )
+            .await?;
+        tracing::info!("seeded default job definition");
+    }
+
     // HTTP server
     let http_router = api::router(state.clone());
     let http_addr = format!("0.0.0.0:{}", config.server.http_port);

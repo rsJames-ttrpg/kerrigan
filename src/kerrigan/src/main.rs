@@ -26,7 +26,7 @@ enum Command {
         #[arg(long)]
         hatchery: Option<String>,
         /// Job definition name to use
-        #[arg(long, default_value = "spec-from-problem")]
+        #[arg(long, default_value = "default")]
         definition: String,
     },
     /// Show job status
