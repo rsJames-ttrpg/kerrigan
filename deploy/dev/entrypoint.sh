@@ -2,7 +2,7 @@
 set -e
 
 # Ensure data directories exist (host path mounts may be empty)
-mkdir -p /data/artifacts
+mkdir -p /data/artifacts 2>/dev/null || true
 
 echo "=== starting overseer ==="
 /opt/kerrigan/bin/overseer /opt/kerrigan/config/overseer.toml &

@@ -24,8 +24,12 @@ RUN curl -fsSL "https://github.com/facebook/buck2/releases/download/2026-01-19/b
       | zstd -d > /usr/local/bin/buck2 \
     && chmod +x /usr/local/bin/buck2
 
+# Non-root user (Claude CLI refuses --dangerously-skip-permissions as root)
+RUN useradd -m -s /bin/bash kerrigan
+
 # Create directory structure
-RUN mkdir -p /opt/kerrigan/bin /opt/kerrigan/drones /opt/kerrigan/config /data/artifacts
+RUN mkdir -p /opt/kerrigan/bin /opt/kerrigan/drones /opt/kerrigan/config /data/artifacts \
+    && chown -R kerrigan:kerrigan /data
 
 # Copy pre-built binaries from staging dir (populated by deploy/dev/build.sh)
 COPY deploy/dev/.stage/bin/overseer   /opt/kerrigan/bin/overseer
@@ -39,6 +43,8 @@ COPY deploy/dev/hatchery.toml   /opt/kerrigan/config/hatchery.toml
 
 # Copy entrypoint
 COPY deploy/dev/entrypoint.sh   /opt/kerrigan/entrypoint.sh
+
+USER kerrigan
 
 # Expose Overseer HTTP port
 EXPOSE 3100
