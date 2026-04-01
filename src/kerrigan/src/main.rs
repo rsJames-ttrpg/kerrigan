@@ -179,6 +179,48 @@ async fn cmd_status(client: &NydusClient, run_id: Option<&str>) -> Result<()> {
                     println!("    - [{}] {}", task.status, task.subject);
                 }
             }
+
+            // Show pipeline chain
+            // Walk up to find root
+            let mut root_id = id.to_string();
+            loop {
+                let r = runs.iter().find(|r| r.id == root_id);
+                match r.and_then(|r| r.parent_id.as_ref()) {
+                    Some(pid) => root_id = pid.clone(),
+                    None => break,
+                }
+            }
+
+            // Walk down from root to collect chain
+            let mut chain = Vec::new();
+            let mut current_id = Some(root_id);
+            while let Some(cid) = current_id {
+                if let Some(r) = runs.iter().find(|r| r.id == cid) {
+                    chain.push(r);
+                    current_id = runs
+                        .iter()
+                        .find(|r| r.parent_id.as_deref() == Some(&cid))
+                        .map(|r| r.id.clone());
+                } else {
+                    break;
+                }
+            }
+
+            if chain.len() > 1 {
+                println!("\n  Pipeline:");
+                for r in &chain {
+                    let marker = if r.id == id {
+                        "→"
+                    } else if r.status == "completed" {
+                        "✓"
+                    } else if r.status == "failed" {
+                        "✗"
+                    } else {
+                        " "
+                    };
+                    println!("    {} {} — {}", marker, r.id, r.status);
+                }
+            }
         }
         None => {
             let runs = client.list_runs(None).await?;
@@ -203,10 +245,12 @@ async fn cmd_status(client: &NydusClient, run_id: Option<&str>) -> Result<()> {
 }
 
 async fn cmd_approve(client: &NydusClient, run_id: &str, _message: Option<&str>) -> Result<()> {
-    client
-        .update_run(run_id, Some("running"), None, None)
-        .await?;
+    let next_run = client.advance_run(run_id).await?;
     println!("Approved: {}", run_id);
+    println!(
+        "Next stage started: {} (definition: {})",
+        next_run.id, next_run.definition_id
+    );
     Ok(())
 }
 
