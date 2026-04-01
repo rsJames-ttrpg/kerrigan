@@ -107,7 +107,14 @@ impl JobService {
         let def = self.db.get_job_definition(&run.definition_id).await?;
         match def {
             Some(def) => pipeline.check_advancement(run, &def).await,
-            None => Ok(None),
+            None => {
+                tracing::warn!(
+                    run_id = %run.id,
+                    definition_id = %run.definition_id,
+                    "job definition not found during pipeline check — pipeline will not advance"
+                );
+                Ok(None)
+            }
         }
     }
 }

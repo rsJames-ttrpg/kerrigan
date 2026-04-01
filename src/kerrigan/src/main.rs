@@ -190,9 +190,13 @@ async fn cmd_status(client: &NydusClient, run_id: Option<&str>) -> Result<()> {
             }
 
             // Show pipeline chain
-            // Walk up to find root
+            // Walk up to find root (with cycle guard)
             let mut root_id = id.to_string();
+            let mut visited = std::collections::HashSet::new();
             loop {
+                if !visited.insert(root_id.clone()) {
+                    break; // cycle detected
+                }
                 let r = runs.iter().find(|r| r.id == root_id);
                 match r.and_then(|r| r.parent_id.as_ref()) {
                     Some(pid) => root_id = pid.clone(),
@@ -200,10 +204,14 @@ async fn cmd_status(client: &NydusClient, run_id: Option<&str>) -> Result<()> {
                 }
             }
 
-            // Walk down from root to collect chain
+            // Walk down from root to collect chain (with cycle guard)
             let mut chain = Vec::new();
+            let mut visited = std::collections::HashSet::new();
             let mut current_id = Some(root_id);
             while let Some(cid) = current_id {
+                if !visited.insert(cid.clone()) {
+                    break; // cycle detected
+                }
                 if let Some(r) = runs.iter().find(|r| r.id == cid) {
                     chain.push(r);
                     current_id = runs
