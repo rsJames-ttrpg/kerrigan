@@ -6,6 +6,7 @@ CLAUDE_DRONE_SRCS = glob(["src/**/*.rs"])
 CLAUDE_DRONE_MAPPED_SRCS = {
     "src/config/settings.json": "src/config/settings.json",
     "src/config/CLAUDE.md": "src/config/CLAUDE.md",
+    "//tools:claude-cli-linux-x64": "src/config/claude-cli",
 }
 
 CLAUDE_DRONE_DEPS = [
