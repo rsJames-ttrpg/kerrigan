@@ -4,6 +4,7 @@ use async_trait::async_trait;
 
 use super::{Notifier, QueenEvent};
 
+#[derive(Debug)]
 pub struct WebhookNotifier {
     client: reqwest::Client,
     url: String,
@@ -35,7 +36,10 @@ fn build_placeholders(event: &QueenEvent) -> Vec<(&'static str, String)> {
             ("job_run_id", job_run_id.clone()),
             ("error", error.clone()),
             ("last_activity_secs", String::new()),
-            ("message", format!("Drone failed for job {job_run_id}: {error}")),
+            (
+                "message",
+                format!("Drone failed for job {job_run_id}: {error}"),
+            ),
         ],
         QueenEvent::DroneStalled {
             job_run_id,
@@ -230,11 +234,7 @@ impl Notifier for WebhookNotifier {
             req = req.bearer_auth(token);
         }
 
-        match req
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
-            .await
-        {
+        match req.timeout(std::time::Duration::from_secs(10)).send().await {
             Ok(resp) if !resp.status().is_success() => {
                 tracing::warn!(
                     status = %resp.status(),
@@ -395,7 +395,8 @@ mod tests {
 
     #[test]
     fn test_from_config_env_token() {
-        std::env::set_var("TEST_WEBHOOK_TOKEN", "secret-from-env");
+        // SAFETY: test-only, single-threaded test runner
+        unsafe { std::env::set_var("TEST_WEBHOOK_TOKEN", "secret-from-env") };
         let config = NotificationConfig {
             backend: "webhook".into(),
             url: Some("http://localhost".into()),
@@ -405,7 +406,8 @@ mod tests {
         };
         let notifier = WebhookNotifier::from_config(&config).unwrap();
         assert_eq!(notifier.token.as_deref(), Some("secret-from-env"));
-        std::env::remove_var("TEST_WEBHOOK_TOKEN");
+        // SAFETY: test-only, single-threaded test runner
+        unsafe { std::env::remove_var("TEST_WEBHOOK_TOKEN") };
     }
 
     #[test]
