@@ -46,8 +46,8 @@ COPY deploy/dev/entrypoint.sh   /opt/kerrigan/entrypoint.sh
 
 USER kerrigan
 
-# Expose Overseer HTTP port
-EXPOSE 3100
+# Expose Overseer HTTP port + Claude CLI OAuth callback port
+EXPOSE 3100 54545
 
 # Data volume
 VOLUME /data

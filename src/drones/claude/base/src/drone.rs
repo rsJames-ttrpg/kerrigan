@@ -190,7 +190,7 @@ async fn authenticate(
     channel: &mut QueenChannel,
 ) -> Result<()> {
     let mut child = Command::new(claude_bin)
-        .args(["auth", "login", "--claudeai"])
+        .args(["auth", "login", "--console"])
         .env("HOME", &env.home)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
