@@ -15,3 +15,10 @@ rust_binary(
     deps = KERRIGAN_DEPS,
     visibility = ["PUBLIC"],
 )
+
+sh_binary(
+    name = "install",
+    main = "install.sh",
+    resources = [":kerrigan"],
+    visibility = ["PUBLIC"],
+)
