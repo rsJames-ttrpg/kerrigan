@@ -1,0 +1,17 @@
+KERRIGAN_SRCS = glob(["src/**/*.rs"])
+
+KERRIGAN_DEPS = [
+    "//src/nydus:nydus",
+    "//third-party:anyhow",
+    "//third-party:clap",
+    "//third-party:serde_json",
+    "//third-party:tokio",
+]
+
+rust_binary(
+    name = "kerrigan",
+    srcs = KERRIGAN_SRCS,
+    crate_root = "src/main.rs",
+    deps = KERRIGAN_DEPS,
+    visibility = ["PUBLIC"],
+)
