@@ -20,6 +20,12 @@ impl DroneRunner for ClaudeDrone {
         let env = environment::create_home(&job.job_run_id).await?;
         environment::clone_repo(&job.repo_url, job.branch.as_deref(), &env.workspace).await?;
         environment::write_task(&env.home, &job.task).await?;
+
+        // Configure Overseer MCP URL if provided in job config
+        if let Some(overseer_url) = job.config.get("overseer_url").and_then(|v| v.as_str()) {
+            environment::configure_mcp_url(&env.home, overseer_url).await?;
+        }
+
         Ok(env)
     }
 

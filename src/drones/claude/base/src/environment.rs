@@ -98,6 +98,20 @@ pub async fn write_task(home: &Path, task: &str) -> Result<()> {
         .context("failed to write .task file")
 }
 
+/// Rewrite the Overseer MCP URL placeholder in settings.json with the actual URL.
+pub async fn configure_mcp_url(home: &Path, overseer_url: &str) -> Result<()> {
+    let settings_path = home.join(".claude/settings.json");
+    let content = fs::read_to_string(&settings_path)
+        .await
+        .context("failed to read settings.json for MCP URL rewrite")?;
+    let mcp_url = format!("{}/mcp", overseer_url.trim_end_matches('/'));
+    let updated = content.replace("OVERSEER_MCP_URL_PLACEHOLDER", &mcp_url);
+    fs::write(&settings_path, updated)
+        .await
+        .context("failed to write updated settings.json")?;
+    Ok(())
+}
+
 /// Shallow-clone a git repository into `workspace`.
 pub async fn clone_repo(repo_url: &str, branch: Option<&str>, workspace: &Path) -> Result<()> {
     let mut cmd = Command::new("git");
