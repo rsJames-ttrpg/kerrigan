@@ -18,6 +18,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/runs", post(start_job_run))
         .route("/runs", get(list_job_runs))
         .route("/runs/{id}", patch(update_job_run))
+        .route("/runs/{id}/advance", post(advance_job_run))
 }
 
 pub fn task_router() -> Router<Arc<AppState>> {
@@ -120,6 +121,31 @@ struct UpdateJobRunRequest {
     status: Option<String>,
     result: Option<Value>,
     error: Option<String>,
+}
+
+async fn advance_job_run(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let new_run = state.pipeline.advance(&id).await?;
+
+    // Try to assign to an available hatchery
+    let hatcheries = state.hatchery.list(Some("online")).await?;
+    if let Some(hatchery) = hatcheries
+        .iter()
+        .find(|h| h.active_drones < h.max_concurrency)
+    {
+        let _ = state.hatchery.assign_job(&new_run.id, &hatchery.id).await;
+        tracing::info!(
+            run_id = %new_run.id,
+            hatchery_id = %hatchery.id,
+            "auto-assigned advanced run to hatchery"
+        );
+    }
+
+    Ok(Json(serde_json::to_value(new_run).map_err(|e| {
+        crate::error::OverseerError::Internal(e.to_string())
+    })?))
 }
 
 async fn update_job_run(
