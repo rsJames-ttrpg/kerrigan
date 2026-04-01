@@ -171,6 +171,30 @@ impl Config {
         if self.queen.poll_interval == 0 {
             anyhow::bail!("queen.poll_interval must be greater than 0");
         }
+        if self.notifications.backend == "webhook" {
+            if self.notifications.url.as_ref().is_none_or(|u| u.is_empty()) {
+                anyhow::bail!("notifications.url is required for webhook backend");
+            }
+            if let Some(events) = &self.notifications.events {
+                let valid = [
+                    "hatchery_registered",
+                    "drone_spawned",
+                    "drone_completed",
+                    "drone_failed",
+                    "drone_stalled",
+                    "drone_timed_out",
+                    "auth_requested",
+                    "creep_started",
+                    "creep_died",
+                    "shutting_down",
+                ];
+                for e in events {
+                    if !valid.contains(&e.as_str()) {
+                        anyhow::bail!("unknown notification event: '{e}'");
+                    }
+                }
+            }
+        }
         Ok(())
     }
 
@@ -400,6 +424,38 @@ backend = "log"
         assert!(config.notifications.token.is_none());
         assert!(config.notifications.events.is_none());
         assert!(config.notifications.body.is_none());
+    }
+
+    #[test]
+    fn test_validate_webhook_missing_url() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[notifications]
+backend = "webhook"
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(err.to_string().contains("notifications.url is required"));
+    }
+
+    #[test]
+    fn test_validate_webhook_invalid_event() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[notifications]
+backend = "webhook"
+url = "http://localhost:8080"
+events = ["drone_failed", "not_a_real_event"]
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(err.to_string().contains("unknown notification event"));
     }
 
     #[test]
