@@ -192,11 +192,16 @@ async fn authenticate(
     let mut child = Command::new(claude_bin)
         .args(["auth", "login", "--claudeai"])
         .env("HOME", &env.home)
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .context("failed to spawn claude auth login")?;
+
+    let mut cli_stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("no stdin"))?;
 
     // Stream both stdout and stderr looking for the auth URL
     let stderr = child
@@ -251,11 +256,27 @@ async fn authenticate(
         loop {
             tokio::select! {
                 Some(url) = auth_rx.recv() => {
-                    tracing::info!(url = %url, "auth URL detected — waiting for user to authenticate");
-                    // Surface the URL to Queen as a progress update so it appears in logs.
-                    // Don't use request_auth() — the CLI itself blocks until OAuth completes,
-                    // we just need to make the URL visible to the operator.
-                    let _ = channel.progress("auth_required", &url);
+                    tracing::info!(url = %url, "auth URL detected — requesting code from queen");
+                    // Send AuthRequest to Queen. This blocks until Queen relays the
+                    // code that the user submits via POST /api/jobs/runs/{id}/auth.
+                    match channel.request_auth(&url, "Visit the URL and submit the auth code") {
+                        Ok(resp) if resp.approved => {
+                            if let Some(code) = resp.code {
+                                tracing::info!("auth code received, writing to CLI stdin");
+                                use tokio::io::AsyncWriteExt;
+                                cli_stdin.write_all(code.as_bytes()).await
+                                    .context("failed to write auth code to CLI stdin")?;
+                                cli_stdin.write_all(b"\n").await
+                                    .context("failed to write newline after auth code")?;
+                                cli_stdin.flush().await
+                                    .context("failed to flush CLI stdin")?;
+                            } else {
+                                tracing::warn!("auth approved but no code provided");
+                            }
+                        }
+                        Ok(_) => tracing::warn!("auth denied by queen"),
+                        Err(e) => tracing::warn!(error = %e, "auth request to queen failed"),
+                    }
                 }
                 status = child.wait() => {
                     let status = status.context("failed to wait for auth process")?;

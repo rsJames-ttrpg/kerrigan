@@ -39,6 +39,8 @@ pub struct JobSpec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthResponse {
     pub approved: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
 }
 
 /// Request from Drone for human to visit a URL (e.g. OAuth).

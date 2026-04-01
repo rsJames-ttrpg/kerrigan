@@ -246,6 +246,22 @@ impl OverseerClient {
         Ok(response)
     }
 
+    /// Poll Overseer for a submitted auth code. Returns None if not yet submitted.
+    pub async fn poll_auth_code(&self, job_run_id: &str) -> Result<Option<String>> {
+        let response = self
+            .client
+            .get(format!("{}/api/jobs/runs/{job_run_id}/auth", self.base_url))
+            .send()
+            .await?;
+
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        let body = response.error_for_status()?.json::<Value>().await?;
+        Ok(body.get("code").and_then(|v| v.as_str()).map(String::from))
+    }
+
     pub async fn deregister(&self) -> Result<()> {
         let id = self.require_hatchery_id().await?;
         self.client

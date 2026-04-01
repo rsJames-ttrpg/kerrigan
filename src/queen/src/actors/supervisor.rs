@@ -291,15 +291,34 @@ async fn drain_protocol_messages(
                                     message: auth.message,
                                 })
                                 .await;
-                            // Auto-approve: user clicking the URL is the approval
-                            if let Some(tx) = &handle.stdin_tx {
-                                let response =
-                                    QueenMessage::AuthResponse(drone_sdk::protocol::AuthResponse {
-                                        approved: true,
-                                    });
-                                if tx.send(response).await.is_err() {
-                                    tracing::warn!(job_run_id = %id, "failed to send auth response (stdin closed)");
-                                }
+                            // Poll Overseer for the auth code (user submits via API)
+                            if let Some(tx) = handle.stdin_tx.clone() {
+                                let poll_client = client.clone();
+                                let poll_id = id.clone();
+                                tokio::spawn(async move {
+                                    loop {
+                                        tokio::time::sleep(Duration::from_secs(2)).await;
+                                        match poll_client.poll_auth_code(&poll_id).await {
+                                            Ok(Some(code)) => {
+                                                tracing::info!(job_run_id = %poll_id, "auth code received from user");
+                                                let response = QueenMessage::AuthResponse(
+                                                    drone_sdk::protocol::AuthResponse {
+                                                        approved: true,
+                                                        code: Some(code),
+                                                    },
+                                                );
+                                                if tx.send(response).await.is_err() {
+                                                    tracing::warn!(job_run_id = %poll_id, "failed to send auth response (stdin closed)");
+                                                }
+                                                break;
+                                            }
+                                            Ok(None) => {} // not yet submitted, keep polling
+                                            Err(e) => {
+                                                tracing::warn!(job_run_id = %poll_id, error = %e, "failed to poll auth code");
+                                            }
+                                        }
+                                    }
+                                });
                             }
                         }
                         DroneMessage::Result(output) => {

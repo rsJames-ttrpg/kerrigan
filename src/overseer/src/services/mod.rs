@@ -1,4 +1,5 @@
 pub mod artifacts;
+pub mod auth;
 pub mod decisions;
 pub mod hatchery;
 pub mod jobs;
@@ -17,6 +18,7 @@ pub struct AppState {
     pub decisions: decisions::DecisionService,
     pub artifacts: artifacts::ArtifactService,
     pub hatchery: hatchery::HatcheryService,
+    pub auth: auth::AuthService,
 }
 
 impl AppState {
@@ -31,6 +33,7 @@ impl AppState {
             decisions: decisions::DecisionService::new(db.clone()),
             artifacts: artifacts::ArtifactService::new(db.clone(), store),
             hatchery: hatchery::HatcheryService::new(db),
+            auth: auth::AuthService::new(),
         }
     }
 }

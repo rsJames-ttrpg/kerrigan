@@ -37,14 +37,14 @@ impl QueenChannel {
         Ok(msg)
     }
 
-    pub fn request_auth(&mut self, url: &str, message: &str) -> anyhow::Result<bool> {
+    pub fn request_auth(&mut self, url: &str, message: &str) -> anyhow::Result<AuthResponse> {
         self.send(&DroneMessage::AuthRequest(AuthRequest {
             url: url.to_string(),
             message: message.to_string(),
         }))?;
         let msg = self.recv()?;
         match msg {
-            QueenMessage::AuthResponse(resp) => Ok(resp.approved),
+            QueenMessage::AuthResponse(resp) => Ok(resp),
             QueenMessage::Cancel {} => anyhow::bail!("cancelled by queen"),
             _ => anyhow::bail!("unexpected message from queen: expected auth_response"),
         }

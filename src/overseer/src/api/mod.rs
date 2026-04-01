@@ -1,4 +1,5 @@
 mod artifacts;
+mod auth;
 mod decisions;
 mod hatchery;
 mod jobs;
@@ -17,5 +18,6 @@ pub fn router(state: Arc<AppState>) -> Router {
         .nest("/api/tasks", jobs::task_router())
         .nest("/api/artifacts", artifacts::router())
         .nest("/api/hatcheries", hatchery::router())
+        .nest("/api/jobs/runs", auth::router())
         .with_state(state)
 }
