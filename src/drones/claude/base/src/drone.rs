@@ -26,7 +26,7 @@ impl DroneRunner for ClaudeDrone {
     async fn execute(
         &self,
         env: &DroneEnvironment,
-        _channel: &mut QueenChannel,
+        channel: &mut QueenChannel,
     ) -> Result<DroneOutput> {
         let task = fs::read_to_string(env.home.join(".task"))
             .await
@@ -54,70 +54,122 @@ impl DroneRunner for ClaudeDrone {
             .context("failed to spawn claude CLI")?;
 
         // Write task to stdin, then close it
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("failed to acquire stdin pipe for claude process"))?;
         {
             use tokio::io::AsyncWriteExt;
+            let mut stdin = child
+                .stdin
+                .take()
+                .ok_or_else(|| anyhow::anyhow!("failed to acquire stdin pipe"))?;
             stdin
                 .write_all(task.as_bytes())
                 .await
                 .context("failed to write task to claude stdin")?;
-            // stdin dropped here, closing the pipe
         }
 
-        let timeout_duration = Duration::from_secs(7200); // 2 hours default
-        let output: std::process::Output =
-            match timeout(timeout_duration, child.wait_with_output()).await {
-                Ok(result) => result.context("failed to wait for claude process")?,
-                Err(_) => {
-                    tracing::error!("claude CLI timed out after {:?}", timeout_duration);
-                    // child is dropped here which sends SIGKILL
-                    anyhow::bail!("claude CLI timed out after {:?}", timeout_duration);
+        // Stream stderr in a background task to detect auth URLs
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("failed to acquire stderr pipe"))?;
+        let (auth_tx, mut auth_rx) = tokio::sync::mpsc::channel::<String>(4);
+        let stderr_handle = tokio::spawn(async move {
+            use tokio::io::{AsyncBufReadExt, BufReader};
+            let reader = BufReader::new(stderr);
+            let mut lines = reader.lines();
+            let mut collected = String::new();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::debug!(stderr_line = %line, "claude CLI stderr");
+                if line.contains("claude.ai/") || line.contains("console.anthropic.com/") {
+                    if let Some(url) = extract_url(&line) {
+                        let _ = auth_tx.send(url).await;
+                    }
                 }
-            };
-
-        let exit_code = output.status.code().unwrap_or(-1);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr_text = String::from_utf8_lossy(&output.stderr);
-
-        if !stderr_text.is_empty() {
-            tracing::debug!(stderr = %stderr_text, "claude CLI stderr");
-        }
-
-        if exit_code != 0 {
-            tracing::warn!(
-                exit_code,
-                stderr = %stderr_text,
-                "claude CLI exited with non-zero status"
-            );
-        }
-
-        // Parse stdout as JSON conversation; log and fall back to structured error on parse failure
-        let conversation = match serde_json::from_str::<serde_json::Value>(&stdout) {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    stdout_len = stdout.len(),
-                    "failed to parse claude stdout as JSON; returning raw output"
-                );
-                serde_json::json!({
-                    "raw_output": stdout.to_string(),
-                    "parse_error": e.to_string()
-                })
+                collected.push_str(&line);
+                collected.push('\n');
             }
-        };
+            collected
+        });
 
-        let git_refs = collect_git_refs(&env.workspace).await;
+        // Read stdout in background
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("failed to acquire stdout pipe"))?;
+        let stdout_handle = tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            let mut buf = Vec::new();
+            tokio::io::BufReader::new(stdout)
+                .read_to_end(&mut buf)
+                .await
+                .map(|_| buf)
+        });
 
-        Ok(DroneOutput {
-            exit_code,
-            conversation,
-            artifacts: vec![],
-            git_refs,
-        })
+        let timeout_duration = Duration::from_secs(7200);
+
+        // Poll for auth URLs while waiting for process to finish, with timeout
+        let result = timeout(timeout_duration, async {
+            loop {
+                tokio::select! {
+                    Some(url) = auth_rx.recv() => {
+                        tracing::info!(url = %url, "claude CLI requesting auth");
+                        match channel.request_auth(&url, "Claude CLI requires authentication") {
+                            Ok(true) => tracing::info!("auth approved, continuing"),
+                            Ok(false) => tracing::warn!("auth denied"),
+                            Err(e) => tracing::warn!(error = %e, "auth request failed"),
+                        }
+                    }
+                    status = child.wait() => {
+                        let status = status.context("failed to wait for claude process")?;
+                        let exit_code = status.code().unwrap_or(-1);
+
+                        let stdout_bytes = stdout_handle.await
+                            .context("stdout reader panicked")?
+                            .context("failed to read stdout")?;
+                        let stderr_text = stderr_handle.await.unwrap_or_default();
+
+                        if !stderr_text.is_empty() {
+                            tracing::debug!(stderr = %stderr_text, "claude CLI stderr");
+                        }
+                        if exit_code != 0 {
+                            tracing::warn!(exit_code, stderr = %stderr_text, "claude CLI exited with non-zero status");
+                        }
+
+                        let stdout = String::from_utf8_lossy(&stdout_bytes);
+                        let conversation = match serde_json::from_str::<serde_json::Value>(&stdout) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    stdout_len = stdout.len(),
+                                    "failed to parse claude stdout as JSON; returning raw output"
+                                );
+                                serde_json::json!({
+                                    "raw_output": stdout.to_string(),
+                                    "parse_error": e.to_string()
+                                })
+                            }
+                        };
+
+                        let git_refs = collect_git_refs(&env.workspace).await;
+
+                        return Ok(DroneOutput {
+                            exit_code,
+                            conversation,
+                            artifacts: vec![],
+                            git_refs,
+                        });
+                    }
+                }
+            }
+        }).await;
+
+        match result {
+            Ok(output) => output,
+            Err(_) => {
+                tracing::error!("claude CLI timed out after {:?}", timeout_duration);
+                anyhow::bail!("claude CLI timed out after {:?}", timeout_duration);
+            }
+        }
     }
 
     async fn teardown(&self, env: &DroneEnvironment) {
@@ -169,4 +221,12 @@ async fn collect_git_refs(workspace: &Path) -> GitRefs {
     };
 
     GitRefs { branch, pr_url }
+}
+
+/// Extract a URL from a line of text.
+fn extract_url(line: &str) -> Option<String> {
+    let start = line.find("https://")?;
+    let rest = &line[start..];
+    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    Some(rest[..end].to_string())
 }
