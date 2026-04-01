@@ -162,6 +162,31 @@ async fn update_job_run(
             body.error.as_deref(),
         )
         .await?;
+
+    // Check if pipeline should auto-advance
+    if let Ok(Some(next_run)) = state
+        .jobs
+        .check_pipeline_after_completion(&result, &state.pipeline)
+        .await
+    {
+        let hatcheries = state
+            .hatchery
+            .list(Some("online"))
+            .await
+            .unwrap_or_default();
+        if let Some(hatchery) = hatcheries
+            .iter()
+            .find(|h| h.active_drones < h.max_concurrency)
+        {
+            let _ = state.hatchery.assign_job(&next_run.id, &hatchery.id).await;
+            tracing::info!(
+                next_run_id = %next_run.id,
+                hatchery_id = %hatchery.id,
+                "auto-assigned pipeline run to hatchery"
+            );
+        }
+    }
+
     Ok(Json(serde_json::to_value(result).map_err(|e| {
         crate::error::OverseerError::Internal(e.to_string())
     })?))
