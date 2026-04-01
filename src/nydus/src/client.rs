@@ -145,6 +145,15 @@ impl NydusClient {
         Ok(Self::check_response(resp).await?.json().await?)
     }
 
+    pub async fn advance_run(&self, id: &str) -> Result<JobRun, Error> {
+        let resp = self
+            .client
+            .post(format!("{}/api/jobs/runs/{id}/advance", self.base_url))
+            .send()
+            .await?;
+        Ok(Self::check_response(resp).await?.json().await?)
+    }
+
     // --- Tasks ---
 
     pub async fn create_task(
