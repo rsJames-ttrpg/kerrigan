@@ -176,20 +176,9 @@ impl Config {
                 anyhow::bail!("notifications.url is required for webhook backend");
             }
             if let Some(events) = &self.notifications.events {
-                let valid = [
-                    "hatchery_registered",
-                    "drone_spawned",
-                    "drone_completed",
-                    "drone_failed",
-                    "drone_stalled",
-                    "drone_timed_out",
-                    "auth_requested",
-                    "creep_started",
-                    "creep_died",
-                    "shutting_down",
-                ];
+                use crate::notifier::webhook::VALID_EVENTS;
                 for e in events {
-                    if !valid.contains(&e.as_str()) {
+                    if !VALID_EVENTS.contains(&e.as_str()) {
                         anyhow::bail!("unknown notification event: '{e}'");
                     }
                 }

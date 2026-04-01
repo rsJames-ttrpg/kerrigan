@@ -138,16 +138,44 @@ fn build_placeholders(event: &QueenEvent) -> Vec<(&'static str, String)> {
 }
 
 fn render_template(template: &str, placeholders: &[(&str, String)]) -> String {
-    let mut result = template.to_string();
-    for (key, value) in placeholders {
-        result = result.replace(&format!("{{{{{key}}}}}"), value);
+    // Parse the template as JSON, walk string values and substitute placeholders,
+    // then re-serialize. This ensures placeholder values are properly JSON-escaped.
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(template) else {
+        // If the template isn't valid JSON, fall back to string replacement
+        let mut result = template.to_string();
+        for (key, val) in placeholders {
+            result = result.replace(&format!("{{{{{key}}}}}"), val);
+        }
+        return result;
+    };
+    substitute_placeholders(&mut value, placeholders);
+    serde_json::to_string(&value).unwrap_or_else(|_| template.to_string())
+}
+
+fn substitute_placeholders(value: &mut serde_json::Value, placeholders: &[(&str, String)]) {
+    match value {
+        serde_json::Value::String(s) => {
+            for (key, val) in placeholders {
+                *s = s.replace(&format!("{{{{{key}}}}}"), val);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                substitute_placeholders(item, placeholders);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (_, v) in map.iter_mut() {
+                substitute_placeholders(v, placeholders);
+            }
+        }
+        _ => {}
     }
-    result
 }
 
 use crate::config::NotificationConfig;
 
-const VALID_EVENTS: &[&str] = &[
+pub const VALID_EVENTS: &[&str] = &[
     "hatchery_registered",
     "drone_spawned",
     "drone_completed",
@@ -162,6 +190,13 @@ const VALID_EVENTS: &[&str] = &[
 
 impl WebhookNotifier {
     pub fn from_config(config: &NotificationConfig) -> anyhow::Result<Self> {
+        Self::from_config_with_env(config, |k| std::env::var(k))
+    }
+
+    pub fn from_config_with_env(
+        config: &NotificationConfig,
+        env_lookup: impl Fn(&str) -> Result<String, std::env::VarError>,
+    ) -> anyhow::Result<Self> {
         let url = config
             .url
             .as_deref()
@@ -172,7 +207,7 @@ impl WebhookNotifier {
         let token = match config.token.as_deref() {
             Some(t) if t.starts_with("env:") => {
                 let var = &t[4..];
-                let val = std::env::var(var).map_err(|_| {
+                let val = env_lookup(var).map_err(|_| {
                     anyhow::anyhow!(
                         "notifications.token references env var '{var}' which is not set"
                     )
@@ -299,6 +334,19 @@ mod tests {
     }
 
     #[test]
+    fn test_render_template_json_escapes_special_chars() {
+        let template = r#"{"text":"{{message}}"}"#;
+        let placeholders = vec![(
+            "message",
+            r#"Drone failed for job abc: expected "}""#.to_string(),
+        )];
+        let result = render_template(template, &placeholders);
+        // The result should be valid JSON with the quotes escaped
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["text"], r#"Drone failed for job abc: expected "}""#);
+    }
+
+    #[test]
     fn test_render_template_empty_placeholder() {
         let template = r#"{"error":"{{error}}"}"#;
         let placeholders = vec![("error", String::new())];
@@ -395,8 +443,6 @@ mod tests {
 
     #[test]
     fn test_from_config_env_token() {
-        // SAFETY: test-only, single-threaded test runner
-        unsafe { std::env::set_var("TEST_WEBHOOK_TOKEN", "secret-from-env") };
         let config = NotificationConfig {
             backend: "webhook".into(),
             url: Some("http://localhost".into()),
@@ -404,10 +450,15 @@ mod tests {
             events: None,
             body: None,
         };
-        let notifier = WebhookNotifier::from_config(&config).unwrap();
+        let env = |key: &str| -> Result<String, std::env::VarError> {
+            if key == "TEST_WEBHOOK_TOKEN" {
+                Ok("secret-from-env".into())
+            } else {
+                Err(std::env::VarError::NotPresent)
+            }
+        };
+        let notifier = WebhookNotifier::from_config_with_env(&config, env).unwrap();
         assert_eq!(notifier.token.as_deref(), Some("secret-from-env"));
-        // SAFETY: test-only, single-threaded test runner
-        unsafe { std::env::remove_var("TEST_WEBHOOK_TOKEN") };
     }
 
     #[test]
@@ -419,7 +470,9 @@ mod tests {
             events: None,
             body: None,
         };
-        let err = WebhookNotifier::from_config(&config).unwrap_err();
+        let env =
+            |_: &str| -> Result<String, std::env::VarError> { Err(std::env::VarError::NotPresent) };
+        let err = WebhookNotifier::from_config_with_env(&config, env).unwrap_err();
         assert!(err.to_string().contains("NONEXISTENT_VAR_12345"));
     }
 
