@@ -117,6 +117,29 @@ Everything else runs autonomously as drone work.
 - Or: pre-auth on host and avoid the problem entirely
 - Depends on: #3
 
+### Operational Improvements (completed 2026-04-01)
+
+**Webhook notifications** `[done — PR #14]`
+- Generic `WebhookNotifier` — POSTs JSON to any HTTP endpoint on filtered events
+- Template rendering with `{{placeholder}}` substitution, JSON-safe escaping
+- First target: Signal via signal-cli-rest-api / secured-signal-api
+- Configurable event filter, bearer token (env: resolution), arbitrary body template
+
+**MCP over HTTP** `[done]`
+- Overseer serves MCP via streamable HTTP at `/mcp` using rmcp's `StreamableHttpService`
+- `.mcp.json` configured for `http://localhost:3100/mcp`
+- `mcp_transport = "http"` in overseer.toml (container default)
+
+**Job claiming architecture** `[done]`
+- Removed eager hatchery assignment from submit_job, advance_job_run, and auto-advance
+- Queens poll `GET /api/jobs/runs/pending` for unassigned runs, claim atomically
+- Fixes stale hatchery ID bug when containers restart
+
+**Stall detection improvements** `[done]`
+- Stderr output as drone liveness signal (Claude Code logs to stderr while working)
+- Stall notification fires once per event, resets when activity resumes
+- Supervisor sets run status to "running" on spawn (was stuck at "pending")
+
 ### Phase 5: Scale and Polish
 
 **11. Creep v2** — tree-sitter AST parsing, symbol index

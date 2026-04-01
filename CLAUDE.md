@@ -61,13 +61,15 @@ Seeded job definitions on startup: `default`, `spec-from-problem`, `plan-from-sp
 
 Backend selected via URL in config: `database_url` (sqlite:// or postgres://) and `artifact_url` (file:// or s3://). HTTP API on port 3100, MCP via stdio or HTTP. Config: `overseer.toml`. See `src/overseer/CLAUDE.md` for detailed architecture.
 
-**MCP Tools:** `submit_job` (resolve def by name, start run, assign hatchery), `list_job_definitions`, `list_job_runs`, `advance_job_run`, `store_memory`, `recall_memory`, `log_decision`, `store_artifact`, and more. Configured in `.mcp.json` for use from Claude Code.
+**MCP Tools:** `submit_job` (resolve def by name, start run), `list_job_definitions`, `list_job_runs`, `advance_job_run`, `store_memory`, `recall_memory`, `log_decision`, `store_artifact`, and more. Configured in `.mcp.json` for use from Claude Code. MCP transport is streamable HTTP at `/mcp` when `mcp_transport = "http"` (default for container), or stdio when `mcp_transport = "stdio"`.
 
 ### Queen (`src/queen/`)
-Hatchery process manager. Actor-based (tokio tasks + mpsc channels). Registers with Overseer, manages drone lifecycles, polls for jobs, health-checks drones and Creep. Config: `hatchery.toml`.
+Hatchery process manager. Actor-based (tokio tasks + mpsc channels). Registers with Overseer, manages drone lifecycles, polls for unassigned pending jobs (claims them atomically), health-checks drones via stderr liveness, and Creep. Config: `hatchery.toml`.
 
 - **Build:** `buck2 build root//src/queen:queen`
 - **Test:** `cd src/queen && cargo test`
+- **Notifications** — pluggable `Notifier` trait. Backends: `log` (default, tracing), `webhook` (POSTs JSON to any HTTP endpoint with `{{placeholder}}` template rendering). Configure in `[notifications]` section of `hatchery.toml`. First target: Signal via signal-cli-rest-api.
+- **Job claiming** — Queens poll `GET /api/jobs/runs/pending` for unassigned runs and claim them via `PUT /api/hatcheries/{id}/jobs/{run_id}`. Jobs are never eagerly assigned at submit time.
 
 ### Creep (`src/creep/`)
 Persistent file-indexing gRPC sidecar. tonic server with FileIndex service + standard health checking. Indexes workspaces respecting .gitignore, watches for changes via notify, blake3 content hashing.
