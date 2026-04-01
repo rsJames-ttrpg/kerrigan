@@ -142,6 +142,43 @@ pub struct ListTasksParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct SubmitJobParams {
+    #[schemars(
+        description = "Job definition name (e.g. 'implement-from-plan', 'spec-from-problem', 'review-pr')"
+    )]
+    pub definition: String,
+    #[schemars(description = "Task description / problem statement")]
+    pub task: String,
+    #[schemars(description = "Repository URL (HTTPS)")]
+    pub repo_url: String,
+    #[schemars(description = "Optional branch to clone (defaults to repo default branch)")]
+    pub branch: Option<String>,
+    #[schemars(description = "Optional path to spec file (for plan-from-spec stage)")]
+    pub spec_path: Option<String>,
+    #[schemars(description = "Optional path to plan file (for implement-from-plan stage)")]
+    pub plan_path: Option<String>,
+    #[schemars(description = "Optional PR URL (for review-pr stage)")]
+    pub pr_url: Option<String>,
+    #[schemars(description = "Optional GitHub PAT for push/PR operations")]
+    pub github_pat: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ListJobRunsParams {
+    #[schemars(description = "Filter by status (e.g. pending, running, completed, failed)")]
+    pub status: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct AdvanceJobRunParams {
+    #[schemars(description = "Job run ID to advance to the next pipeline stage")]
+    pub run_id: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ListJobDefinitionsParams {}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct StoreArtifactParams {
     #[schemars(description = "Filename / display name for the artifact")]
     pub name: String,
@@ -379,6 +416,159 @@ impl OverseerMcp {
             .update_job_run(&p.id, p.status.as_deref(), p.result, p.error.as_deref())
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let json = serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string());
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(
+        description = "Submit a job for execution. Resolves definition by name, starts a run, and assigns to an available hatchery. Use this to kick off pipeline stages like 'implement-from-plan' or 'spec-from-problem'."
+    )]
+    async fn submit_job(
+        &self,
+        Parameters(p): Parameters<SubmitJobParams>,
+    ) -> Result<CallToolResult, McpError> {
+        // Resolve definition by name
+        let definitions = self
+            .state
+            .jobs
+            .list_job_definitions()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let def = definitions
+            .iter()
+            .find(|d| d.name == p.definition)
+            .ok_or_else(|| {
+                McpError::invalid_params(
+                    format!("job definition '{}' not found", p.definition),
+                    None,
+                )
+            })?;
+
+        // Build config overrides
+        let mut config = serde_json::json!({
+            "task": p.task,
+            "repo_url": p.repo_url,
+        });
+        if let Some(branch) = &p.branch {
+            config["branch"] = serde_json::Value::String(branch.clone());
+        }
+        if let Some(spec_path) = &p.spec_path {
+            config["spec_path"] = serde_json::Value::String(spec_path.clone());
+        }
+        if let Some(plan_path) = &p.plan_path {
+            config["plan_path"] = serde_json::Value::String(plan_path.clone());
+        }
+        if let Some(pr_url) = &p.pr_url {
+            config["pr_url"] = serde_json::Value::String(pr_url.clone());
+        }
+        if let Some(pat) = &p.github_pat {
+            config["secrets"] = serde_json::json!({"github_pat": pat});
+        }
+
+        // Start run
+        let run = self
+            .state
+            .jobs
+            .start_job_run(&def.id, "mcp", None, Some(config))
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Find hatchery and assign
+        let mut assigned_to = None;
+        if let Ok(hatcheries) = self.state.hatchery.list(Some("online")).await
+            && let Some(hatchery) = hatcheries
+                .iter()
+                .find(|h| h.active_drones < h.max_concurrency)
+            && self
+                .state
+                .hatchery
+                .assign_job(&run.id, &hatchery.id)
+                .await
+                .is_ok()
+        {
+            assigned_to = Some(hatchery.name.clone());
+        }
+
+        let mut result = serde_json::json!({
+            "run_id": run.id,
+            "definition": p.definition,
+            "status": run.status.to_string(),
+        });
+        if let Some(name) = assigned_to {
+            result["assigned_to_hatchery"] = serde_json::Value::String(name);
+        }
+        let json = serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string());
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(description = "List job runs, optionally filtered by status")]
+    async fn list_job_runs(
+        &self,
+        Parameters(p): Parameters<ListJobRunsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let results = self
+            .state
+            .jobs
+            .list_job_runs(p.status.as_deref())
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let json = serde_json::to_string_pretty(&results).unwrap_or_else(|e| e.to_string());
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(description = "List all job definitions")]
+    async fn list_job_definitions(
+        &self,
+        Parameters(_p): Parameters<ListJobDefinitionsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let results = self
+            .state
+            .jobs
+            .list_job_definitions()
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let json = serde_json::to_string_pretty(&results).unwrap_or_else(|e| e.to_string());
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    #[tool(
+        description = "Advance a completed pipeline stage to the next stage. Use after approving a spec or plan. Only works on gated stages (spec→plan, plan→implement)."
+    )]
+    async fn advance_job_run(
+        &self,
+        Parameters(p): Parameters<AdvanceJobRunParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let new_run = self
+            .state
+            .pipeline
+            .advance(&p.run_id)
+            .await
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Try to assign
+        let mut assigned_to = None;
+        if let Ok(hatcheries) = self.state.hatchery.list(Some("online")).await
+            && let Some(hatchery) = hatcheries
+                .iter()
+                .find(|h| h.active_drones < h.max_concurrency)
+            && self
+                .state
+                .hatchery
+                .assign_job(&new_run.id, &hatchery.id)
+                .await
+                .is_ok()
+        {
+            assigned_to = Some(hatchery.name.clone());
+        }
+
+        let mut result = serde_json::json!({
+            "new_run_id": new_run.id,
+            "parent_run_id": p.run_id,
+            "status": new_run.status.to_string(),
+        });
+        if let Some(name) = assigned_to {
+            result["assigned_to_hatchery"] = serde_json::Value::String(name);
+        }
         let json = serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string());
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
