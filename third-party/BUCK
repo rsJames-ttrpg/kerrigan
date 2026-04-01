@@ -2763,6 +2763,12 @@ http_archive(
     visibility = [],
 )
 
+alias(
+    name = "flate2",
+    actual = ":flate2-1",
+    visibility = ["PUBLIC"],
+)
+
 cargo.rust_library(
     name = "flate2-1",
     srcs = [":flate2-1.1.9.crate"],

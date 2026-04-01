@@ -3,5 +3,11 @@
     "allow": [],
     "deny": []
   },
-  "model": "sonnet"
+  "model": "sonnet",
+  "mcpServers": {
+    "overseer": {
+      "type": "url",
+      "url": "OVERSEER_MCP_URL_PLACEHOLDER"
+    }
+  }
 }

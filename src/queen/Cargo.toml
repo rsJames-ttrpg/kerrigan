@@ -18,3 +18,4 @@ anyhow = "1"
 drone-sdk = { path = "../drone-sdk" }
 nydus = { path = "../nydus" }
 tempfile = "3"
+flate2 = "1"

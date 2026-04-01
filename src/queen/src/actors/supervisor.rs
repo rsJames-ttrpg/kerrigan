@@ -1,6 +1,9 @@
 use std::collections::{HashMap, VecDeque};
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Write as IoWrite};
 use std::path::{Path, PathBuf};
+
+use flate2::Compression;
+use flate2::write::GzEncoder;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -12,6 +15,12 @@ use tokio_util::sync::CancellationToken;
 use crate::messages::{SpawnRequest, StatusQuery, StatusResponse};
 use crate::notifier::{Notifier, QueenEvent};
 use nydus::NydusClient;
+
+fn gzip_bytes(data: &[u8]) -> Vec<u8> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(data).expect("gzip write failed");
+    encoder.finish().expect("gzip finish failed")
+}
 
 #[allow(dead_code)]
 struct DroneHandle {
@@ -328,15 +337,16 @@ async fn drain_protocol_messages(
                                 "drone reported result"
                             );
 
-                            // Store conversation as artifact
+                            // Store conversation as gzipped artifact
                             let conversation_bytes =
                                 serde_json::to_vec_pretty(&output.conversation).unwrap_or_default();
-                            let artifact_name = format!("{id}-conversation.json");
+                            let compressed = gzip_bytes(&conversation_bytes);
+                            let artifact_name = format!("{id}-conversation.jsonl.gz");
                             if let Err(e) = client
                                 .store_artifact(
                                     &artifact_name,
-                                    "application/json",
-                                    &conversation_bytes,
+                                    "application/gzip",
+                                    &compressed,
                                     Some(id),
                                 )
                                 .await
@@ -348,33 +358,38 @@ async fn drain_protocol_messages(
                                 );
                             }
 
-                            // Update job run status
-                            let status = if output.exit_code == 0 {
-                                "completed"
-                            } else {
-                                "failed"
-                            };
+                            // Update job run status — require PR URL for success
+                            let (status, error) =
+                                if output.exit_code == 0 && output.git_refs.pr_url.is_none() {
+                                    ("failed", Some("drone completed but no PR was created"))
+                                } else if output.exit_code == 0 {
+                                    ("completed", None)
+                                } else {
+                                    ("failed", None)
+                                };
                             let result_value = serde_json::to_value(&output).ok();
                             if let Err(e) = client
-                                .update_run(id, Some(status), result_value, None)
+                                .update_run(id, Some(status), result_value, error)
                                 .await
                             {
                                 tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
                             }
 
-                            let exit_code = output.exit_code;
-                            if exit_code == 0 {
+                            if status == "completed" {
                                 notifier
                                     .notify(QueenEvent::DroneCompleted {
                                         job_run_id: id.clone(),
-                                        exit_code,
+                                        exit_code: output.exit_code,
                                     })
                                     .await;
                             } else {
+                                let error_msg = error
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| format!("exit code {}", output.exit_code));
                                 notifier
                                     .notify(QueenEvent::DroneFailed {
                                         job_run_id: id.clone(),
-                                        error: format!("exit code {exit_code}"),
+                                        error: error_msg,
                                     })
                                     .await;
                             }
@@ -438,11 +453,12 @@ async fn check_drones(
 
                             let conversation_bytes =
                                 serde_json::to_vec_pretty(&output.conversation).unwrap_or_default();
+                            let compressed = gzip_bytes(&conversation_bytes);
                             if let Err(e) = client
                                 .store_artifact(
-                                    &format!("{id}-conversation.json"),
-                                    "application/json",
-                                    &conversation_bytes,
+                                    &format!("{id}-conversation.jsonl.gz"),
+                                    "application/gzip",
+                                    &compressed,
                                     Some(id),
                                 )
                                 .await
@@ -451,15 +467,20 @@ async fn check_drones(
                             }
 
                             let result_value = serde_json::to_value(&output).ok();
-                            let run_status = if output.exit_code == 0 {
-                                "completed"
+                            let (run_status, error) = if output.exit_code == 0
+                                && output.git_refs.pr_url.is_none()
+                            {
+                                (
+                                    "failed",
+                                    Some("drone completed but no PR was created".to_string()),
+                                )
+                            } else if output.exit_code == 0 {
+                                ("completed", None)
                             } else {
-                                "failed"
-                            };
-                            let error = if output.exit_code != 0 {
-                                Some(format!("drone exited with code {}", output.exit_code))
-                            } else {
-                                None
+                                (
+                                    "failed",
+                                    Some(format!("drone exited with code {}", output.exit_code)),
+                                )
                             };
 
                             if let Err(e) = client
@@ -469,7 +490,7 @@ async fn check_drones(
                                 tracing::error!(job_run_id = %id, error = %e, "failed to update job run in overseer");
                             }
 
-                            if output.exit_code == 0 {
+                            if run_status == "completed" {
                                 notifier
                                     .notify(QueenEvent::DroneCompleted {
                                         job_run_id: id.clone(),
@@ -480,7 +501,9 @@ async fn check_drones(
                                 notifier
                                     .notify(QueenEvent::DroneFailed {
                                         job_run_id: id.clone(),
-                                        error: format!("exit code {}", output.exit_code),
+                                        error: error.clone().unwrap_or_else(|| {
+                                            format!("exit code {}", output.exit_code)
+                                        }),
                                     })
                                     .await;
                             }
