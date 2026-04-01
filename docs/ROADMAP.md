@@ -82,20 +82,19 @@ Everything else runs autonomously as drone work.
 - Conversation artifacts gzipped before storage
 - Depends on: #3, #4
 
-**6. Job templates for dev stages** `[spec needed]`
-- Pre-defined job definitions for each stage of the dev loop:
-  - `spec-from-problem` — takes a problem description, produces a design spec
-  - `plan-from-spec` — takes a spec, produces an implementation plan
-  - `implement-from-plan` — takes a plan, produces code + tests + PR
-  - `review-pr` — reviews a PR, produces feedback or approval
-- Each stage uses a different drone subtype with stage-appropriate config
+**6. Job templates for dev stages** `[done — stage subtypes + seeded definitions]`
+- Stage-specific CLAUDE.md generation: spec (brainstorming), plan (writing-plans), implement (subagent-driven-development), review (pr-review-toolkit)
+- Overseer seeds 5 definitions on startup: default, spec-from-problem, plan-from-spec, implement-from-plan, review-pr
+- Single claude-drone binary, stage dispatched via `config.stage`
 - Depends on: #2, #5
 
-**7. Job chaining** `[spec needed]`
-- When a drone completes a stage, automatically trigger the next stage
-- Overseer's parent_id on job runs supports the hierarchy
-- Queen needs logic: on job completion, check if there's a next stage to trigger
-- Human gates: spec approval and plan approval pause the chain and notify the operator
+**7. Job chaining** `[done — pipeline advancement + MCP integration]`
+- Hardcoded pipeline: spec → plan → implement → review
+- Auto-advancement on non-gated completion (implement → review)
+- Gated transitions via `kerrigan approve` / MCP `advance_job_run`
+- Context forwarding: repo_url, secrets, branch, pr_url, task propagated between stages
+- Partial pipeline support: `--branch` flag, start at any stage
+- MCP tools: submit_job, list_job_runs, list_job_definitions, advance_job_run
 - Depends on: #6
 
 ### Phase 4: Quality and Feedback
@@ -131,13 +130,13 @@ Everything else runs autonomously as drone work.
 
 ```
 #1 Drone config design ✅
- └→ #2 Vendor drone configs ✅ (base drone, subtypes TODO)
-     └→ #3 Integration smoke test ✅ (first drone task completed)
-         ├→ #4 Job submission ✅ (nydus client lib + kerrigan CLI)
-         │   └→ #5 PR workflow ✅ (first successful drone PR)
-         │       └→ #6 Job templates ← NEXT
-         │           └→ #7 Job chaining ← DOGFOODING
+ └→ #2 Vendor drone configs ✅
+     └→ #3 Integration smoke test ✅
+         ├→ #4 Job submission ✅ (nydus + kerrigan CLI)
+         │   └→ #5 PR workflow ✅ (drone PR + secrets + gzip)
+         │       └→ #6 Job templates ✅ (stage subtypes)
+         │           └→ #7 Job chaining ✅ (pipeline + MCP) ← DOGFOODING READY
          └→ #10 Auth flow (partial — cred mount works, headless OAuth TODO)
 ```
 
-Items 6-7 are the remaining critical path. #6 is next: pre-defined job templates for each stage of the dev loop.
+The critical path to dogfooding is complete. The platform can now orchestrate the full dev loop: problem → spec → plan → implement → review → PR. Next priorities are Phase 4 (quality/feedback) and operational improvements.

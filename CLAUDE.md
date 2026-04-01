@@ -48,11 +48,16 @@ The Buck2 prelude is vendored in `prelude/` (not using `bundled`). Patches appli
 The foundational service. Rust binary (edition 2024). Layered monolith: HTTP (axum) + MCP (rmcp) over a shared service layer, backed by a pluggable database and object store.
 
 - **Memory** — vector-based semantic storage and retrieval; supports sqlite-vec (local) and pgvector (Postgres)
-- **Jobs** — definitions, runs (with sub-jobs), and tasks for agent workflow orchestration
+- **Jobs** — definitions, runs (with config_overrides), and tasks for agent workflow orchestration
+- **Pipeline** — hardcoded dev loop: spec → plan → implement → review. Auto-advances non-gated stages (implement→review). Gated stages (spec→plan, plan→implement) wait for `kerrigan approve`.
 - **Decisions** — append-only audit log of agent decisions with context and reasoning
 - **Artifacts** — metadata in DB, blobs via object_store (local filesystem, S3, etc.)
 
+Seeded job definitions on startup: `default`, `spec-from-problem`, `plan-from-spec`, `implement-from-plan`, `review-pr`.
+
 Backend selected via URL in config: `database_url` (sqlite:// or postgres://) and `artifact_url` (file:// or s3://). HTTP API on port 3100, MCP via stdio or HTTP. Config: `overseer.toml`. See `src/overseer/CLAUDE.md` for detailed architecture.
+
+**MCP Tools:** `submit_job` (resolve def by name, start run, assign hatchery), `list_job_definitions`, `list_job_runs`, `advance_job_run`, `store_memory`, `recall_memory`, `log_decision`, `store_artifact`, and more. Configured in `.mcp.json` for use from Claude Code.
 
 ### Queen (`src/queen/`)
 Hatchery process manager. Actor-based (tokio tasks + mpsc channels). Registers with Overseer, manages drone lifecycles, polls for jobs, health-checks drones and Creep. Config: `hatchery.toml`.
@@ -67,11 +72,24 @@ Persistent file-indexing gRPC sidecar. tonic server with FileIndex service + sta
 - **Test:** `cd src/creep && cargo test`
 - **Proto:** `src/creep/proto/creep.proto` — codegen via tonic-build in build.rs. Pre-generated Rust in `proto_gen/` for Buck2.
 
+### Nydus (`src/nydus/`)
+Shared Overseer HTTP client library. Stateless typed wrapper over Overseer's REST API. Used by Queen, kerrigan CLI, and future htmx UI. Methods for jobs, tasks, hatcheries, artifacts, auth, and pipeline advancement.
+
+- **Build:** `buck2 build root//src/nydus:nydus`
+- **Test:** `cd src/nydus && cargo test`
+
+### Kerrigan CLI (`src/kerrigan/`)
+Operator console for the dev loop. Submit problems, check status, approve pipeline gates, submit auth codes.
+
+- **Build:** `buck2 build root//src/kerrigan:kerrigan`
+- **Install:** `buck2 run root//src/kerrigan:install` (copies to `~/.local/bin/`)
+- **Usage:** `kerrigan submit "problem" --definition implement-from-plan --set repo_url=... --set secrets.github_pat=...`
+
 ### drone-sdk (`src/drone-sdk/`)
 Shared library for drone binaries. Defines JSON-line protocol (QueenMessage/DroneMessage), DroneRunner trait (setup/execute/teardown), and harness entrypoint.
 
 ### Claude Drone (`src/drones/claude/base/`)
-First concrete drone. Self-extracting binary embedding user-level Claude Code config at compile time. Creates isolated temp home, clones repo, spawns `claude` CLI.
+Self-extracting binary embedding Claude Code config at compile time. Creates isolated temp home, clones repo, spawns `claude` CLI. Stage-specific CLAUDE.md generated at runtime based on `config.stage` (spec, plan, implement, review). Post-execute safety net ensures PR creation. Supports secrets via job config (`secrets.github_pat`, `secrets.buildbuddy_api_key`).
 
 ## Toolchains
 
@@ -168,12 +186,66 @@ src/overseer/               # Overseer crate (see src/overseer/CLAUDE.md for det
   migrations/sqlite/        # SQLite migrations (applied via sqlx::migrate!())
   migrations/postgres/      # PostgreSQL migrations (applied via sqlx::migrate!())
   src/storage.rs          # ObjectStore wrapper (local filesystem / S3)
+src/nydus/                  # Shared Overseer HTTP client library
+  src/client.rs           # NydusClient — typed methods for all Overseer API endpoints
+  src/types.rs            # Response types (JobDefinition, JobRun, Task, Hatchery, Artifact)
+  src/error.rs            # Error type (Request, Api variants)
+src/kerrigan/               # Operator CLI (submit, status, approve, reject, auth, log)
+  src/main.rs             # clap CLI, command dispatch, pipeline chain display
+  install.sh              # Install script (buck2 run root//src/kerrigan:install)
 src/queen/                  # Hatchery process manager (see above)
 src/creep/                  # File-indexing gRPC sidecar (see above)
 src/drone-sdk/              # Shared drone binary SDK
 src/drones/claude/base/     # Claude Code drone binary
+  src/stages.rs           # Stage-specific CLAUDE.md generation (spec, plan, implement, review)
+  src/config/CLAUDE.md    # Default drone instructions (embedded at compile time)
+  src/config/settings.json # Claude Code settings with Overseer MCP (embedded, URL rewritten at runtime)
+.mcp.json                   # Overseer MCP server config for Claude Code
+Dockerfile                  # Dev container (Overseer + Queen + drones)
+deploy/dev/                 # Dev container build scripts and configs
 docs/specs/                 # Design specs
 docs/plans/                 # Implementation plans
+```
+
+## Dev Loop
+
+The platform orchestrates a full development pipeline:
+
+```
+Problem → Spec → Plan → Implementation → Review → PR
+   ↑        ↑      ↑                              │
+   │     human   human                          human
+   │    approval approval                      merge
+   └───────────────────────────────────────────────┘
+```
+
+**Operator workflow:**
+1. `kerrigan submit "problem" --definition spec-from-problem --set repo_url=... --set secrets.github_pat=...`
+2. Drone writes spec, creates PR → operator reviews/merges → `kerrigan approve <run-id>`
+3. Drone writes plan, creates PR → operator reviews/merges → `kerrigan approve <run-id>`
+4. Drone implements code → review drone auto-starts → operator reviews final PR
+
+**Partial pipeline (most common):** Spec + plan interactively in Claude Code, then delegate:
+```bash
+kerrigan submit "implement the plan" --definition implement-from-plan \
+  --branch feat/my-feature \
+  --set repo_url=https://github.com/org/repo.git \
+  --set plan_path=docs/plans/2026-04-01-feature.md \
+  --set secrets.github_pat=ghp_...
+```
+
+**Via MCP (from Claude Code):** Use `submit_job` tool with Overseer MCP server (configured in `.mcp.json`).
+
+## Dev Container
+
+Build and run the all-in-one container (Overseer + Queen + drones):
+
+```bash
+./deploy/dev/build.sh
+docker run -it --rm -p 3100:3100 \
+  -v kerrigan-data:/data \
+  -v /tmp/claude-creds.json:/home/kerrigan/.claude/.credentials.json:ro \
+  kerrigan
 ```
 
 ## Hardware Constraints
