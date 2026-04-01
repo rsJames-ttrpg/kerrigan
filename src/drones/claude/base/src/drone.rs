@@ -122,11 +122,7 @@ impl DroneRunner for ClaudeDrone {
                 tokio::select! {
                     Some(url) = auth_rx.recv() => {
                         tracing::info!(url = %url, "claude CLI requesting auth");
-                        match channel.request_auth(&url, "Claude CLI requires authentication") {
-                            Ok(true) => tracing::info!("auth approved, continuing"),
-                            Ok(false) => tracing::warn!("auth denied"),
-                            Err(e) => tracing::warn!(error = %e, "auth request failed"),
-                        }
+                        let _ = channel.progress("auth_required", &url);
                     }
                     status = child.wait() => {
                         let status = status.context("failed to wait for claude process")?;
@@ -249,18 +245,17 @@ async fn authenticate(
         }
     });
 
-    let timeout_duration = Duration::from_secs(300); // 5 min for auth
+    let timeout_duration = Duration::from_secs(600); // 10 min for auth
 
     let result = timeout(timeout_duration, async {
         loop {
             tokio::select! {
                 Some(url) = auth_rx.recv() => {
-                    tracing::info!(url = %url, "auth URL detected");
-                    match channel.request_auth(&url, "Claude CLI requires authentication — visit URL to log in") {
-                        Ok(true) => tracing::info!("auth approved by queen"),
-                        Ok(false) => tracing::warn!("auth denied by queen"),
-                        Err(e) => tracing::warn!(error = %e, "auth request to queen failed"),
-                    }
+                    tracing::info!(url = %url, "auth URL detected — waiting for user to authenticate");
+                    // Surface the URL to Queen as a progress update so it appears in logs.
+                    // Don't use request_auth() — the CLI itself blocks until OAuth completes,
+                    // we just need to make the URL visible to the operator.
+                    let _ = channel.progress("auth_required", &url);
                 }
                 status = child.wait() => {
                     let status = status.context("failed to wait for auth process")?;
