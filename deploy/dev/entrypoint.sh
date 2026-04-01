@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Ensure data directories exist (host path mounts may be empty)
+mkdir -p /data/artifacts
+
 echo "=== starting overseer ==="
 /opt/kerrigan/bin/overseer /opt/kerrigan/config/overseer.toml &
 OVERSEER_PID=$!
@@ -28,4 +31,6 @@ if ! curl -sf http://localhost:3100/api/jobs/definitions > /dev/null 2>&1; then
 fi
 
 echo "=== starting queen ==="
+# Dynamic name avoids UNIQUE constraint on re-registration with persisted DB
+export QUEEN_NAME="hatchery-$(hostname)"
 exec /opt/kerrigan/bin/queen --config /opt/kerrigan/config/hatchery.toml
