@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Kerrigan is a personal agentic development platform built around Claude Code. It runs on a Raspberry Pi with an AI HAT 2, using local inference for lightweight tasks and Claude Code for heavier work.
 
+## Setup After Clone
+
+Run `./tools/buckstrap.sh` after cloning. It installs the pinned Buck2 release, sets up pre-commit hooks, and warms the build cache. This is required before any `buck2` commands will work.
+
 ## Build System
 
 **Buck2** (`2026-01-19` release) is the primary build system with hermetic toolchains (no system rustc dependency). Pinned to this version because `2026-03-15` has a sqlite materializer bug (panics on duplicate inserts for directory outputs).
