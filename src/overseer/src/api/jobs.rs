@@ -79,6 +79,7 @@ struct StartJobRunRequest {
     definition_id: String,
     triggered_by: String,
     parent_id: Option<String>,
+    config_overrides: Option<Value>,
 }
 
 async fn start_job_run(
@@ -91,6 +92,7 @@ async fn start_job_run(
             &body.definition_id,
             &body.triggered_by,
             body.parent_id.as_deref(),
+            body.config_overrides,
         )
         .await?;
     Ok(Json(serde_json::to_value(result).map_err(|e| {

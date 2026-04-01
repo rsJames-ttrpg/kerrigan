@@ -58,6 +58,7 @@ pub trait JobStore: Send + Sync {
         definition_id: &str,
         triggered_by: &str,
         parent_id: Option<&str>,
+        config_overrides: Option<serde_json::Value>,
     ) -> Result<JobRun>;
 
     async fn get_job_run(&self, id: &str) -> Result<Option<JobRun>>;

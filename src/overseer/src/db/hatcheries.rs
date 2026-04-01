@@ -266,6 +266,7 @@ pub async fn list_hatchery_job_runs(
             JobRuns::ParentId,
             JobRuns::Status,
             JobRuns::TriggeredBy,
+            JobRuns::ConfigOverrides,
             JobRuns::Result,
             JobRuns::Error,
             JobRuns::StartedAt,
@@ -397,7 +398,7 @@ mod tests {
         let def = create_job_definition(&pool, "test-job-assign", "a job", serde_json::json!({}))
             .await
             .expect("create job def");
-        let run = start_job_run(&pool, &def.id, "agent", None)
+        let run = start_job_run(&pool, &def.id, "agent", None, None)
             .await
             .expect("start run");
 

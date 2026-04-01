@@ -41,6 +41,7 @@ pub enum JobRuns {
     ParentId,
     Status,
     TriggeredBy,
+    ConfigOverrides,
     Result,
     Error,
     StartedAt,

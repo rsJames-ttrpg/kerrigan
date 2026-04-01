@@ -75,6 +75,7 @@ fn row_to_job_run(row: &sqlx::postgres::PgRow) -> JobRun {
             .parse()
             .unwrap_or(JobRunStatus::Pending),
         triggered_by: row.get("triggered_by"),
+        config_overrides: row.get("config_overrides"),
         result,
         error: row.get("error"),
         started_at: row.get("started_at"),
@@ -443,8 +444,13 @@ impl JobStore for PostgresDatabase {
         definition_id: &str,
         triggered_by: &str,
         parent_id: Option<&str>,
+        config_overrides: Option<serde_json::Value>,
     ) -> Result<JobRun> {
         let id = Uuid::new_v4().to_string();
+        let config_overrides_json = config_overrides
+            .as_ref()
+            .map(|v| serde_json::to_string(v).map_err(|e| OverseerError::Internal(e.to_string())))
+            .transpose()?;
 
         let (sql, values) = Query::insert()
             .into_table(JobRuns::Table)
@@ -454,6 +460,7 @@ impl JobStore for PostgresDatabase {
                 JobRuns::ParentId,
                 JobRuns::Status,
                 JobRuns::TriggeredBy,
+                JobRuns::ConfigOverrides,
                 JobRuns::StartedAt,
             ])
             .values([
@@ -462,6 +469,7 @@ impl JobStore for PostgresDatabase {
                 parent_id.map(|s| s.to_string()).into(),
                 "pending".into(),
                 triggered_by.into(),
+                config_overrides_json.into(),
                 Expr::cust("now()"),
             ])
             .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
@@ -471,6 +479,7 @@ impl JobStore for PostgresDatabase {
                 JobRuns::ParentId,
                 JobRuns::Status,
                 JobRuns::TriggeredBy,
+                JobRuns::ConfigOverrides,
                 JobRuns::Result,
                 JobRuns::Error,
                 JobRuns::StartedAt,
@@ -494,6 +503,7 @@ impl JobStore for PostgresDatabase {
                 JobRuns::ParentId,
                 JobRuns::Status,
                 JobRuns::TriggeredBy,
+                JobRuns::ConfigOverrides,
                 JobRuns::Result,
                 JobRuns::Error,
                 JobRuns::StartedAt,
@@ -579,6 +589,7 @@ impl JobStore for PostgresDatabase {
                 JobRuns::ParentId,
                 JobRuns::Status,
                 JobRuns::TriggeredBy,
+                JobRuns::ConfigOverrides,
                 JobRuns::Result,
                 JobRuns::Error,
                 JobRuns::StartedAt,

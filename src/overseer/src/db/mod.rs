@@ -99,7 +99,7 @@ pub(crate) async fn trait_conformance_suite(db: Arc<dyn Database>) {
 
     // Job runs
     let run = db
-        .start_job_run(&def.id, "test-agent", None)
+        .start_job_run(&def.id, "test-agent", None, None)
         .await
         .expect("start run");
     assert_eq!(run.status, models::JobRunStatus::Pending);
