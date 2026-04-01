@@ -82,6 +82,29 @@ The extraction happens in `environment.rs::create_home()`. The drone's `execute(
 | `src/drones/claude/base/BUCK` | Add `"src/config/claude-cli": "//tools:claude-cli-linux-x64"` to `mapped_srcs` |
 | `src/drones/claude/base/src/environment.rs` | Add `CLAUDE_CLI` constant, extract to `.claude/bin/claude` in `create_home()` |
 | `src/drones/claude/base/src/drone.rs` | Use `env.home.join(".claude/bin/claude")` instead of `Command::new("claude")` |
+| `tools/update-claude-cli.sh` | Utility to fetch latest version + SHA256 and update `tools/BUCK` |
+
+## Update Script
+
+`tools/update-claude-cli.sh` — fetches the latest Claude CLI version and SHA256 from the GCS manifest, then updates `tools/BUCK` in place.
+
+```bash
+./tools/update-claude-cli.sh
+# Claude CLI: 2.1.89 → 2.1.90
+# Updated tools/BUCK: CLAUDE_CLI_VERSION and CLAUDE_CLI_SHA256
+```
+
+The script:
+1. Fetches `$BASE/latest` to get the current version
+2. Fetches `$BASE/$VERSION/manifest.json` to get the linux-x64 SHA256
+3. Uses `sed` to update `CLAUDE_CLI_VERSION` and `CLAUDE_CLI_SHA256` in `tools/BUCK`
+4. Prints what changed (or "already up to date" if no change)
+
+Does not commit — the developer reviews the diff and commits manually.
+
+| File | Change |
+|---|---|
+| `tools/update-claude-cli.sh` | New utility script |
 
 ## What This Does NOT Cover
 
