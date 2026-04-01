@@ -117,11 +117,11 @@ async fn main() -> anyhow::Result<()> {
         ),
     ];
 
-    for (name, description, config) in seed_definitions {
+    for (name, description, def_config) in seed_definitions {
         if !existing_names.contains(name) {
             state
                 .jobs
-                .create_job_definition(name, description, config)
+                .create_job_definition(name, description, def_config)
                 .await?;
             tracing::info!("seeded job definition: {name}");
         }

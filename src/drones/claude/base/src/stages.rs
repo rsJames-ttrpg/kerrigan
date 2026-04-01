@@ -204,6 +204,36 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_implement_stage_without_plan_path() {
+        let config = json!({});
+        let md = generate_claude_md("implement", &config);
+        assert!(md.is_some());
+        let content = md.unwrap();
+        assert!(content.contains("plan path not provided"));
+    }
+
+    #[test]
+    fn test_generate_review_stage_without_pr_url() {
+        let config = json!({});
+        let md = generate_claude_md("review", &config);
+        assert!(md.is_some());
+        let content = md.unwrap();
+        assert!(content.contains("PR URL not provided"));
+    }
+
+    #[test]
+    fn test_all_stages_include_base_rules() {
+        let config = json!({"spec_path": "x", "plan_path": "x", "pr_url": "x"});
+        for stage in ["spec", "plan", "implement", "review"] {
+            let content = generate_claude_md(stage, &config).unwrap();
+            assert!(
+                content.contains("Do NOT merge the PR"),
+                "stage '{stage}' missing BASE_RULES content"
+            );
+        }
+    }
+
+    #[test]
     fn test_unknown_stage_returns_none() {
         let config = json!({});
         assert!(generate_claude_md("unknown", &config).is_none());
