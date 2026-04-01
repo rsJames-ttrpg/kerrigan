@@ -61,7 +61,7 @@ Expand `NotificationConfig` in `config.rs` with optional fields:
 backend = "webhook"
 url = "http://localhost:8080/v2/send"
 token = "env:SIGNAL_API_TOKEN"          # optional; "env:" prefix resolves from env var
-events = ["failed", "stalled", "timed_out"]
+events = ["drone_failed", "drone_stalled", "drone_timed_out"]
 
 [notifications.body]
 message = "{{message}}"
@@ -112,7 +112,7 @@ No changes to `Notifier` trait, `QueenEvent` enum, `LogNotifier`, supervisor, or
 backend = "webhook"
 url = "http://localhost:8080/v2/send"
 token = "env:SIGNAL_API_TOKEN"
-events = ["failed", "stalled", "timed_out"]
+events = ["drone_failed", "drone_stalled", "drone_timed_out"]
 
 [notifications.body]
 message = "{{message}}"
