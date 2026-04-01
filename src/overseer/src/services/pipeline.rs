@@ -130,6 +130,12 @@ impl PipelineService {
             OverseerError::Validation(format!("unknown pipeline stage: {stage_name}"))
         })?;
 
+        if !current_stage.gate_before_next {
+            return Err(OverseerError::Validation(format!(
+                "stage '{stage_name}' is not gated — it auto-advances on completion"
+            )));
+        }
+
         let next_stage_name = current_stage.next.ok_or_else(|| {
             OverseerError::Validation(format!(
                 "stage '{stage_name}' is the last stage — nothing to advance to"

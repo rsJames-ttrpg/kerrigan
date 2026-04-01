@@ -164,26 +164,32 @@ async fn update_job_run(
         .await?;
 
     // Check if pipeline should auto-advance
-    if let Ok(Some(next_run)) = state
+    match state
         .jobs
         .check_pipeline_after_completion(&result, &state.pipeline)
         .await
     {
-        let hatcheries = state
-            .hatchery
-            .list(Some("online"))
-            .await
-            .unwrap_or_default();
-        if let Some(hatchery) = hatcheries
-            .iter()
-            .find(|h| h.active_drones < h.max_concurrency)
-        {
-            let _ = state.hatchery.assign_job(&next_run.id, &hatchery.id).await;
-            tracing::info!(
-                next_run_id = %next_run.id,
-                hatchery_id = %hatchery.id,
-                "auto-assigned pipeline run to hatchery"
-            );
+        Err(e) => {
+            tracing::warn!(run_id = %id, error = %e, "pipeline auto-advance check failed");
+        }
+        Ok(None) => {}
+        Ok(Some(next_run)) => {
+            let hatcheries = state
+                .hatchery
+                .list(Some("online"))
+                .await
+                .unwrap_or_default();
+            if let Some(hatchery) = hatcheries
+                .iter()
+                .find(|h| h.active_drones < h.max_concurrency)
+            {
+                let _ = state.hatchery.assign_job(&next_run.id, &hatchery.id).await;
+                tracing::info!(
+                    next_run_id = %next_run.id,
+                    hatchery_id = %hatchery.id,
+                    "auto-assigned pipeline run to hatchery"
+                );
+            }
         }
     }
 
