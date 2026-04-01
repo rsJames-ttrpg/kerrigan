@@ -6,3 +6,6 @@ buck-out/
 **/target/
 
 data/
+
+.claude/settings.json
+**/__pycache__/**
