@@ -35,7 +35,8 @@ impl DroneRunner for ClaudeDrone {
         let settings_path = env.home.join(".claude/settings.json");
         let claude_md_path = env.home.join("CLAUDE.md");
 
-        let mut child = Command::new("claude")
+        let claude_bin = env.home.join(".claude/bin/claude");
+        let mut child = Command::new(&claude_bin)
             .arg("--print")
             .arg("--output-format")
             .arg("json")

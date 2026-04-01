@@ -1,3 +1,4 @@
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -7,6 +8,7 @@ use tokio::process::Command;
 
 const SETTINGS_JSON: &[u8] = include_bytes!("config/settings.json");
 const CLAUDE_MD: &[u8] = include_bytes!("config/CLAUDE.md");
+const CLAUDE_CLI: &[u8] = include_bytes!("config/claude-cli");
 
 /// Create an isolated drone home directory for the given job run.
 ///
@@ -41,6 +43,19 @@ pub async fn create_home(job_run_id: &str) -> Result<DroneEnvironment> {
     fs::write(claude_dir.join("settings.json"), SETTINGS_JSON)
         .await
         .context("failed to write settings.json")?;
+
+    // Write embedded Claude CLI binary
+    let claude_bin_dir = claude_dir.join("bin");
+    fs::create_dir_all(&claude_bin_dir)
+        .await
+        .context("failed to create .claude/bin dir")?;
+    let claude_bin = claude_bin_dir.join("claude");
+    fs::write(&claude_bin, CLAUDE_CLI)
+        .await
+        .context("failed to write claude CLI binary")?;
+    fs::set_permissions(&claude_bin, std::fs::Permissions::from_mode(0o755))
+        .await
+        .context("failed to set claude CLI permissions")?;
 
     // Write embedded CLAUDE.md
     fs::write(home.join("CLAUDE.md"), CLAUDE_MD)
@@ -147,6 +162,15 @@ mod tests {
         assert_eq!(
             claude_md, CLAUDE_MD,
             "CLAUDE.md content should match embedded bytes"
+        );
+
+        // Embedded Claude CLI written and executable
+        let claude_bin = env.home.join(".claude/bin/claude");
+        assert!(claude_bin.exists(), "claude CLI binary should exist");
+        let metadata = std::fs::metadata(&claude_bin).expect("claude CLI metadata");
+        assert!(
+            metadata.permissions().mode() & 0o111 != 0,
+            "claude CLI should be executable"
         );
 
         cleanup(&env.home).await;
