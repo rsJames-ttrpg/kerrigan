@@ -1,4 +1,4 @@
-CREEP_SRCS = glob(["src/**/*.rs", "proto/**/*.proto", "build.rs"])
+CREEP_SRCS = glob(["src/**/*.rs", "proto/**/*.proto", "proto_gen/**/*.rs", "build.rs"])
 
 CREEP_DEPS = [
     "//third-party:anyhow",
@@ -21,7 +21,10 @@ rust_binary(
     srcs = CREEP_SRCS,
     crate_root = "src/main.rs",
     deps = CREEP_DEPS,
-    env = {"CARGO_MANIFEST_DIR": "."},
+    env = {
+        "CARGO_MANIFEST_DIR": ".",
+        "OUT_DIR": "proto_gen",
+    },
     visibility = ["PUBLIC"],
 )
 
@@ -32,6 +35,9 @@ rust_test(
     deps = CREEP_DEPS + [
         "//third-party:tempfile",
     ],
-    env = {"CARGO_MANIFEST_DIR": "."},
+    env = {
+        "CARGO_MANIFEST_DIR": ".",
+        "OUT_DIR": "proto_gen",
+    },
     visibility = ["PUBLIC"],
 )
