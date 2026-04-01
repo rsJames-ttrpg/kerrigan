@@ -1,0 +1,266 @@
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use notify::{EventKind, RecursiveMode, Watcher as _};
+use tokio::sync::{Mutex, mpsc};
+
+use crate::index::FileIndex;
+
+/// Events produced by the file watcher.
+#[derive(Debug, Clone)]
+pub enum WatchEvent {
+    Created(PathBuf),
+    Modified(PathBuf),
+    Removed(PathBuf),
+}
+
+/// Watches one or more workspace directories for file changes, filtering out
+/// gitignored paths using the `ignore` crate.
+pub struct FileWatcher {
+    /// One notify watcher per workspace so we can stop watching individually.
+    watchers: HashMap<PathBuf, notify::RecommendedWatcher>,
+    /// Gitignore matcher per workspace root, built when a workspace is registered.
+    matchers: HashMap<PathBuf, ignore::gitignore::Gitignore>,
+    /// Sender half of the event channel — cloned into each notify watcher closure.
+    tx: mpsc::Sender<WatchEvent>,
+}
+
+impl FileWatcher {
+    /// Create a new `FileWatcher` associated with `index`.
+    ///
+    /// Returns:
+    /// - An `Arc<Mutex<FileWatcher>>` so the gRPC service can call
+    ///   `watch`/`unwatch` and the event processor can call `is_ignored`.
+    /// - An `mpsc::Receiver<WatchEvent>` — feed this to [`process_events`].
+    pub fn new(_index: FileIndex) -> (Arc<Mutex<Self>>, mpsc::Receiver<WatchEvent>) {
+        let (tx, rx) = mpsc::channel::<WatchEvent>(256);
+        let watcher = Arc::new(Mutex::new(Self {
+            watchers: HashMap::new(),
+            matchers: HashMap::new(),
+            tx,
+        }));
+        (watcher, rx)
+    }
+
+    /// Start watching `workspace` recursively.
+    ///
+    /// Builds a gitignore matcher for the workspace and registers a notify
+    /// watcher whose callback forwards events onto the shared channel.
+    pub fn watch(&mut self, workspace: &Path) -> anyhow::Result<()> {
+        let workspace_buf = workspace.to_path_buf();
+
+        // Build gitignore matcher from .gitignore in the workspace root.
+        let mut builder = ignore::gitignore::GitignoreBuilder::new(workspace);
+        let gitignore_path = workspace.join(".gitignore");
+        if gitignore_path.exists() {
+            builder.add(&gitignore_path);
+        }
+        let matcher = match builder.build() {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::warn!(
+                    workspace = %workspace.display(),
+                    error = %e,
+                    "failed to parse .gitignore, nothing will be ignored in this workspace"
+                );
+                ignore::gitignore::Gitignore::empty()
+            }
+        };
+        self.matchers.insert(workspace_buf.clone(), matcher);
+
+        // Create a notify watcher. The closure runs on notify's own OS thread
+        // so we use `blocking_send` (safe outside the tokio runtime context).
+        let tx = self.tx.clone();
+        let mut watcher =
+            notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+                let event = match res {
+                    Ok(e) => e,
+                    Err(e) => {
+                        eprintln!("creep: notify watcher error: {e}");
+                        return;
+                    }
+                };
+                for path in event.paths {
+                    let watch_event = match event.kind {
+                        EventKind::Create(_) => WatchEvent::Created(path),
+                        EventKind::Modify(_) => WatchEvent::Modified(path),
+                        EventKind::Remove(_) => WatchEvent::Removed(path),
+                        _ => continue,
+                    };
+                    if let Err(e) = tx.try_send(watch_event) {
+                        eprintln!("creep: watcher event dropped: {e}");
+                    }
+                }
+            })?;
+
+        watcher.watch(workspace, RecursiveMode::Recursive)?;
+        self.watchers.insert(workspace_buf, watcher);
+        Ok(())
+    }
+
+    /// Stop watching `workspace`.  Drops the notify watcher, which stops the OS watch.
+    pub fn unwatch(&mut self, workspace: &Path) {
+        self.watchers.remove(workspace);
+        self.matchers.remove(workspace);
+    }
+
+    /// Returns `true` if `path` is ignored according to any loaded gitignore
+    /// matcher whose root is a prefix of `path`.
+    pub fn is_ignored(&self, path: &Path) -> bool {
+        let is_dir = path.is_dir();
+        for (root, matcher) in &self.matchers {
+            if path.starts_with(root) && matcher.matched(path, is_dir).is_ignore() {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// Async task that reads `WatchEvent`s from `event_rx` and updates `index`,
+/// skipping paths that `watcher.is_ignored()` reports as gitignored.
+///
+/// Runs until the sender side of `event_rx` is dropped (all watcher instances gone).
+pub async fn process_events(
+    index: FileIndex,
+    watcher: Arc<Mutex<FileWatcher>>,
+    mut event_rx: mpsc::Receiver<WatchEvent>,
+) {
+    while let Some(event) = event_rx.recv().await {
+        let path = match &event {
+            WatchEvent::Created(p) | WatchEvent::Modified(p) | WatchEvent::Removed(p) => p.clone(),
+        };
+
+        // Check gitignore before touching the index.
+        {
+            let guard = watcher.lock().await;
+            if guard.is_ignored(&path) {
+                tracing::trace!("ignoring event for {}", path.display());
+                continue;
+            }
+        }
+
+        match event {
+            WatchEvent::Created(p) | WatchEvent::Modified(p) => {
+                if p.is_file() {
+                    if let Err(e) = index.update_file(&p).await {
+                        tracing::warn!("failed to index {}: {}", p.display(), e);
+                    } else {
+                        tracing::debug!("indexed {}", p.display());
+                    }
+                }
+            }
+            WatchEvent::Removed(p) => {
+                index.remove_file(&p).await;
+                tracing::debug!("removed {} from index", p.display());
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write as _;
+
+    #[tokio::test]
+    async fn test_watch_and_unwatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let index = FileIndex::new();
+        let (fw, _rx) = FileWatcher::new(index);
+        let mut guard = fw.lock().await;
+        guard.watch(dir.path()).unwrap();
+        assert!(guard.watchers.contains_key(dir.path()));
+        guard.unwatch(dir.path());
+        assert!(!guard.watchers.contains_key(dir.path()));
+    }
+
+    #[tokio::test]
+    async fn test_is_ignored_respects_gitignore() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Write a .gitignore that ignores *.log
+        let mut f = std::fs::File::create(dir.path().join(".gitignore")).unwrap();
+        writeln!(f, "*.log").unwrap();
+        drop(f);
+
+        // Create the files so is_dir() works correctly.
+        std::fs::write(dir.path().join("debug.log"), "log").unwrap();
+        std::fs::write(dir.path().join("main.rs"), "fn main(){}").unwrap();
+
+        let index = FileIndex::new();
+        let (fw, _rx) = FileWatcher::new(index);
+        let mut guard = fw.lock().await;
+        guard.watch(dir.path()).unwrap();
+
+        assert!(
+            guard.is_ignored(&dir.path().join("debug.log")),
+            "debug.log should be ignored"
+        );
+        assert!(
+            !guard.is_ignored(&dir.path().join("main.rs")),
+            "main.rs should not be ignored"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_process_events_updates_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("hello.rs");
+        std::fs::write(&file_path, "fn main() {}").unwrap();
+
+        let index = FileIndex::new();
+        let (fw, rx) = FileWatcher::new(index.clone());
+
+        // Manually inject a Created event via the channel (bypassing notify).
+        {
+            let guard = fw.lock().await;
+            guard
+                .tx
+                .send(WatchEvent::Created(file_path.clone()))
+                .await
+                .unwrap();
+        }
+
+        let fw_clone = fw.clone();
+        let index_clone = index.clone();
+        let handle = tokio::spawn(process_events(index_clone, fw_clone, rx));
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        handle.abort();
+
+        assert_eq!(index.len().await, 1);
+        assert!(index.get(&file_path).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_process_events_removes_from_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("hello.rs");
+        std::fs::write(&file_path, "fn main() {}").unwrap();
+
+        let index = FileIndex::new();
+        index.update_file(&file_path).await.unwrap();
+        assert_eq!(index.len().await, 1);
+
+        let (fw, rx) = FileWatcher::new(index.clone());
+
+        {
+            let guard = fw.lock().await;
+            guard
+                .tx
+                .send(WatchEvent::Removed(file_path.clone()))
+                .await
+                .unwrap();
+        }
+
+        let fw_clone = fw.clone();
+        let index_clone = index.clone();
+        let handle = tokio::spawn(process_events(index_clone, fw_clone, rx));
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        handle.abort();
+
+        assert_eq!(index.len().await, 0);
+    }
+}

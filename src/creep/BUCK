@@ -1,0 +1,43 @@
+CREEP_SRCS = glob(["src/**/*.rs", "proto/**/*.proto", "proto_gen/**/*.rs", "build.rs"])
+
+CREEP_DEPS = [
+    "//third-party:anyhow",
+    "//third-party:blake3",
+    "//third-party:glob-match",
+    "//third-party:ignore",
+    "//third-party:notify",
+    "//third-party:prost",
+    "//third-party:serde",
+    "//third-party:tokio",
+    "//third-party:toml",
+    "//third-party:tonic",
+    "//third-party:tonic-health",
+    "//third-party:tracing",
+    "//third-party:tracing-subscriber",
+]
+
+rust_binary(
+    name = "creep",
+    srcs = CREEP_SRCS,
+    crate_root = "src/main.rs",
+    deps = CREEP_DEPS,
+    env = {
+        "CARGO_MANIFEST_DIR": ".",
+        "OUT_DIR": "proto_gen",
+    },
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "creep-test",
+    srcs = CREEP_SRCS,
+    crate_root = "src/main.rs",
+    deps = CREEP_DEPS + [
+        "//third-party:tempfile",
+    ],
+    env = {
+        "CARGO_MANIFEST_DIR": ".",
+        "OUT_DIR": "proto_gen",
+    },
+    visibility = ["PUBLIC"],
+)
