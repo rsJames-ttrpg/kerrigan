@@ -17,6 +17,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/definitions/{id}", get(get_job_definition))
         .route("/runs", post(start_job_run))
         .route("/runs", get(list_job_runs))
+        .route("/runs/pending", get(list_pending_unassigned_runs))
         .route("/runs/{id}", patch(update_job_run))
         .route("/runs/{id}/advance", post(advance_job_run))
 }
@@ -116,6 +117,13 @@ async fn list_job_runs(
     })?))
 }
 
+async fn list_pending_unassigned_runs(State(state): State<Arc<AppState>>) -> Result<Json<Value>> {
+    let results = state.jobs.list_pending_unassigned_runs().await?;
+    Ok(Json(serde_json::to_value(results).map_err(|e| {
+        crate::error::OverseerError::Internal(e.to_string())
+    })?))
+}
+
 #[derive(Deserialize)]
 struct UpdateJobRunRequest {
     status: Option<String>,
@@ -128,36 +136,6 @@ async fn advance_job_run(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let new_run = state.pipeline.advance(&id).await?;
-
-    // Try to assign to an available hatchery
-    let hatcheries = state.hatchery.list(Some("online")).await?;
-    if let Some(hatchery) = hatcheries
-        .iter()
-        .find(|h| h.active_drones < h.max_concurrency)
-    {
-        match state.hatchery.assign_job(&new_run.id, &hatchery.id).await {
-            Ok(_) => {
-                tracing::info!(
-                    run_id = %new_run.id,
-                    hatchery_id = %hatchery.id,
-                    "auto-assigned advanced run to hatchery"
-                );
-            }
-            Err(e) => {
-                tracing::error!(
-                    run_id = %new_run.id,
-                    hatchery_id = %hatchery.id,
-                    error = %e,
-                    "pipeline advanced but hatchery assignment failed — run is pending"
-                );
-            }
-        }
-    } else {
-        tracing::warn!(
-            run_id = %new_run.id,
-            "pipeline advanced but no hatchery has capacity — run is pending"
-        );
-    }
 
     Ok(Json(serde_json::to_value(new_run).map_err(|e| {
         crate::error::OverseerError::Internal(e.to_string())
@@ -179,48 +157,13 @@ async fn update_job_run(
         )
         .await?;
 
-    // Check if pipeline should auto-advance
-    match state
+    // Check if pipeline should auto-advance (creates the next run; queen will claim it)
+    if let Err(e) = state
         .jobs
         .check_pipeline_after_completion(&result, &state.pipeline)
         .await
     {
-        Err(e) => {
-            tracing::warn!(run_id = %id, error = %e, "pipeline auto-advance check failed");
-        }
-        Ok(None) => {}
-        Ok(Some(next_run)) => match state.hatchery.list(Some("online")).await {
-            Ok(hatcheries) => {
-                if let Some(hatchery) = hatcheries
-                    .iter()
-                    .find(|h| h.active_drones < h.max_concurrency)
-                {
-                    match state.hatchery.assign_job(&next_run.id, &hatchery.id).await {
-                        Ok(_) => {
-                            tracing::info!(
-                                next_run_id = %next_run.id,
-                                hatchery_id = %hatchery.id,
-                                "auto-assigned pipeline run to hatchery"
-                            );
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                next_run_id = %next_run.id,
-                                error = %e,
-                                "pipeline advanced but assignment failed — run is pending"
-                            );
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::error!(
-                    next_run_id = %next_run.id,
-                    error = %e,
-                    "pipeline advanced but failed to list hatcheries — run is pending"
-                );
-            }
-        },
+        tracing::warn!(run_id = %id, error = %e, "pipeline auto-advance check failed");
     }
 
     Ok(Json(serde_json::to_value(result).map_err(|e| {

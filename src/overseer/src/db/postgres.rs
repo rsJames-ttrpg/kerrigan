@@ -613,6 +613,36 @@ impl JobStore for PostgresDatabase {
         Ok(rows.iter().map(row_to_job_run).collect())
     }
 
+    async fn list_pending_unassigned_runs(&self) -> Result<Vec<JobRun>> {
+        let mut query = Query::select();
+        query
+            .columns([
+                JobRuns::Id,
+                JobRuns::DefinitionId,
+                JobRuns::ParentId,
+                JobRuns::Status,
+                JobRuns::TriggeredBy,
+                JobRuns::ConfigOverrides,
+                JobRuns::Result,
+                JobRuns::Error,
+                JobRuns::StartedAt,
+                JobRuns::CompletedAt,
+            ])
+            .from(JobRuns::Table)
+            .and_where(Expr::col(JobRuns::Status).eq("pending"))
+            .and_where(Expr::col(JobRuns::HatcheryId).is_null())
+            .order_by(JobRuns::StartedAt, Order::Asc);
+
+        let (sql, values) = query.build_sqlx(PostgresQueryBuilder);
+
+        let rows = sqlx::query_with(&sql, values)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(rows.iter().map(row_to_job_run).collect())
+    }
+
     async fn create_task(
         &self,
         subject: &str,

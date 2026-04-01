@@ -473,30 +473,11 @@ impl OverseerMcp {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        // Find hatchery and assign
-        let mut assigned_to = None;
-        if let Ok(hatcheries) = self.state.hatchery.list(Some("online")).await
-            && let Some(hatchery) = hatcheries
-                .iter()
-                .find(|h| h.active_drones < h.max_concurrency)
-            && self
-                .state
-                .hatchery
-                .assign_job(&run.id, &hatchery.id)
-                .await
-                .is_ok()
-        {
-            assigned_to = Some(hatchery.name.clone());
-        }
-
-        let mut result = serde_json::json!({
+        let result = serde_json::json!({
             "run_id": run.id,
             "definition": p.definition,
             "status": run.status.to_string(),
         });
-        if let Some(name) = assigned_to {
-            result["assigned_to_hatchery"] = serde_json::Value::String(name);
-        }
         let json = serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string());
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
@@ -545,30 +526,11 @@ impl OverseerMcp {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
-        // Try to assign
-        let mut assigned_to = None;
-        if let Ok(hatcheries) = self.state.hatchery.list(Some("online")).await
-            && let Some(hatchery) = hatcheries
-                .iter()
-                .find(|h| h.active_drones < h.max_concurrency)
-            && self
-                .state
-                .hatchery
-                .assign_job(&new_run.id, &hatchery.id)
-                .await
-                .is_ok()
-        {
-            assigned_to = Some(hatchery.name.clone());
-        }
-
-        let mut result = serde_json::json!({
+        let result = serde_json::json!({
             "new_run_id": new_run.id,
             "parent_run_id": p.run_id,
             "status": new_run.status.to_string(),
         });
-        if let Some(name) = assigned_to {
-            result["assigned_to_hatchery"] = serde_json::Value::String(name);
-        }
         let json = serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string());
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }

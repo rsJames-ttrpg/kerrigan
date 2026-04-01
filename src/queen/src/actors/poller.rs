@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 use crate::messages::SpawnRequest;
 use nydus::NydusClient;
 
-/// Periodic actor: polls Overseer for jobs assigned to this hatchery.
+/// Periodic actor: polls Overseer for unassigned pending jobs and claims them.
 pub async fn run(
     client: NydusClient,
     interval_secs: u64,
@@ -36,10 +36,10 @@ pub async fn run(
             }
         };
 
-        let runs = match client.list_hatchery_jobs(&id, Some("pending")).await {
+        let runs = match client.list_pending_runs().await {
             Ok(runs) => runs,
             Err(e) => {
-                tracing::warn!(error = %e, "failed to poll jobs from overseer");
+                tracing::warn!(error = %e, "failed to poll pending runs from overseer");
                 continue;
             }
         };
@@ -48,6 +48,17 @@ pub async fn run(
             if known_runs.contains(&run.id) {
                 continue;
             }
+
+            // Claim the run by assigning it to this hatchery
+            if let Err(e) = client.assign_job(&id, &run.id).await {
+                tracing::warn!(
+                    job_run_id = %run.id,
+                    error = %e,
+                    "failed to claim job run, another hatchery may have taken it"
+                );
+                continue;
+            }
+            tracing::info!(job_run_id = %run.id, "claimed job run");
 
             // Fetch the job definition to get drone_type, repo, and task details
             let def = match client.get_definition(&run.definition_id).await {

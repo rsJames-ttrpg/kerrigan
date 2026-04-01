@@ -348,6 +348,15 @@ impl NydusClient {
         Ok(Self::check_response(resp).await?.json().await?)
     }
 
+    pub async fn list_pending_runs(&self) -> Result<Vec<JobRun>, Error> {
+        let resp = self
+            .client
+            .get(format!("{}/api/jobs/runs/pending", self.base_url))
+            .send()
+            .await?;
+        Ok(Self::check_response(resp).await?.json().await?)
+    }
+
     // --- Artifacts ---
 
     pub async fn store_artifact(

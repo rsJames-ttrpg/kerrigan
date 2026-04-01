@@ -340,6 +340,36 @@ pub async fn list_job_runs(pool: &SqlitePool, status: Option<&str>) -> Result<Ve
     Ok(rows.iter().map(row_to_job_run).collect())
 }
 
+pub async fn list_pending_unassigned_runs(pool: &SqlitePool) -> Result<Vec<JobRun>> {
+    let mut query = Query::select();
+    query
+        .columns([
+            JobRuns::Id,
+            JobRuns::DefinitionId,
+            JobRuns::ParentId,
+            JobRuns::Status,
+            JobRuns::TriggeredBy,
+            JobRuns::ConfigOverrides,
+            JobRuns::Result,
+            JobRuns::Error,
+            JobRuns::StartedAt,
+            JobRuns::CompletedAt,
+        ])
+        .from(JobRuns::Table)
+        .and_where(Expr::col(JobRuns::Status).eq("pending"))
+        .and_where(Expr::col(JobRuns::HatcheryId).is_null())
+        .order_by(JobRuns::StartedAt, Order::Asc);
+
+    let (sql, values) = query.build_sqlx(SqliteQueryBuilder);
+
+    let rows = sqlx::query_with(&sql, values)
+        .fetch_all(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
+
+    Ok(rows.iter().map(row_to_job_run).collect())
+}
+
 pub async fn create_task(
     pool: &SqlitePool,
     subject: &str,

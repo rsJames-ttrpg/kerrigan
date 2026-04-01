@@ -207,6 +207,10 @@ impl JobStore for SqliteDatabase {
         super::jobs::list_job_runs(&self.pool, status).await
     }
 
+    async fn list_pending_unassigned_runs(&self) -> Result<Vec<JobRun>> {
+        super::jobs::list_pending_unassigned_runs(&self.pool).await
+    }
+
     async fn create_task(
         &self,
         subject: &str,

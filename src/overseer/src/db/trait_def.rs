@@ -73,6 +73,8 @@ pub trait JobStore: Send + Sync {
 
     async fn list_job_runs(&self, status: Option<&str>) -> Result<Vec<JobRun>>;
 
+    async fn list_pending_unassigned_runs(&self) -> Result<Vec<JobRun>>;
+
     async fn create_task(
         &self,
         subject: &str,

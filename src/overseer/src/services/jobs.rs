@@ -62,6 +62,10 @@ impl JobService {
         self.db.list_job_runs(status).await
     }
 
+    pub async fn list_pending_unassigned_runs(&self) -> Result<Vec<JobRun>> {
+        self.db.list_pending_unassigned_runs().await
+    }
+
     pub async fn create_task(
         &self,
         subject: &str,
