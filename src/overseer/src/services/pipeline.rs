@@ -177,7 +177,7 @@ impl PipelineService {
         Ok(new_run)
     }
 
-    fn build_context_overrides(&self, parent_run: &JobRun, next_stage: &str) -> serde_json::Value {
+    fn build_context_overrides(&self, parent_run: &JobRun, _next_stage: &str) -> serde_json::Value {
         let mut overrides = serde_json::json!({});
 
         if let Some(ref parent_overrides) = parent_run.config_overrides {
@@ -190,20 +190,23 @@ impl PipelineService {
             if let Some(task) = parent_overrides.get("task") {
                 overrides["task"] = task.clone();
             }
+            // Forward branch if explicitly set (partial pipeline, working on a branch)
+            if let Some(branch) = parent_overrides.get("branch") {
+                overrides["branch"] = branch.clone();
+            }
         }
 
-        if let Some(ref result) = parent_run.result {
-            let git_refs = result.get("git_refs");
-
-            if next_stage == "review"
-                && let Some(refs) = git_refs
-            {
-                if let Some(pr_url) = refs.get("pr_url") {
-                    overrides["pr_url"] = pr_url.clone();
-                }
-                if let Some(branch) = refs.get("branch") {
-                    overrides["branch"] = branch.clone();
-                }
+        // Extract git_refs from parent's result
+        if let Some(ref result) = parent_run.result
+            && let Some(refs) = result.get("git_refs")
+        {
+            // Always forward PR URL if available
+            if let Some(pr_url) = refs.get("pr_url") {
+                overrides["pr_url"] = pr_url.clone();
+            }
+            // Forward branch from git_refs (overrides explicit branch if drone created one)
+            if let Some(branch) = refs.get("branch") {
+                overrides["branch"] = branch.clone();
             }
         }
 

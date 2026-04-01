@@ -28,6 +28,9 @@ enum Command {
         /// Job definition name to use
         #[arg(long, default_value = "default")]
         definition: String,
+        /// Branch to clone (defaults to repo default branch)
+        #[arg(long)]
+        branch: Option<String>,
     },
     /// Show job status
     Status {
@@ -75,6 +78,7 @@ async fn main() -> Result<()> {
             overrides,
             hatchery,
             definition,
+            branch,
         } => {
             cmd_submit(
                 &client,
@@ -82,6 +86,7 @@ async fn main() -> Result<()> {
                 &problem,
                 &overrides,
                 hatchery.as_deref(),
+                branch.as_deref(),
             )
             .await
         }
@@ -101,6 +106,7 @@ async fn cmd_submit(
     problem: &str,
     overrides: &[String],
     hatchery_name: Option<&str>,
+    branch: Option<&str>,
 ) -> Result<()> {
     // 1. Resolve definition by name
     let definitions = client.list_definitions().await?;
@@ -126,6 +132,9 @@ async fn cmd_submit(
         } else {
             config[key] = serde_json::Value::String(value.to_string());
         }
+    }
+    if let Some(b) = branch {
+        config["branch"] = serde_json::Value::String(b.to_string());
     }
 
     // 3. Start run
