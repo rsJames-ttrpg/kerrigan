@@ -35,6 +35,16 @@ impl DroneRunner for ClaudeDrone {
         .await?;
         environment::write_task(&env.home, &job.task).await?;
 
+        // Generate stage-specific CLAUDE.md if config.stage is set
+        if let Some(stage) = job.config.get("stage").and_then(|v| v.as_str()) {
+            if let Some(claude_md) = crate::stages::generate_claude_md(stage, &job.config) {
+                tokio::fs::write(env.home.join("CLAUDE.md"), claude_md)
+                    .await
+                    .context("failed to write stage-specific CLAUDE.md")?;
+                tracing::info!(stage = %stage, "generated stage-specific CLAUDE.md");
+            }
+        }
+
         // Configure Overseer MCP URL if provided in job config
         if let Some(overseer_url) = job.config.get("overseer_url").and_then(|v| v.as_str()) {
             environment::configure_mcp_url(&env.home, overseer_url).await?;
