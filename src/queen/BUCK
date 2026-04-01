@@ -7,6 +7,7 @@ QUEEN_DEPS = [
     "//third-party:async-trait",
     "//third-party:chrono",
     "//third-party:clap",
+    "//third-party:reqwest",
     "//third-party:serde",
     "//third-party:serde_json",
     "//third-party:tokio",
