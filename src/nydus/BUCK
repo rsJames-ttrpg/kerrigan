@@ -1,0 +1,23 @@
+NYDUS_SRCS = glob(["src/**/*.rs"])
+
+NYDUS_DEPS = [
+    "//third-party:base64",
+    "//third-party:reqwest",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:thiserror",
+]
+
+rust_library(
+    name = "nydus",
+    srcs = NYDUS_SRCS,
+    deps = NYDUS_DEPS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "nydus-test",
+    srcs = NYDUS_SRCS,
+    deps = NYDUS_DEPS,
+    visibility = ["PUBLIC"],
+)

@@ -37,9 +37,10 @@ impl JobService {
         definition_id: &str,
         triggered_by: &str,
         parent_id: Option<&str>,
+        config_overrides: Option<serde_json::Value>,
     ) -> Result<JobRun> {
         self.db
-            .start_job_run(definition_id, triggered_by, parent_id)
+            .start_job_run(definition_id, triggered_by, parent_id, config_overrides)
             .await
     }
 
@@ -135,7 +136,7 @@ mod tests {
             .expect("create def");
 
         let run = svc
-            .start_job_run(&def.id, "agent-1", None)
+            .start_job_run(&def.id, "agent-1", None, None)
             .await
             .expect("start run");
         assert_eq!(run.status, crate::db::models::JobRunStatus::Pending);
@@ -171,7 +172,7 @@ mod tests {
             .await
             .expect("create def");
         let run = svc
-            .start_job_run(&def.id, "agent-svc-task", None)
+            .start_job_run(&def.id, "agent-svc-task", None, None)
             .await
             .expect("start run");
 
@@ -197,5 +198,31 @@ mod tests {
             .await
             .expect("list tasks");
         assert_eq!(tasks.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_start_job_run_with_config_overrides() {
+        let sqlite_db = SqliteDatabase::open_in_memory_named("svc_jobs_test_override")
+            .await
+            .expect("db opens");
+        let svc = JobService::new(Arc::new(sqlite_db));
+
+        let def = svc
+            .create_job_definition(
+                "override-test",
+                "desc",
+                serde_json::json!({"repo_url": "https://github.com/test/repo", "task": "do stuff"}),
+            )
+            .await
+            .expect("create def");
+
+        let overrides = serde_json::json!({"branch": "feat/override", "extra": "value"});
+        let run = svc
+            .start_job_run(&def.id, "operator", None, Some(overrides.clone()))
+            .await
+            .expect("start run");
+
+        assert_eq!(run.status, crate::db::models::JobRunStatus::Pending);
+        assert_eq!(run.config_overrides, Some(overrides));
     }
 }

@@ -32,6 +32,10 @@ pub(crate) fn row_to_job_run(row: &sqlx::sqlite::SqliteRow) -> JobRun {
             None
         })
     });
+    let config_overrides_json: Option<String> = row.get("config_overrides");
+    let config_overrides = config_overrides_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
     JobRun {
         id: row.get("id"),
         definition_id: row.get("definition_id"),
@@ -41,6 +45,7 @@ pub(crate) fn row_to_job_run(row: &sqlx::sqlite::SqliteRow) -> JobRun {
             .parse()
             .unwrap_or(JobRunStatus::Pending),
         triggered_by: row.get("triggered_by"),
+        config_overrides,
         result,
         error: row.get("error"),
         started_at: row
@@ -167,8 +172,13 @@ pub async fn start_job_run(
     definition_id: &str,
     triggered_by: &str,
     parent_id: Option<&str>,
+    config_overrides: Option<serde_json::Value>,
 ) -> Result<JobRun> {
     let id = Uuid::new_v4().to_string();
+    let config_overrides_json = config_overrides
+        .as_ref()
+        .map(|v| serde_json::to_string(v).map_err(|e| OverseerError::Internal(e.to_string())))
+        .transpose()?;
 
     let (sql, values) = Query::insert()
         .into_table(JobRuns::Table)
@@ -178,6 +188,7 @@ pub async fn start_job_run(
             JobRuns::ParentId,
             JobRuns::Status,
             JobRuns::TriggeredBy,
+            JobRuns::ConfigOverrides,
             JobRuns::StartedAt,
         ])
         .values([
@@ -186,6 +197,7 @@ pub async fn start_job_run(
             parent_id.map(|s| s.to_string()).into(),
             "pending".into(),
             triggered_by.into(),
+            config_overrides_json.into(),
             Expr::cust("datetime('now')"),
         ])
         .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
@@ -195,6 +207,7 @@ pub async fn start_job_run(
             JobRuns::ParentId,
             JobRuns::Status,
             JobRuns::TriggeredBy,
+            JobRuns::ConfigOverrides,
             JobRuns::Result,
             JobRuns::Error,
             JobRuns::StartedAt,
@@ -218,6 +231,7 @@ pub async fn get_job_run(pool: &SqlitePool, id: &str) -> Result<Option<JobRun>> 
             JobRuns::ParentId,
             JobRuns::Status,
             JobRuns::TriggeredBy,
+            JobRuns::ConfigOverrides,
             JobRuns::Result,
             JobRuns::Error,
             JobRuns::StartedAt,
@@ -302,6 +316,7 @@ pub async fn list_job_runs(pool: &SqlitePool, status: Option<&str>) -> Result<Ve
             JobRuns::ParentId,
             JobRuns::Status,
             JobRuns::TriggeredBy,
+            JobRuns::ConfigOverrides,
             JobRuns::Result,
             JobRuns::Error,
             JobRuns::StartedAt,
@@ -516,7 +531,7 @@ mod tests {
         let pool = make_pool("jobs_test_run_lifecycle").await;
         let def = make_definition(&pool, "test-job-run-lifecycle").await;
 
-        let run = start_job_run(&pool, &def.id, "agent-1", None)
+        let run = start_job_run(&pool, &def.id, "agent-1", None, None)
             .await
             .expect("start run");
         assert_eq!(run.status, JobRunStatus::Pending);
@@ -553,10 +568,10 @@ mod tests {
         let pool = make_pool("jobs_test_sub_runs").await;
         let def = make_definition(&pool, "test-job-sub-runs").await;
 
-        let parent = start_job_run(&pool, &def.id, "agent-1", None)
+        let parent = start_job_run(&pool, &def.id, "agent-1", None, None)
             .await
             .expect("start parent");
-        let child = start_job_run(&pool, &def.id, "agent-2", Some(&parent.id))
+        let child = start_job_run(&pool, &def.id, "agent-2", Some(&parent.id), None)
             .await
             .expect("start child");
 
@@ -567,7 +582,7 @@ mod tests {
     async fn test_task_crud() {
         let pool = make_pool("jobs_test_task_crud").await;
         let def = make_definition(&pool, "test-job-task-crud").await;
-        let run = start_job_run(&pool, &def.id, "agent-1", None)
+        let run = start_job_run(&pool, &def.id, "agent-1", None, None)
             .await
             .expect("start run");
 
@@ -637,7 +652,7 @@ mod tests {
         let def = make_definition(&pool, "test-terminal").await;
 
         for status in ["failed", "cancelled"] {
-            let run = start_job_run(&pool, &def.id, "agent", None)
+            let run = start_job_run(&pool, &def.id, "agent", None, None)
                 .await
                 .expect("start run");
             assert!(run.completed_at.is_none());
@@ -658,7 +673,7 @@ mod tests {
         let pool = make_pool("jobs_test_non_terminal").await;
         let def = make_definition(&pool, "test-non-terminal").await;
 
-        let run = start_job_run(&pool, &def.id, "agent", None)
+        let run = start_job_run(&pool, &def.id, "agent", None, None)
             .await
             .expect("start run");
 

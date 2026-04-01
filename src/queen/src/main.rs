@@ -2,7 +2,6 @@ mod actors;
 mod config;
 mod messages;
 mod notifier;
-mod overseer_client;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -11,7 +10,8 @@ use std::time::Duration;
 use clap::Parser;
 use config::{Cli, Config};
 use notifier::log::LogNotifier;
-use overseer_client::OverseerClient;
+use nydus::NydusClient;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
@@ -30,17 +30,19 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!(name = %config.queen.name, "queen starting");
 
-    let client = OverseerClient::new(config.queen.overseer_url.clone());
+    let client = NydusClient::new(config.queen.overseer_url.clone());
     let notifier: Arc<dyn notifier::Notifier> = Arc::new(LogNotifier);
+    let hatchery_id: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
 
     // 1. Register with Overseer (blocks until successful)
-    actors::registrar::run(
+    let hatchery = actors::registrar::run(
         client.clone(),
         config.queen.name.clone(),
         config.queen.max_concurrency,
         notifier.clone(),
     )
     .await?;
+    *hatchery_id.write().await = Some(hatchery.id.clone());
 
     // 2. Create cancellation token for graceful shutdown
     let token = CancellationToken::new();
@@ -61,10 +63,12 @@ async fn main() -> anyhow::Result<()> {
     let heartbeat_client = client.clone();
     let heartbeat_interval = config.queen.heartbeat_interval;
     let heartbeat_token = token.clone();
+    let heartbeat_hatchery_id = hatchery_id.clone();
     tokio::spawn(async move {
         actors::heartbeat::run(
             heartbeat_client,
             heartbeat_interval,
+            heartbeat_hatchery_id,
             status_query_tx,
             heartbeat_token,
         )
@@ -75,8 +79,16 @@ async fn main() -> anyhow::Result<()> {
     let poller_client = client.clone();
     let poll_interval = config.queen.poll_interval;
     let poller_token = token.clone();
+    let poller_hatchery_id = hatchery_id.clone();
     tokio::spawn(async move {
-        actors::poller::run(poller_client, poll_interval, spawn_tx, poller_token).await;
+        actors::poller::run(
+            poller_client,
+            poll_interval,
+            poller_hatchery_id,
+            spawn_tx,
+            poller_token,
+        )
+        .await;
     });
 
     // 7. Parse timeout duration
@@ -115,8 +127,10 @@ async fn main() -> anyhow::Result<()> {
     let _ = supervisor_handle.await;
 
     // Deregister from Overseer
-    if let Err(e) = client.deregister().await {
-        tracing::warn!(error = %e, "failed to deregister from overseer");
+    if let Some(id) = hatchery_id.read().await.as_ref() {
+        if let Err(e) = client.deregister_hatchery(id).await {
+            tracing::warn!(error = %e, "failed to deregister from overseer");
+        }
     }
 
     notifier.notify(notifier::QueenEvent::ShuttingDown).await;

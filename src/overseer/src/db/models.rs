@@ -149,6 +149,7 @@ pub struct JobRun {
     pub parent_id: Option<String>,
     pub status: JobRunStatus,
     pub triggered_by: String,
+    pub config_overrides: Option<serde_json::Value>,
     pub result: Option<serde_json::Value>,
     pub error: Option<String>,
     pub started_at: Option<DateTime<Utc>>,

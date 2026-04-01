@@ -177,8 +177,16 @@ impl JobStore for SqliteDatabase {
         definition_id: &str,
         triggered_by: &str,
         parent_id: Option<&str>,
+        config_overrides: Option<serde_json::Value>,
     ) -> Result<JobRun> {
-        super::jobs::start_job_run(&self.pool, definition_id, triggered_by, parent_id).await
+        super::jobs::start_job_run(
+            &self.pool,
+            definition_id,
+            triggered_by,
+            parent_id,
+            config_overrides,
+        )
+        .await
     }
 
     async fn get_job_run(&self, id: &str) -> Result<Option<JobRun>> {

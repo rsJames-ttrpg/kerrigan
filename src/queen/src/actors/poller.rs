@@ -1,16 +1,18 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::mpsc;
+use tokio::sync::{RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use crate::messages::SpawnRequest;
-use crate::overseer_client::OverseerClient;
+use nydus::NydusClient;
 
 /// Periodic actor: polls Overseer for jobs assigned to this hatchery.
 pub async fn run(
-    client: OverseerClient,
+    client: NydusClient,
     interval_secs: u64,
+    hatchery_id: Arc<RwLock<Option<String>>>,
     spawn_tx: mpsc::Sender<SpawnRequest>,
     token: CancellationToken,
 ) {
@@ -26,7 +28,15 @@ pub async fn run(
             }
         }
 
-        let runs = match client.poll_jobs().await {
+        let id = match hatchery_id.read().await.as_ref() {
+            Some(id) => id.clone(),
+            None => {
+                tracing::warn!("no hatchery id yet, skipping poll");
+                continue;
+            }
+        };
+
+        let runs = match client.list_hatchery_jobs(&id, Some("pending")).await {
             Ok(runs) => runs,
             Err(e) => {
                 tracing::warn!(error = %e, "failed to poll jobs from overseer");
@@ -40,7 +50,7 @@ pub async fn run(
             }
 
             // Fetch the job definition to get drone_type, repo, and task details
-            let def = match client.get_job_definition(&run.definition_id).await {
+            let def = match client.get_definition(&run.definition_id).await {
                 Ok(def) => def,
                 Err(e) => {
                     tracing::warn!(
@@ -69,7 +79,7 @@ pub async fn run(
                         "job definition missing required 'repo_url' in config, skipping"
                     );
                     let _ = client
-                        .update_job_run(
+                        .update_run(
                             &run.id,
                             Some("failed"),
                             None,
@@ -96,7 +106,7 @@ pub async fn run(
                         "job definition missing required 'task' in config, skipping"
                     );
                     let _ = client
-                        .update_job_run(
+                        .update_run(
                             &run.id,
                             Some("failed"),
                             None,

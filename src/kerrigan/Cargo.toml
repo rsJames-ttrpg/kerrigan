@@ -1,0 +1,11 @@
+[package]
+name = "kerrigan"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nydus = { path = "../nydus" }
+clap = { version = "4", features = ["derive", "env"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+anyhow = "1"

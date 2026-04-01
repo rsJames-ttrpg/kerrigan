@@ -174,7 +174,7 @@ mod tests {
         )
         .await
         .expect("create def");
-        let run = db_jobs::start_job_run(&pool, &def.id, "tester", None)
+        let run = db_jobs::start_job_run(&pool, &def.id, "tester", None, None)
             .await
             .expect("start run");
 

@@ -93,6 +93,8 @@ pub struct StartJobParams {
     pub triggered_by: String,
     #[schemars(description = "Optional parent job run ID")]
     pub parent_id: Option<String>,
+    #[schemars(description = "Optional config overrides (shallow merge with definition config)")]
+    pub config_overrides: Option<serde_json::Value>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -354,7 +356,12 @@ impl OverseerMcp {
         let result = self
             .state
             .jobs
-            .start_job_run(&p.definition_id, &p.triggered_by, p.parent_id.as_deref())
+            .start_job_run(
+                &p.definition_id,
+                &p.triggered_by,
+                p.parent_id.as_deref(),
+                p.config_overrides,
+            )
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let json = serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string());

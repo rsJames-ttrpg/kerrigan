@@ -1458,6 +1458,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kerrigan"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "nydus",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "kqueue"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1717,6 +1728,17 @@ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
  "libm",
+]
+
+[[package]]
+name = "nydus"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -2049,11 +2071,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64",
  "chrono",
  "clap",
  "drone-sdk",
- "reqwest",
+ "nydus",
  "serde",
  "serde_json",
  "tempfile",
