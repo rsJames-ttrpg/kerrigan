@@ -118,16 +118,23 @@ impl Default for CreepConfig {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct NotificationConfig {
     #[serde(default = "default_notification_backend")]
     pub backend: String,
+    pub url: Option<String>,
+    pub token: Option<String>,
+    pub events: Option<Vec<String>>,
+    pub body: Option<serde_json::Value>,
 }
 
 impl Default for NotificationConfig {
     fn default() -> Self {
         Self {
             backend: default_notification_backend(),
+            url: None,
+            token: None,
+            events: None,
+            body: None,
         }
     }
 }
@@ -138,7 +145,6 @@ pub struct Config {
     #[serde(default)]
     pub creep: CreepConfig,
     #[serde(default)]
-    #[allow(dead_code)]
     pub notifications: NotificationConfig,
 }
 
@@ -332,6 +338,68 @@ max_concurrency = -1
             err.to_string()
                 .contains("queen.max_concurrency must be greater than 0")
         );
+    }
+
+    #[test]
+    fn test_parse_webhook_notifications() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[notifications]
+backend = "webhook"
+url = "http://localhost:8080/v2/send"
+token = "my-secret-token"
+events = ["drone_failed", "drone_stalled", "drone_timed_out"]
+
+[notifications.body]
+message = "{{message}}"
+number = "+1234567890"
+recipients = ["+0987654321"]
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert_eq!(config.notifications.backend, "webhook");
+        assert_eq!(
+            config.notifications.url.as_deref(),
+            Some("http://localhost:8080/v2/send")
+        );
+        assert_eq!(
+            config.notifications.token.as_deref(),
+            Some("my-secret-token")
+        );
+        assert_eq!(
+            config.notifications.events,
+            Some(vec![
+                "drone_failed".to_string(),
+                "drone_stalled".to_string(),
+                "drone_timed_out".to_string()
+            ])
+        );
+        assert!(config.notifications.body.is_some());
+        let body = config.notifications.body.unwrap();
+        assert_eq!(body["message"], "{{message}}");
+        assert_eq!(body["number"], "+1234567890");
+    }
+
+    #[test]
+    fn test_log_backend_ignores_webhook_fields() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[notifications]
+backend = "log"
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert_eq!(config.notifications.backend, "log");
+        assert!(config.notifications.url.is_none());
+        assert!(config.notifications.token.is_none());
+        assert!(config.notifications.events.is_none());
+        assert!(config.notifications.body.is_none());
     }
 
     #[test]
