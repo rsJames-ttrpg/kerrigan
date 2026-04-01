@@ -93,6 +93,30 @@ impl JobService {
     ) -> Result<Vec<Task>> {
         self.db.list_tasks(status, assigned_to, run_id).await
     }
+
+    /// After a run is marked completed, check if the pipeline should auto-advance.
+    pub async fn check_pipeline_after_completion(
+        &self,
+        run: &JobRun,
+        pipeline: &super::pipeline::PipelineService,
+    ) -> Result<Option<JobRun>> {
+        if run.status != crate::db::models::JobRunStatus::Completed {
+            return Ok(None);
+        }
+
+        let def = self.db.get_job_definition(&run.definition_id).await?;
+        match def {
+            Some(def) => pipeline.check_advancement(run, &def).await,
+            None => {
+                tracing::warn!(
+                    run_id = %run.id,
+                    definition_id = %run.definition_id,
+                    "job definition not found during pipeline check — pipeline will not advance"
+                );
+                Ok(None)
+            }
+        }
+    }
 }
 
 #[cfg(test)]

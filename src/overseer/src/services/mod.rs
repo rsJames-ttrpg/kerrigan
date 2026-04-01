@@ -4,6 +4,7 @@ pub mod decisions;
 pub mod hatchery;
 pub mod jobs;
 pub mod memory;
+pub mod pipeline;
 
 use std::sync::Arc;
 
@@ -17,6 +18,7 @@ pub struct AppState {
     pub jobs: jobs::JobService,
     pub decisions: decisions::DecisionService,
     pub artifacts: artifacts::ArtifactService,
+    pub pipeline: pipeline::PipelineService,
     pub hatchery: hatchery::HatcheryService,
     pub auth: auth::AuthService,
 }
@@ -32,6 +34,7 @@ impl AppState {
             jobs: jobs::JobService::new(db.clone()),
             decisions: decisions::DecisionService::new(db.clone()),
             artifacts: artifacts::ArtifactService::new(db.clone(), store),
+            pipeline: pipeline::PipelineService::new(db.clone()),
             hatchery: hatchery::HatcheryService::new(db),
             auth: auth::AuthService::new(),
         }

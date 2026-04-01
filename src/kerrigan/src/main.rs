@@ -28,6 +28,9 @@ enum Command {
         /// Job definition name to use
         #[arg(long, default_value = "default")]
         definition: String,
+        /// Branch to clone (defaults to repo default branch)
+        #[arg(long)]
+        branch: Option<String>,
     },
     /// Show job status
     Status {
@@ -75,6 +78,7 @@ async fn main() -> Result<()> {
             overrides,
             hatchery,
             definition,
+            branch,
         } => {
             cmd_submit(
                 &client,
@@ -82,6 +86,7 @@ async fn main() -> Result<()> {
                 &problem,
                 &overrides,
                 hatchery.as_deref(),
+                branch.as_deref(),
             )
             .await
         }
@@ -101,6 +106,7 @@ async fn cmd_submit(
     problem: &str,
     overrides: &[String],
     hatchery_name: Option<&str>,
+    branch: Option<&str>,
 ) -> Result<()> {
     // 1. Resolve definition by name
     let definitions = client.list_definitions().await?;
@@ -126,6 +132,9 @@ async fn cmd_submit(
         } else {
             config[key] = serde_json::Value::String(value.to_string());
         }
+    }
+    if let Some(b) = branch {
+        config["branch"] = serde_json::Value::String(b.to_string());
     }
 
     // 3. Start run
@@ -179,6 +188,56 @@ async fn cmd_status(client: &NydusClient, run_id: Option<&str>) -> Result<()> {
                     println!("    - [{}] {}", task.status, task.subject);
                 }
             }
+
+            // Show pipeline chain
+            // Walk up to find root (with cycle guard)
+            let mut root_id = id.to_string();
+            let mut visited = std::collections::HashSet::new();
+            loop {
+                if !visited.insert(root_id.clone()) {
+                    break; // cycle detected
+                }
+                let r = runs.iter().find(|r| r.id == root_id);
+                match r.and_then(|r| r.parent_id.as_ref()) {
+                    Some(pid) => root_id = pid.clone(),
+                    None => break,
+                }
+            }
+
+            // Walk down from root to collect chain (with cycle guard)
+            let mut chain = Vec::new();
+            let mut visited = std::collections::HashSet::new();
+            let mut current_id = Some(root_id);
+            while let Some(cid) = current_id {
+                if !visited.insert(cid.clone()) {
+                    break; // cycle detected
+                }
+                if let Some(r) = runs.iter().find(|r| r.id == cid) {
+                    chain.push(r);
+                    current_id = runs
+                        .iter()
+                        .find(|r| r.parent_id.as_deref() == Some(&cid))
+                        .map(|r| r.id.clone());
+                } else {
+                    break;
+                }
+            }
+
+            if chain.len() > 1 {
+                println!("\n  Pipeline:");
+                for r in &chain {
+                    let marker = if r.id == id {
+                        "→"
+                    } else if r.status == "completed" {
+                        "✓"
+                    } else if r.status == "failed" {
+                        "✗"
+                    } else {
+                        " "
+                    };
+                    println!("    {} {} — {}", marker, r.id, r.status);
+                }
+            }
         }
         None => {
             let runs = client.list_runs(None).await?;
@@ -203,10 +262,12 @@ async fn cmd_status(client: &NydusClient, run_id: Option<&str>) -> Result<()> {
 }
 
 async fn cmd_approve(client: &NydusClient, run_id: &str, _message: Option<&str>) -> Result<()> {
-    client
-        .update_run(run_id, Some("running"), None, None)
-        .await?;
+    let next_run = client.advance_run(run_id).await?;
     println!("Approved: {}", run_id);
+    println!(
+        "Next stage started: {} (definition: {})",
+        next_run.id, next_run.definition_id
+    );
     Ok(())
 }
 
