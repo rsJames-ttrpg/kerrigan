@@ -7,3 +7,14 @@ drone_timeout = "2h"
 
 [creep]
 enabled = false
+
+[notifications]
+backend = "webhook"
+url = "https://signal.home.lan/v2/send"
+token = "env:SIGNAL_API_TOKEN"
+tls_skip_verify = true
+events = ["drone_spawned", "drone_completed", "drone_failed", "drone_stalled", "drone_timed_out"]
+
+[notifications.body]
+message = "{{message}}"
+recipients = ["REPLACE_WITH_YOUR_SIGNAL_NUMBER"]

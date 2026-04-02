@@ -8,14 +8,14 @@ drone_timeout = "2h"
 [creep]
 enabled = true
 
-# Uncomment to enable webhook notifications (e.g. Signal via signal-cli-rest-api):
-# [notifications]
-# backend = "webhook"
-# url = "http://localhost:8080/v2/send"
-# token = "env:SIGNAL_API_TOKEN"
-# events = ["drone_failed", "drone_stalled", "drone_timed_out"]
-#
-# [notifications.body]
-# message = "{{message}}"
-# number = "+1234567890"
-# recipients = ["+0987654321"]
+[notifications]
+backend = "webhook"
+url = "https://signal.home.lan/v2/send"
+token = "env:SIGNAL_API_TOKEN"
+tls_skip_verify = true
+events = ["drone_spawned", "drone_completed", "drone_failed", "drone_stalled", "drone_timed_out"]
+
+[notifications.body]
+message = "{{message}}"
+number = "YOUR_NUMBER"
+recipients = ["YOUR_NUMBER"]

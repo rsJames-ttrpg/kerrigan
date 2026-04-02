@@ -125,6 +125,8 @@ pub struct NotificationConfig {
     pub token: Option<String>,
     pub events: Option<Vec<String>>,
     pub body: Option<serde_json::Value>,
+    #[serde(default)]
+    pub tls_skip_verify: bool,
 }
 
 impl Default for NotificationConfig {
@@ -135,6 +137,7 @@ impl Default for NotificationConfig {
             token: None,
             events: None,
             body: None,
+            tls_skip_verify: false,
         }
     }
 }

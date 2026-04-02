@@ -197,6 +197,9 @@ impl WebhookNotifier {
         config: &NotificationConfig,
         env_lookup: impl Fn(&str) -> Result<String, std::env::VarError>,
     ) -> anyhow::Result<Self> {
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(config.tls_skip_verify)
+            .build()?;
         let url = config
             .url
             .as_deref()
@@ -239,7 +242,7 @@ impl WebhookNotifier {
         };
 
         Ok(Self {
-            client: reqwest::Client::new(),
+            client,
             url,
             token,
             events,
@@ -406,6 +409,7 @@ mod tests {
             token: Some("plain-token".into()),
             events: Some(vec!["drone_failed".into(), "drone_stalled".into()]),
             body: Some(serde_json::json!({"message": "{{message}}"})),
+            tls_skip_verify: false,
         };
         let notifier = WebhookNotifier::from_config(&config).unwrap();
         assert_eq!(notifier.url, "http://localhost:8080/v2/send");
@@ -423,6 +427,7 @@ mod tests {
             token: None,
             events: None,
             body: None,
+            tls_skip_verify: false,
         };
         let err = WebhookNotifier::from_config(&config).unwrap_err();
         assert!(err.to_string().contains("url is required"));
@@ -436,6 +441,7 @@ mod tests {
             token: None,
             events: Some(vec!["bogus_event".into()]),
             body: None,
+            tls_skip_verify: false,
         };
         let err = WebhookNotifier::from_config(&config).unwrap_err();
         assert!(err.to_string().contains("unknown event type"));
@@ -449,6 +455,7 @@ mod tests {
             token: Some("env:TEST_WEBHOOK_TOKEN".into()),
             events: None,
             body: None,
+            tls_skip_verify: false,
         };
         let env = |key: &str| -> Result<String, std::env::VarError> {
             if key == "TEST_WEBHOOK_TOKEN" {
@@ -469,6 +476,7 @@ mod tests {
             token: Some("env:NONEXISTENT_VAR_12345".into()),
             events: None,
             body: None,
+            tls_skip_verify: false,
         };
         let env =
             |_: &str| -> Result<String, std::env::VarError> { Err(std::env::VarError::NotPresent) };
@@ -484,6 +492,7 @@ mod tests {
             token: None,
             events: None,
             body: None,
+            tls_skip_verify: false,
         };
         let notifier = WebhookNotifier::from_config(&config).unwrap();
         assert_eq!(notifier.events.len(), VALID_EVENTS.len());
