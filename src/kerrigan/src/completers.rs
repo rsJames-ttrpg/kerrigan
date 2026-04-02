@@ -87,6 +87,39 @@ impl ValueCompleter for RunIdCompleter {
 }
 
 #[derive(Clone)]
+pub struct ArtifactIdCompleter;
+
+impl ValueCompleter for ArtifactIdCompleter {
+    fn complete(&self, current: &OsStr) -> Vec<CompletionCandidate> {
+        let prefix = current.to_string_lossy();
+
+        let Some(json) = blocking_get("/api/artifacts") else {
+            return vec![];
+        };
+        let Ok(artifacts) = serde_json::from_str::<Vec<serde_json::Value>>(&json) else {
+            return vec![];
+        };
+
+        artifacts
+            .into_iter()
+            .filter_map(|a| {
+                let id = a.get("id")?.as_str()?;
+                if !id.starts_with(prefix.as_ref()) {
+                    return None;
+                }
+                let name = a.get("name").and_then(|s| s.as_str()).unwrap_or("?");
+                let atype = a
+                    .get("artifact_type")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("?");
+                let help = format!("{name} ({atype})");
+                Some(CompletionCandidate::new(id).help(Some(help.into())))
+            })
+            .collect()
+    }
+}
+
+#[derive(Clone)]
 pub struct DefinitionCompleter;
 
 impl ValueCompleter for DefinitionCompleter {

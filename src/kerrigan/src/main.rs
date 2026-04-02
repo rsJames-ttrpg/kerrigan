@@ -9,7 +9,7 @@ use clap_complete::Shell;
 use clap_complete::engine::ArgValueCompleter;
 use nydus::NydusClient;
 
-use completers::{DefinitionCompleter, RunIdCompleter};
+use completers::{ArtifactIdCompleter, DefinitionCompleter, RunIdCompleter};
 
 #[derive(Parser)]
 #[command(name = "kerrigan", about = "Kerrigan operator console")]
@@ -94,10 +94,37 @@ enum Command {
         #[arg(long)]
         status: Option<String>,
     },
+    /// List and view artifacts
+    Artifacts {
+        #[command(subcommand)]
+        action: ArtifactsAction,
+    },
     /// Generate shell completions
     Completions {
         /// Shell to generate for
         shell: Shell,
+    },
+}
+
+#[derive(Subcommand)]
+enum ArtifactsAction {
+    /// List artifacts with optional filters
+    List {
+        /// Filter by run ID (prefix ok)
+        #[arg(long, add = ArgValueCompleter::new(RunIdCompleter))]
+        run: Option<String>,
+        /// Filter by artifact type (conversation, session, evolution-report, generic)
+        #[arg(long, value_name = "TYPE")]
+        r#type: Option<String>,
+        /// Only show artifacts created after this timestamp (RFC 3339)
+        #[arg(long)]
+        since: Option<String>,
+    },
+    /// Fetch and display artifact content
+    Get {
+        /// Artifact ID (prefix ok)
+        #[arg(add = ArgValueCompleter::new(ArtifactIdCompleter))]
+        id: String,
     },
 }
 
@@ -138,6 +165,13 @@ async fn async_main() -> Result<()> {
         Command::Log { run_id } => cmd_log(&client, &run_id).await,
         Command::Watch { run_id, interval } => cmd_watch(&client, &run_id, interval).await,
         Command::Cancel { run_id } => cmd_cancel(&client, &run_id).await,
+        Command::Artifacts { action } => match action {
+            ArtifactsAction::List { run, r#type, since } => {
+                cmd_artifacts_list(&client, run.as_deref(), r#type.as_deref(), since.as_deref())
+                    .await
+            }
+            ArtifactsAction::Get { id } => cmd_artifacts_get(&client, &id).await,
+        },
         Command::Hatcheries { status } => cmd_hatcheries(&client, status.as_deref()).await,
         Command::Completions { shell } => {
             clap_complete::generate(
@@ -303,6 +337,52 @@ async fn cmd_cancel(client: &NydusClient, run_id: &str) -> Result<()> {
         .update_run(id, Some("cancelled"), None, Some("cancelled by operator"))
         .await?;
     println!("Cancelled: {}", display::short_id(id));
+    Ok(())
+}
+
+async fn cmd_artifacts_list(
+    client: &NydusClient,
+    run: Option<&str>,
+    artifact_type: Option<&str>,
+    since: Option<&str>,
+) -> Result<()> {
+    let resolved_run_id = if let Some(partial) = run {
+        let runs = client.list_runs(None).await?;
+        Some(display::resolve_run_id(&runs, partial)?.to_string())
+    } else {
+        None
+    };
+    let artifacts = client
+        .list_artifacts(resolved_run_id.as_deref(), artifact_type, since)
+        .await?;
+    display::print_artifacts_list(&artifacts);
+    Ok(())
+}
+
+async fn cmd_artifacts_get(client: &NydusClient, partial_id: &str) -> Result<()> {
+    let artifacts = client.list_artifacts(None, None, None).await?;
+    let artifact = display::resolve_artifact(&artifacts, partial_id)?;
+    let id = artifact.id.clone();
+    let is_gzip = artifact.content_type == "application/gzip";
+
+    let data = client.get_artifact(&id).await?;
+
+    let content = if is_gzip {
+        use flate2::read::GzDecoder;
+        use std::io::Read;
+        let mut decoder = GzDecoder::new(data.as_slice());
+        let mut decompressed = Vec::new();
+        decoder.read_to_end(&mut decompressed)?;
+        decompressed
+    } else {
+        data
+    };
+
+    use std::io::Write;
+    std::io::stdout().write_all(&content)?;
+    if std::io::stdout().is_terminal() && content.last() != Some(&b'\n') {
+        println!();
+    }
     Ok(())
 }
 

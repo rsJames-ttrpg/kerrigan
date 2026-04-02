@@ -1500,6 +1500,7 @@ dependencies = [
  "anyhow",
  "clap",
  "clap_complete",
+ "flate2",
  "nydus",
  "owo-colors",
  "reqwest",

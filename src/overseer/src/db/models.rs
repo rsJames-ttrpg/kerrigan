@@ -186,6 +186,7 @@ pub enum ArtifactType {
     Generic,
     Conversation,
     Session,
+    EvolutionReport,
 }
 
 impl fmt::Display for ArtifactType {
@@ -194,6 +195,7 @@ impl fmt::Display for ArtifactType {
             Self::Generic => write!(f, "generic"),
             Self::Conversation => write!(f, "conversation"),
             Self::Session => write!(f, "session"),
+            Self::EvolutionReport => write!(f, "evolution-report"),
         }
     }
 }
@@ -205,6 +207,7 @@ impl FromStr for ArtifactType {
             "generic" => Ok(Self::Generic),
             "conversation" => Ok(Self::Conversation),
             "session" => Ok(Self::Session),
+            "evolution-report" => Ok(Self::EvolutionReport),
             other => Err(format!("invalid artifact type: {other}")),
         }
     }
