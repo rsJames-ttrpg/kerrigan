@@ -101,11 +101,17 @@ enum Command {
     },
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Dynamic completions — when COMPLETE env var is set, prints script and exits
+fn main() -> Result<()> {
+    // Dynamic completions — runs before tokio runtime to avoid nested runtime panic
     clap_complete::CompleteEnv::with_factory(Cli::command).complete();
 
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(async_main())
+}
+
+async fn async_main() -> Result<()> {
     let cli = Cli::parse();
     let client = NydusClient::new(&cli.url);
 

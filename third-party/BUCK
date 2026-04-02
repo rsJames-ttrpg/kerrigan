@@ -8054,6 +8054,7 @@ cargo.rust_library(
         "__rustls",
         "__rustls-ring",
         "__tls",
+        "blocking",
         "h2",
         "http2",
         "json",
@@ -8068,6 +8069,7 @@ cargo.rust_library(
     deps = [
         ":base64-0.22",
         ":bytes-1",
+        ":futures-channel-0.3",
         ":futures-core-0.3",
         ":futures-util-0.3",
         ":h2-0.4",
