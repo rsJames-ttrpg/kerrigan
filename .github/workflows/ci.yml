@@ -36,10 +36,19 @@ jobs:
           sudo install -m 755 /tmp/buck2 /usr/local/bin/buck2
           buck2 --version
 
+      - name: Fetch base branch
+        if: github.event_name == 'pull_request'
+        run: git fetch origin ${{ github.base_ref }} --depth=1
+
       - name: Lint (prek)
         env:
           BUCK2_RE_HTTP_HEADERS: ${{ secrets.BUCK2_RE_HTTP_HEADERS }}
-        run: buck2 run root//tools:prek -- run --all-files
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            buck2 run root//tools:prek -- run --from-ref origin/${{ github.base_ref }} --to-ref HEAD
+          else
+            buck2 run root//tools:prek -- run --last-commit
+          fi
 
       - name: Build all targets
         env:
