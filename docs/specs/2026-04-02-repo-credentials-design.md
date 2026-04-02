@@ -19,7 +19,7 @@ UNIQUE constraint on `(pattern, credential_type)`.
 
 ### Pattern Matching
 
-Given a `repo_url`, normalize it (strip protocol, `git@`, convert `:` to `/`, strip `.git` suffix, strip trailing `/`) to produce a canonical form like `github.com/rsJames-ttrpg/kerrigan`. Match against stored patterns where `*` is a trailing wildcard only. Most-specific match wins (longest pattern sans wildcard).
+Given a `repo_url`, normalize it (strip protocol, `git@`, convert `:` to `/`, strip `.git` suffix, strip trailing `/`) to produce a canonical form like `github.com/rsJames-ttrpg/kerrigan`. Match against stored patterns where `*` is a trailing wildcard only. Most-specific match wins *per credential_type* (longest pattern sans wildcard). Multiple credential types can match the same repo URL — all are returned.
 
 ### URL Normalization
 
@@ -41,10 +41,10 @@ Normalization runs on both the input `repo_url` and stored patterns at match tim
 | `GET /api/credentials` | List all (secrets redacted) |
 | `GET /api/credentials/:id` | Get one (secret redacted) |
 | `DELETE /api/credentials/:id` | Remove a credential |
-| `GET /api/credentials/match?repo_url=...` | Best-matching credential for a repo URL (returns full secret) |
+| `GET /api/credentials/match?repo_url=...` | All best-matching credentials for a repo URL (returns full secrets) |
 
 - List/get endpoints redact the secret value.
-- The `/match` endpoint returns the actual secret — intended for Queen consumption at claim time.
+- The `/match` endpoint returns a `Vec` of matched credentials (best match per credential_type). Intended for Queen consumption at claim time.
 - No update endpoint. Delete and re-create to change a credential.
 
 ## Credential Injection Flow
@@ -54,8 +54,8 @@ At job claim time in Queen's poller:
 1. Queen claims a run and merges `config_overrides` on top of definition config (existing behavior).
 2. Queen reads `repo_url` from the merged config.
 3. Queen calls `GET /api/credentials/match?repo_url=<repo_url>` on Overseer.
-4. If a match is found, Queen injects it into the config under the appropriate secrets key.
-5. Explicit `--set secrets.github_pat=...` from the operator takes precedence over auto-injected credentials.
+4. For each matched credential, Queen injects it into the config under the appropriate secrets key.
+5. Explicit `--set secrets.*` from the operator takes precedence over auto-injected credentials (per key).
 6. Config is passed to the drone as today.
 
 ### Credential Type to Secrets Key Mapping
@@ -95,7 +95,7 @@ No `secret = "literal"` field in TOML — secrets always come from env vars, nev
 - `create_credential(pattern, credential_type, secret)` → `Credential`
 - `list_credentials()` → `Vec<Credential>` (redacted)
 - `delete_credential(id)`
-- `match_credential(repo_url)` → `Option<MatchedCredential>` (with secret)
+- `match_credentials(repo_url)` → `Vec<MatchedCredential>` (with secrets)
 
 URL normalization lives in Nydus as a shared utility since both Queen and the kerrigan CLI use it.
 
