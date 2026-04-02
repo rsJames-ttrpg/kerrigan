@@ -27,6 +27,13 @@ fn colored_status(status: &str) -> String {
     }
 }
 
+fn truncate_chars(s: &str, max: usize) -> &str {
+    match s.char_indices().nth(max) {
+        Some((idx, _)) => &s[..idx],
+        None => s,
+    }
+}
+
 fn truncate_task(config_overrides: &Option<Value>, max_len: usize) -> String {
     let task = config_overrides
         .as_ref()
@@ -37,10 +44,10 @@ fn truncate_task(config_overrides: &Option<Value>, max_len: usize) -> String {
         return String::new();
     }
     let first_line = task.lines().next().unwrap_or(task);
-    if first_line.len() <= max_len {
+    if first_line.chars().count() <= max_len {
         format!("\"{}\"", first_line)
     } else {
-        format!("\"{}...\"", &first_line[..max_len - 3])
+        format!("\"{}...\"", truncate_chars(first_line, max_len - 3))
     }
 }
 
@@ -234,11 +241,27 @@ pub fn print_run_detail(
         }
     }
 
-    // Walk down from root
-    let mut children = HashMap::<&str, &JobRun>::new();
+    // Walk down from root, preferring the branch that contains our target run
+    let mut children = HashMap::<&str, Vec<&JobRun>>::new();
     for r in all_runs {
         if let Some(ref pid) = r.parent_id {
-            children.insert(pid.as_str(), r);
+            children.entry(pid.as_str()).or_default().push(r);
+        }
+    }
+
+    // Collect all descendants of the target run for branch selection
+    let target_id = &run.id;
+    let mut target_ancestors = std::collections::HashSet::<&str>::new();
+    {
+        let mut walk = target_id.as_str();
+        target_ancestors.insert(walk);
+        while let Some(r) = run_map.get(walk) {
+            if let Some(ref pid) = r.parent_id {
+                target_ancestors.insert(pid.as_str());
+                walk = pid.as_str();
+            } else {
+                break;
+            }
         }
     }
 
@@ -251,7 +274,13 @@ pub fn print_run_detail(
         }
         if let Some(r) = run_map.get(cid.as_str()) {
             chain.push(*r);
-            current_id = children.get(cid.as_str()).map(|r| r.id.clone());
+            // Pick the child on the branch containing our target run, else first
+            current_id = children.get(cid.as_str()).and_then(|kids| {
+                kids.iter()
+                    .find(|k| target_ancestors.contains(k.id.as_str()) || k.id == *target_id)
+                    .or(kids.first())
+                    .map(|r| r.id.clone())
+            });
         } else {
             break;
         }

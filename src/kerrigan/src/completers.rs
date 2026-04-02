@@ -58,8 +58,13 @@ impl ValueCompleter for RunIdCompleter {
                         .and_then(|t| t.as_str())
                         .map(|t| {
                             let line = t.lines().next().unwrap_or(t);
-                            if line.len() > 40 {
-                                format!("{}...", &line[..37])
+                            if line.chars().count() > 40 {
+                                let end = line
+                                    .char_indices()
+                                    .nth(37)
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(line.len());
+                                format!("{}...", &line[..end])
                             } else {
                                 line.to_string()
                             }

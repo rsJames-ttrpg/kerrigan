@@ -1,6 +1,8 @@
 mod completers;
 mod display;
 
+use std::io::IsTerminal;
+
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
@@ -47,9 +49,6 @@ enum Command {
         /// Job run ID
         #[arg(add = ArgValueCompleter::new(RunIdCompleter))]
         run_id: String,
-        /// Optional message
-        #[arg(long)]
-        message: Option<String>,
     },
     /// Reject a job at a gate
     Reject {
@@ -127,9 +126,7 @@ async fn main() -> Result<()> {
             .await
         }
         Command::Status { run_id } => cmd_status(&client, run_id.as_deref()).await,
-        Command::Approve { run_id, message } => {
-            cmd_approve(&client, &run_id, message.as_deref()).await
-        }
+        Command::Approve { run_id } => cmd_approve(&client, &run_id).await,
         Command::Reject { run_id, message } => cmd_reject(&client, &run_id, &message).await,
         Command::Auth { run_id, code } => cmd_auth(&client, &run_id, &code).await,
         Command::Log { run_id } => cmd_log(&client, &run_id).await,
@@ -211,7 +208,7 @@ async fn cmd_status(client: &NydusClient, run_id: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_approve(client: &NydusClient, run_id: &str, _message: Option<&str>) -> Result<()> {
+async fn cmd_approve(client: &NydusClient, run_id: &str) -> Result<()> {
     let runs = client.list_runs(None).await?;
     let id = display::resolve_run_id(&runs, run_id)?;
 
@@ -265,8 +262,10 @@ async fn cmd_watch(client: &NydusClient, run_id: &str, interval_secs: u64) -> Re
     let definitions = client.list_definitions().await?;
 
     loop {
-        // Clear screen
-        print!("\x1b[2J\x1b[H");
+        // Clear screen (only in terminal, not when piped)
+        if std::io::stdout().is_terminal() {
+            print!("\x1b[2J\x1b[H");
+        }
 
         let runs = client.list_runs(None).await?;
         let run = runs
@@ -295,7 +294,7 @@ async fn cmd_cancel(client: &NydusClient, run_id: &str) -> Result<()> {
     let runs = client.list_runs(None).await?;
     let id = display::resolve_run_id(&runs, run_id)?;
     client
-        .update_run(id, Some("failed"), None, Some("cancelled by operator"))
+        .update_run(id, Some("cancelled"), None, Some("cancelled by operator"))
         .await?;
     println!("Cancelled: {}", display::short_id(id));
     Ok(())
