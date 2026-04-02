@@ -68,7 +68,7 @@ The foundational service. Rust binary (edition 2024). Layered monolith: HTTP (ax
 - **Decisions** — append-only audit log of agent decisions with context and reasoning
 - **Artifacts** — metadata in DB, blobs via object_store (local filesystem, S3, etc.)
 
-Seeded job definitions on startup: `default`, `spec-from-problem`, `plan-from-spec`, `implement-from-plan`, `review-pr`.
+Seeded job definitions on startup: `default`, `spec-from-problem`, `plan-from-spec`, `implement-from-plan`, `review-pr`, `evolve-from-analysis`.
 
 Backend selected via URL in config: `database_url` (sqlite:// or postgres://) and `artifact_url` (file:// or s3://). HTTP API on port 3100, MCP via stdio or HTTP. Config: `overseer.toml`. See `src/overseer/CLAUDE.md` for detailed architecture.
 
@@ -81,6 +81,16 @@ Hatchery process manager. Actor-based (tokio tasks + mpsc channels). Registers w
 - **Test:** `cd src/queen && cargo test`
 - **Notifications** — pluggable `Notifier` trait. Backends: `log` (default, tracing), `webhook` (POSTs JSON to any HTTP endpoint with `{{placeholder}}` template rendering). Configure in `[notifications]` section of `hatchery.toml`. First target: Signal via signal-cli-rest-api.
 - **Job claiming** — Queens poll `GET /api/jobs/runs/pending` for unassigned runs and claim them via `PUT /api/hatcheries/{id}/jobs/{run_id}`. Jobs are never eagerly assigned at submit time.
+- **Evolution actor** — background actor that monitors completed runs and triggers evolution analysis. Disabled by default (`[evolution] enabled = false`). Configure thresholds in `[evolution]` section of `hatchery.toml`.
+
+### Evolution Chamber (`src/evolution/`)
+Library crate for heuristic analysis of drone session data. Fetches conversation/session artifacts from Overseer, parses them, aggregates metrics, and generates recommendations. Used by Queen's evolution actor.
+
+- **Build:** `buck2 build root//src/evolution:evolution`
+- **Test:** `cd src/evolution && cargo test`
+- **Pipeline:** fetch artifacts → parse (conversation summaries + session JSONL) → aggregate metrics (cost, tool patterns, context pressure, failures) → apply heuristic rules → produce report
+- **Triggers:** count-based (N completed runs since last analysis) and time-based (configurable interval). Both configurable via `[evolution]` in `hatchery.toml`.
+- **Output:** submits `evolve-from-analysis` job with the report as task input; the evolve drone creates GitHub issues for actionable recommendations.
 
 ### Creep (`src/creep/`)
 Persistent file-indexing gRPC sidecar. tonic server with FileIndex service + standard health checking. Indexes workspaces respecting .gitignore, watches for changes via notify, blake3 content hashing.
@@ -106,7 +116,7 @@ Operator console for the dev loop. Submit problems, check status, approve pipeli
 Shared library for drone binaries. Defines JSON-line protocol (QueenMessage/DroneMessage), DroneRunner trait (setup/execute/teardown), and harness entrypoint.
 
 ### Claude Drone (`src/drones/claude/base/`)
-Self-extracting binary embedding Claude Code config at compile time. Creates isolated temp home, clones repo, spawns `claude` CLI. Stage-specific CLAUDE.md generated at runtime based on `config.stage` (spec, plan, implement, review). Post-execute safety net ensures PR creation. Supports secrets via job config (`secrets.github_pat`, `secrets.buildbuddy_api_key`).
+Self-extracting binary embedding Claude Code config at compile time. Creates isolated temp home, clones repo, spawns `claude` CLI. Stage-specific CLAUDE.md generated at runtime based on `config.stage` (spec, plan, implement, review, evolve). Post-execute safety net ensures PR creation. Supports secrets via job config (`secrets.github_pat`, `secrets.buildbuddy_api_key`).
 
 ## Toolchains
 
@@ -212,9 +222,14 @@ src/kerrigan/               # Operator CLI (submit, status, approve, reject, aut
   install.sh              # Install script (buck2 run root//src/kerrigan:install)
 src/queen/                  # Hatchery process manager (see above)
 src/creep/                  # File-indexing gRPC sidecar (see above)
+src/evolution/              # Evolution Chamber library (heuristic analysis of drone sessions)
+  src/fetch.rs            # Artifact fetching from Overseer
+  src/parse.rs            # Conversation + session JSONL parsing
+  src/metrics.rs          # Cost, tool pattern, context pressure, failure aggregation
+  src/rules.rs            # Heuristic rules engine for recommendations
 src/drone-sdk/              # Shared drone binary SDK
 src/drones/claude/base/     # Claude Code drone binary
-  src/stages.rs           # Stage-specific CLAUDE.md generation (spec, plan, implement, review)
+  src/stages.rs           # Stage-specific CLAUDE.md generation (spec, plan, implement, review, evolve)
   src/config/CLAUDE.md    # Default drone instructions (embedded at compile time)
   src/config/settings.json # Claude Code settings with Overseer MCP (embedded, URL rewritten at runtime)
 .mcp.json                   # Overseer MCP server config for Claude Code

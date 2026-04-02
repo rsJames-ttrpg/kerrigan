@@ -277,7 +277,7 @@ async fn cmd_auth(client: &NydusClient, run_id: &str, code: &str) -> Result<()> 
 }
 
 async fn cmd_log(client: &NydusClient, run_id: &str) -> Result<()> {
-    let artifacts = client.list_artifacts(Some(run_id)).await?;
+    let artifacts = client.list_artifacts(Some(run_id), None, None).await?;
     if artifacts.is_empty() {
         println!("No artifacts for run {}.", run_id);
     } else {

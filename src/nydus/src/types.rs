@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -51,6 +52,7 @@ pub struct Artifact {
     pub run_id: Option<String>,
     #[serde(default = "default_artifact_type")]
     pub artifact_type: String,
+    pub created_at: Option<DateTime<Utc>>,
 }
 
 fn default_artifact_type() -> String {

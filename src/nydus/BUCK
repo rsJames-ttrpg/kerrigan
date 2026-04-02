@@ -2,6 +2,7 @@ NYDUS_SRCS = glob(["src/**/*.rs"])
 
 NYDUS_DEPS = [
     "//third-party:base64",
+    "//third-party:chrono",
     "//third-party:reqwest",
     "//third-party:serde",
     "//third-party:serde_json",

@@ -142,6 +142,52 @@ impl Default for NotificationConfig {
     }
 }
 
+fn default_evolution_enabled() -> bool {
+    false
+}
+
+fn default_min_sessions() -> usize {
+    5
+}
+
+fn default_run_interval() -> usize {
+    10
+}
+
+fn default_time_interval() -> String {
+    "24h".to_string()
+}
+
+fn default_evolution_definition() -> String {
+    "evolve-from-analysis".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EvolutionConfig {
+    #[serde(default = "default_evolution_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_min_sessions")]
+    pub min_sessions: usize,
+    #[serde(default = "default_run_interval")]
+    pub run_interval: usize,
+    #[serde(default = "default_time_interval")]
+    pub time_interval: String,
+    #[serde(default = "default_evolution_definition")]
+    pub drone_definition: String,
+}
+
+impl Default for EvolutionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_evolution_enabled(),
+            min_sessions: default_min_sessions(),
+            run_interval: default_run_interval(),
+            time_interval: default_time_interval(),
+            drone_definition: default_evolution_definition(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub queen: QueenConfig,
@@ -149,6 +195,8 @@ pub struct Config {
     pub creep: CreepConfig,
     #[serde(default)]
     pub notifications: NotificationConfig,
+    #[serde(default)]
+    pub evolution: EvolutionConfig,
 }
 
 impl Config {
@@ -173,6 +221,17 @@ impl Config {
         }
         if self.queen.poll_interval == 0 {
             anyhow::bail!("queen.poll_interval must be greater than 0");
+        }
+        if self.evolution.enabled {
+            if self.evolution.min_sessions == 0 {
+                anyhow::bail!("evolution.min_sessions must be greater than 0");
+            }
+            if crate::parse_duration(&self.evolution.time_interval).is_err() {
+                anyhow::bail!(
+                    "evolution.time_interval '{}' is not a valid duration (use e.g. '24h', '30m', '60s')",
+                    self.evolution.time_interval
+                );
+            }
         }
         if self.notifications.backend == "webhook" {
             if self.notifications.url.as_ref().is_none_or(|u| u.is_empty()) {
@@ -448,6 +507,41 @@ events = ["drone_failed", "not_a_real_event"]
         );
         let err = Config::load(f.path()).unwrap_err();
         assert!(err.to_string().contains("unknown notification event"));
+    }
+
+    #[test]
+    fn test_parse_evolution_config() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[evolution]
+enabled = true
+min_sessions = 10
+run_interval = 20
+time_interval = "12h"
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert!(config.evolution.enabled);
+        assert_eq!(config.evolution.min_sessions, 10);
+        assert_eq!(config.evolution.run_interval, 20);
+        assert_eq!(config.evolution.time_interval, "12h");
+        assert_eq!(config.evolution.drone_definition, "evolve-from-analysis");
+    }
+
+    #[test]
+    fn test_evolution_defaults_disabled() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert!(!config.evolution.enabled);
+        assert_eq!(config.evolution.min_sessions, 5);
     }
 
     #[test]

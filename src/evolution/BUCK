@@ -1,0 +1,25 @@
+EVOLUTION_SRCS = glob(["src/**/*.rs"])
+
+EVOLUTION_DEPS = [
+    "//src/nydus:nydus",
+    "//third-party:anyhow",
+    "//third-party:chrono",
+    "//third-party:flate2",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:tracing",
+]
+
+rust_library(
+    name = "evolution",
+    srcs = EVOLUTION_SRCS,
+    deps = EVOLUTION_DEPS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "evolution-test",
+    srcs = EVOLUTION_SRCS,
+    deps = EVOLUTION_DEPS,
+    visibility = ["PUBLIC"],
+)

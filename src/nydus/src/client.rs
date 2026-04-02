@@ -402,12 +402,24 @@ impl NydusClient {
         Ok(Self::check_response(resp).await?.bytes().await?.to_vec())
     }
 
-    pub async fn list_artifacts(&self, run_id: Option<&str>) -> Result<Vec<Artifact>, Error> {
-        let url = match run_id {
-            Some(r) => format!("{}/api/artifacts?run_id={r}", self.base_url),
-            None => format!("{}/api/artifacts", self.base_url),
-        };
-        let resp = self.client.get(url).send().await?;
+    pub async fn list_artifacts(
+        &self,
+        run_id: Option<&str>,
+        artifact_type: Option<&str>,
+        since: Option<&str>,
+    ) -> Result<Vec<Artifact>, Error> {
+        let url = format!("{}/api/artifacts", self.base_url);
+        let mut query: Vec<(&str, &str)> = Vec::new();
+        if let Some(r) = run_id {
+            query.push(("run_id", r));
+        }
+        if let Some(at) = artifact_type {
+            query.push(("artifact_type", at));
+        }
+        if let Some(s) = since {
+            query.push(("since", s));
+        }
+        let resp = self.client.get(url).query(&query).send().await?;
         Ok(Self::check_response(resp).await?.json().await?)
     }
 

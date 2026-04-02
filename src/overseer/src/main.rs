@@ -115,6 +115,11 @@ async fn main() -> anyhow::Result<()> {
             "Review a pull request",
             serde_json::json!({ "drone_type": "claude-drone", "stage": "review" }),
         ),
+        (
+            "evolve-from-analysis",
+            "Create problem specs from Evolution Chamber analysis report",
+            serde_json::json!({ "drone_type": "claude-drone", "stage": "evolve" }),
+        ),
     ];
 
     for (name, description, def_config) in seed_definitions {
