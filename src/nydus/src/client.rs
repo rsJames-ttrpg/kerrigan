@@ -408,33 +408,18 @@ impl NydusClient {
         artifact_type: Option<&str>,
         since: Option<&str>,
     ) -> Result<Vec<Artifact>, Error> {
-        let mut url = format!("{}/api/artifacts", self.base_url);
-        let mut params = Vec::new();
+        let url = format!("{}/api/artifacts", self.base_url);
+        let mut query: Vec<(&str, &str)> = Vec::new();
         if let Some(r) = run_id {
-            params.push(format!("run_id={r}"));
+            query.push(("run_id", r));
         }
         if let Some(at) = artifact_type {
-            params.push(format!("artifact_type={at}"));
+            query.push(("artifact_type", at));
         }
         if let Some(s) = since {
-            // URL-encode the timestamp to handle '+' in non-UTC timezone offsets
-            let encoded: String = s
-                .bytes()
-                .map(|b| {
-                    if b == b'+' {
-                        "%2B".to_string()
-                    } else {
-                        (b as char).to_string()
-                    }
-                })
-                .collect();
-            params.push(format!("since={encoded}"));
+            query.push(("since", s));
         }
-        if !params.is_empty() {
-            url.push('?');
-            url.push_str(&params.join("&"));
-        }
-        let resp = self.client.get(url).send().await?;
+        let resp = self.client.get(url).query(&query).send().await?;
         Ok(Self::check_response(resp).await?.json().await?)
     }
 

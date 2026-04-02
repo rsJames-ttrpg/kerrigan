@@ -62,8 +62,28 @@ impl EvolutionChamber {
             }
         }
 
+        // Check for parse data loss: min_sessions gate passed on raw artifacts,
+        // but parsing may have reduced the usable count
+        if conversations.len() < min_sessions {
+            tracing::warn!(
+                attempted = conversation_artifacts.len(),
+                parsed = conversations.len(),
+                min = min_sessions,
+                "insufficient successfully-parsed sessions for analysis"
+            );
+            return Ok(None);
+        }
+        if conversations.len() < conversation_artifacts.len() {
+            tracing::warn!(
+                attempted = conversation_artifacts.len(),
+                parsed = conversations.len(),
+                skipped = conversation_artifacts.len() - conversations.len(),
+                "some conversation artifacts failed to parse"
+            );
+        }
+
         // 3. Build stage map from job runs (run_id -> stage)
-        // For v1, we extract stage from the conversation data or default to "unknown"
+        // Stage map is empty for v1 — all runs map to "unknown" stage.
         // TODO: fetch job run configs from Overseer for accurate stage mapping
         let stage_map: HashMap<String, String> = HashMap::new();
 

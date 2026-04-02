@@ -18,6 +18,8 @@ pub fn decompress_gz(data: &[u8]) -> Result<Vec<u8>> {
 
 /// Fetch all artifacts of a given type since a timestamp from Overseer.
 /// Returns decompressed artifact data paired with run_id.
+/// Artifacts without an associated `run_id` are skipped.
+/// Individual fetch/decompress failures are logged and skipped rather than failing the batch.
 pub async fn fetch_artifacts(
     client: &nydus::NydusClient,
     artifact_type: &str,
@@ -30,17 +32,36 @@ pub async fn fetch_artifacts(
         .map_err(|e| anyhow::anyhow!("failed to list artifacts: {e}"))?;
 
     let mut results = Vec::new();
+    let mut skipped = 0usize;
     for artifact in artifacts {
         let Some(run_id) = artifact.run_id else {
             tracing::debug!(artifact_id = %artifact.id, "skipping artifact without run_id");
             continue;
         };
-        let blob = client
-            .get_artifact(&artifact.id)
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to fetch artifact {}: {e}", artifact.id))?;
-        let data = decompress_gz(&blob)?;
+        let blob = match client.get_artifact(&artifact.id).await {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::warn!(artifact_id = %artifact.id, error = %e, "failed to fetch artifact, skipping");
+                skipped += 1;
+                continue;
+            }
+        };
+        let data = match decompress_gz(&blob) {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!(artifact_id = %artifact.id, error = %e, "failed to decompress artifact, skipping");
+                skipped += 1;
+                continue;
+            }
+        };
         results.push(FetchedArtifact { run_id, data });
+    }
+    if skipped > 0 {
+        tracing::warn!(
+            skipped,
+            fetched = results.len(),
+            "some artifacts could not be fetched/decompressed"
+        );
     }
     Ok(results)
 }

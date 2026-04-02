@@ -18,10 +18,13 @@ pub struct ConversationSummary {
 pub fn parse_conversation(run_id: &str, data: &[u8]) -> Result<ConversationSummary> {
     let v: Value = serde_json::from_slice(data)?;
 
-    let cost_usd = v
-        .get("total_cost_usd")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
+    let cost_usd = match v.get("total_cost_usd").and_then(|v| v.as_f64()) {
+        Some(c) => c,
+        None => {
+            tracing::warn!(run_id, "conversation missing total_cost_usd");
+            0.0
+        }
+    };
     let num_turns = v.get("num_turns").and_then(|v| v.as_u64()).unwrap_or(0);
     let duration_ms = v.get("duration_ms").and_then(|v| v.as_u64()).unwrap_or(0);
     let success = v.get("subtype").and_then(|v| v.as_str()) == Some("success");
@@ -87,6 +90,7 @@ pub fn parse_session(run_id: &str, data: &[u8]) -> Result<SessionDetail> {
     let mut tool_calls = Vec::new();
     let mut message_count = 0usize;
     let mut compression_events = 0usize;
+    let mut skipped_lines = 0usize;
 
     // Track tool_use IDs to match with tool_results
     let mut pending_tool_ids: std::collections::HashMap<String, usize> =
@@ -94,6 +98,7 @@ pub fn parse_session(run_id: &str, data: &[u8]) -> Result<SessionDetail> {
 
     for line in text.lines() {
         let Ok(v) = serde_json::from_str::<Value>(line) else {
+            skipped_lines += 1;
             continue;
         };
 
@@ -163,6 +168,15 @@ pub fn parse_session(run_id: &str, data: &[u8]) -> Result<SessionDetail> {
             }
             _ => {}
         }
+    }
+
+    if skipped_lines > 0 {
+        tracing::warn!(
+            run_id,
+            skipped_lines,
+            total_lines = skipped_lines + message_count + compression_events,
+            "skipped unparseable lines in session JSONL"
+        );
     }
 
     Ok(SessionDetail {

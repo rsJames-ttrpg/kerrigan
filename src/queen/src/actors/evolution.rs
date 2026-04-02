@@ -17,8 +17,29 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
     }
 
     let chamber = EvolutionChamber::new(client.clone());
-    let time_interval =
-        crate::parse_duration(&config.time_interval).unwrap_or(Duration::from_secs(86400));
+    let time_interval = match crate::parse_duration(&config.time_interval) {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::error!(
+                interval = %config.time_interval,
+                error = %e,
+                "invalid evolution time_interval, falling back to 24h"
+            );
+            Duration::from_secs(86400)
+        }
+    };
+
+    // Resolve the job definition name to a UUID once at startup
+    let definition_id = match resolve_definition_id(&client, &config.drone_definition).await {
+        Some(id) => id,
+        None => {
+            tracing::error!(
+                name = %config.drone_definition,
+                "evolution job definition not found, actor cannot submit jobs"
+            );
+            return;
+        }
+    };
 
     // Recover last analysis time from the most recent evolution-report artifact
     let mut last_analysis_time: DateTime<Utc> = recover_last_analysis_time(&client).await;
@@ -41,7 +62,7 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
         let runs = match client.list_runs(Some("completed")).await {
             Ok(r) => r,
             Err(e) => {
-                tracing::debug!(error = %e, "failed to poll completed runs for evolution");
+                tracing::warn!(error = %e, "failed to poll completed runs for evolution");
                 continue;
             }
         };
@@ -80,7 +101,6 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
                     recommendations = report.recommendations.len(),
                     "evolution analysis complete"
                 );
-                // Submit report as job via start_run with task in config_overrides
                 let report_json = match serde_json::to_string_pretty(&report) {
                     Ok(json) => json,
                     Err(e) => {
@@ -102,17 +122,23 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
                     )
                     .await
                 {
-                    tracing::warn!(error = %e, "failed to store evolution report artifact");
+                    tracing::warn!(
+                        error = %e,
+                        "failed to store evolution report artifact — restart recovery \
+                         will not detect this analysis, which may cause a duplicate run"
+                    );
                 }
 
                 let task = format!(
-                    "Analyze the following Evolution Chamber report and create GitHub issues for each high/medium severity recommendation.\n\nLabel issues with `evolution-chamber`.\n\n```json\n{}\n```",
+                    "Analyze the following Evolution Chamber report and create GitHub issues \
+                     for each high/medium severity recommendation.\n\n\
+                     Label issues with `evolution-chamber`.\n\n```json\n{}\n```",
                     report_json
                 );
                 let config_overrides = serde_json::json!({ "task": task, "stage": "evolve" });
                 if let Err(e) = client
                     .start_run(
-                        &config.drone_definition,
+                        &definition_id,
                         "evolution-chamber",
                         None,
                         Some(config_overrides),
@@ -134,6 +160,15 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
         last_analysis_time = Utc::now();
         completed_since_last = 0;
     }
+}
+
+/// Resolve a job definition name to its UUID.
+async fn resolve_definition_id(client: &NydusClient, name: &str) -> Option<String> {
+    let definitions = client.list_definitions().await.ok()?;
+    definitions
+        .iter()
+        .find(|d| d.name == name)
+        .map(|d| d.id.clone())
 }
 
 /// Fetch the most recent evolution-report artifact to recover the last analysis timestamp.
