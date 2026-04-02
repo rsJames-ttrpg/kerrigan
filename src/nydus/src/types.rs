@@ -58,3 +58,20 @@ pub struct Artifact {
 fn default_artifact_type() -> String {
     "generic".to_string()
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Credential {
+    pub id: String,
+    pub pattern: String,
+    pub credential_type: String,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatchedCredential {
+    pub id: String,
+    pub pattern: String,
+    pub credential_type: String,
+    pub secret: String,
+}
