@@ -121,6 +121,9 @@ genrule(
 
         # Helper: write a self-relocatable wrapper for a binary inside rustc-dist or rustfmt-dist.
         # TOOLCHAIN_ROOT resolves to $OUT at runtime (one level above bin/).
+        # NOTE: uses unquoted <<WRAPPER so $exec_path interpolates at build time;
+        # \$ produces literal $ in the installed script. The clippy-driver block
+        # below uses quoted <<'WRAPPER' since it has no build-time variables.
         write_wrapper() {
             local name="$1" exec_path="$2"
             cat > "$OUT/bin/$name" <<WRAPPER

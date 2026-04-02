@@ -74,18 +74,23 @@ buck2 run root//tools:prek -- install --hook-type pre-push
 echo "Warming up buck2 cache..."
 buck2 build root//...
 
-echo "Installing hermetic toolchain wrappers to ~/.local/bin/..."
-TOOLCHAIN_BIN=$(buck2 build root//tools:toolchain-bin --show-full-output 2>/dev/null \
-  | awk 'NR==1{print $2}')
-if [[ -n "$TOOLCHAIN_BIN" ]]; then
-    mkdir -p "$HOME/.local/bin"
-    for bin in cargo rustc rustdoc rustfmt clippy-driver; do
-        ln -sf "$TOOLCHAIN_BIN/bin/$bin" "$HOME/.local/bin/$bin"
-    done
-    echo "  -> symlinked cargo, rustc, rustdoc, rustfmt, clippy-driver to ~/.local/bin/"
-    echo "  -> add ~/.local/bin to PATH if not already present"
+# Hermetic toolchain wrappers (x86_64 only — genrule hardcodes x86_64 archives)
+if [[ "$(uname -m)" == "x86_64" ]]; then
+    echo "Installing hermetic toolchain wrappers to ~/.local/bin/..."
+    TOOLCHAIN_BIN=$(buck2 build root//tools:toolchain-bin --show-full-output \
+      | awk 'NR==1{print $2}')
+    if [[ -d "$TOOLCHAIN_BIN/bin" ]]; then
+        mkdir -p "$HOME/.local/bin"
+        for bin in cargo rustc rustdoc rustfmt clippy-driver; do
+            ln -sf "$TOOLCHAIN_BIN/bin/$bin" "$HOME/.local/bin/$bin"
+        done
+        echo "  -> symlinked cargo, rustc, rustdoc, rustfmt, clippy-driver to ~/.local/bin/"
+        echo "  -> add ~/.local/bin to PATH if not already present"
+    else
+        echo "  -> WARNING: toolchain-bin build failed; skipping symlink step"
+    fi
 else
-    echo "  -> WARNING: toolchain-bin build failed; skipping symlink step"
+    echo "Skipping hermetic toolchain wrappers (x86_64-only; this is $(uname -m))"
 fi
 
 echo "Bootstrap complete"
