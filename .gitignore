@@ -12,3 +12,4 @@ data/
 
 # Worktrees
 .worktrees/
+rust-project.json

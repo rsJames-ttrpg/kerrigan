@@ -149,3 +149,13 @@ cargo add <crate> -p overseer
 ./tools/buckify.sh
 # Add deps = ["//third-party:crate-name"] to BUCK file
 ```
+
+
+## Better IDE integration of Rust Analyzer
+
+```sh
+rm -rf /tmp/buck2
+git clone --depth 1 https://github.com/facebook/buck2 /tmp/buck2
+cargo install --locked --path /tmp/buck2/integrations/rust-project
+rust-project develop --prefer-rustup-managed-toolchain root//src/...
+```

@@ -4,5 +4,6 @@
         "flavor": [],
         "target": "",
         "platform": "linux-x86_64"
-    }
+    },
+    "rust-analyzer.procMacro.server": "~/.local/bin/rust-analyzer-proc-macro-srv"
 }

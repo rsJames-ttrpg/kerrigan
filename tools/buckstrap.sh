@@ -84,7 +84,11 @@ if [[ "$(uname -m)" == "x86_64" ]]; then
         for bin in cargo rustc rustdoc rustfmt clippy-driver; do
             ln -sf "$TOOLCHAIN_BIN/bin/$bin" "$HOME/.local/bin/$bin"
         done
-        echo "  -> symlinked cargo, rustc, rustdoc, rustfmt, clippy-driver to ~/.local/bin/"
+        if [[ -f "$TOOLCHAIN_BIN/rustc-dist/libexec/rust-analyzer-proc-macro-srv" ]]; then
+            ln -sf "$TOOLCHAIN_BIN/rustc-dist/libexec/rust-analyzer-proc-macro-srv" \
+                "$HOME/.local/bin/rust-analyzer-proc-macro-srv"
+        fi
+        echo "  -> symlinked cargo, rustc, rustdoc, rustfmt, clippy-driver, rust-analyzer-proc-macro-srv to ~/.local/bin/"
         echo "  -> add ~/.local/bin to PATH if not already present"
     else
         echo "  -> WARNING: toolchain-bin build failed; skipping symlink step"
