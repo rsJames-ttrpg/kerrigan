@@ -1,5 +1,6 @@
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 use nydus::NydusClient;
 
 #[derive(Parser)]
@@ -22,9 +23,6 @@ enum Command {
         /// Override config values (key=value)
         #[arg(long = "set", value_name = "KEY=VALUE")]
         overrides: Vec<String>,
-        /// Target hatchery name (auto-selects if omitted)
-        #[arg(long)]
-        hatchery: Option<String>,
         /// Job definition name to use
         #[arg(long, default_value = "default")]
         definition: String,
@@ -65,6 +63,11 @@ enum Command {
         /// Job run ID
         run_id: String,
     },
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate for
+        shell: Shell,
+    },
 }
 
 #[tokio::main]
@@ -76,7 +79,6 @@ async fn main() -> Result<()> {
         Command::Submit {
             problem,
             overrides,
-            hatchery,
             definition,
             branch,
         } => {
@@ -85,7 +87,6 @@ async fn main() -> Result<()> {
                 &definition,
                 &problem,
                 &overrides,
-                hatchery.as_deref(),
                 branch.as_deref(),
             )
             .await
@@ -97,6 +98,15 @@ async fn main() -> Result<()> {
         Command::Reject { run_id, message } => cmd_reject(&client, &run_id, &message).await,
         Command::Auth { run_id, code } => cmd_auth(&client, &run_id, &code).await,
         Command::Log { run_id } => cmd_log(&client, &run_id).await,
+        Command::Completions { shell } => {
+            clap_complete::generate(
+                shell,
+                &mut Cli::command(),
+                "kerrigan",
+                &mut std::io::stdout(),
+            );
+            Ok(())
+        }
     }
 }
 
@@ -105,7 +115,6 @@ async fn cmd_submit(
     definition_name: &str,
     problem: &str,
     overrides: &[String],
-    hatchery_name: Option<&str>,
     branch: Option<&str>,
 ) -> Result<()> {
     // 1. Resolve definition by name
@@ -137,30 +146,12 @@ async fn cmd_submit(
         config["branch"] = serde_json::Value::String(b.to_string());
     }
 
-    // 3. Start run
+    // 3. Start run (Queen polls for pending runs and claims them)
     let run = client
         .start_run(&def.id, "operator", None, Some(config))
         .await?;
     println!("Started run: {}", run.id);
-
-    // 4. Find hatchery
-    let hatchery = if let Some(name) = hatchery_name {
-        let hatcheries = client.list_hatcheries(Some("online")).await?;
-        hatcheries
-            .into_iter()
-            .find(|h| h.name == name)
-            .ok_or_else(|| anyhow::anyhow!("hatchery '{}' not found or not online", name))?
-    } else {
-        let hatcheries = client.list_hatcheries(Some("online")).await?;
-        hatcheries
-            .into_iter()
-            .find(|h| h.active_drones < h.max_concurrency)
-            .ok_or_else(|| anyhow::anyhow!("no hatcheries with available capacity"))?
-    };
-
-    // 5. Assign
-    client.assign_job(&hatchery.id, &run.id).await?;
-    println!("Assigned to hatchery: {} ({})", hatchery.name, hatchery.id);
+    println!("Waiting for a Queen to claim the job...");
 
     Ok(())
 }
