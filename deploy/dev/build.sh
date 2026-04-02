@@ -9,19 +9,21 @@ buck2 build \
   root//src/overseer:overseer \
   root//src/queen:queen \
   root//src/creep:creep \
+  root//src/creep-cli:creep-cli \
   root//src/drones/claude/base:claude-drone
 
 # Buck2 output paths are content-addressed. Use buck2 build --show-full-output
 # to get the actual paths, then copy to a staging dir for Docker.
 STAGE="$REPO_ROOT/deploy/dev/.stage"
 rm -rf "$STAGE"
-mkdir -p "$STAGE/bin" "$STAGE/drones"
+mkdir -p "$STAGE/bin" "$STAGE/drones" "$STAGE/plugins"
 
 echo "=== staging binaries ==="
 for target_bin in \
   "root//src/overseer:overseer bin/overseer" \
   "root//src/queen:queen bin/queen" \
   "root//src/creep:creep bin/creep" \
+  "root//src/creep-cli:creep-cli bin/creep-cli" \
   "root//src/drones/claude/base:claude-drone drones/claude-drone"; do
 
   target="${target_bin% *}"
@@ -30,6 +32,10 @@ for target_bin in \
   cp "$src" "$STAGE/$dest"
   echo "  $target -> $STAGE/$dest"
 done
+
+echo "=== staging plugins ==="
+cp -r src/drones/claude/plugins/creep-discovery "$STAGE/plugins/creep-discovery"
+echo "  creep-discovery -> $STAGE/plugins/creep-discovery"
 
 echo "=== building docker image ==="
 docker build -t kerrigan -f "$REPO_ROOT/Dockerfile" "$REPO_ROOT"

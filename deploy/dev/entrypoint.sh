@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+export PATH="/opt/kerrigan/bin:$PATH"
+
 # Ensure data directories exist (host path mounts may be empty)
 mkdir -p /data/artifacts 2>/dev/null || true
 
