@@ -1277,6 +1277,7 @@ cargo.rust_library(
         "help",
         "std",
         "suggestions",
+        "unstable-ext",
         "usage",
     ],
     visibility = [],
@@ -1321,6 +1322,7 @@ cargo.rust_library(
         "help",
         "std",
         "suggestions",
+        "unstable-ext",
         "usage",
     ],
     visibility = [],
@@ -1366,9 +1368,17 @@ cargo.rust_library(
         "CARGO_PKG_VERSION_PATCH": "0",
         "CARGO_PKG_VERSION_PRE": "",
     },
-    features = ["default"],
+    features = [
+        "default",
+        "unstable-dynamic",
+    ],
     visibility = [],
-    deps = [":clap-4"],
+    deps = [
+        ":clap-4",
+        ":clap_lex-1",
+        ":is_executable-1",
+        ":shlex-1",
+    ],
 )
 
 http_archive(
@@ -5320,6 +5330,45 @@ http_archive(
 )
 
 cargo.rust_library(
+    name = "is_executable-1",
+    srcs = [":is_executable-1.0.5.crate"],
+    crate = "is_executable",
+    crate_root = "is_executable-1.0.5.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "is_executable",
+        "CARGO_CRATE_NAME": "is_executable",
+        "CARGO_MANIFEST_DIR": "is_executable-1.0.5.crate",
+        "CARGO_PKG_AUTHORS": "Nick Fitzgerald <fitzgen@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Is there an executable file at the given path?",
+        "CARGO_PKG_NAME": "is_executable",
+        "CARGO_PKG_REPOSITORY": "https://github.com/fitzgen/is_executable",
+        "CARGO_PKG_VERSION": "1.0.5",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "5",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    platform = {
+        "windows-gnu": dict(
+            deps = [":windows-sys-0.60"],
+        ),
+        "windows-msvc": dict(
+            deps = [":windows-sys-0.60"],
+        ),
+    },
+    visibility = [],
+)
+
+http_archive(
+    name = "is_executable-1.0.5.crate",
+    sha256 = "baabb8b4867b26294d818bf3f651a454b6901431711abb96e296245888d6e8c4",
+    strip_prefix = "is_executable-1.0.5",
+    urls = ["https://static.crates.io/crates/is_executable/1.0.5/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
     name = "is_terminal_polyfill-1",
     srcs = [":is_terminal_polyfill-1.70.2.crate"],
     crate = "is_terminal_polyfill",
@@ -6544,6 +6593,43 @@ http_archive(
     sha256 = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d",
     strip_prefix = "option-ext-0.2.0",
     urls = ["https://static.crates.io/crates/option-ext/0.2.0/download"],
+    visibility = [],
+)
+
+alias(
+    name = "owo-colors",
+    actual = ":owo-colors-4",
+    visibility = ["PUBLIC"],
+)
+
+cargo.rust_library(
+    name = "owo-colors-4",
+    srcs = [":owo-colors-4.3.0.crate"],
+    crate = "owo_colors",
+    crate_root = "owo-colors-4.3.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "owo_colors",
+        "CARGO_CRATE_NAME": "owo_colors",
+        "CARGO_MANIFEST_DIR": "owo-colors-4.3.0.crate",
+        "CARGO_PKG_AUTHORS": "jam1garner <8260240+jam1garner@users.noreply.github.com>",
+        "CARGO_PKG_DESCRIPTION": "Zero-allocation terminal colors that'll make people go owo",
+        "CARGO_PKG_NAME": "owo-colors",
+        "CARGO_PKG_REPOSITORY": "https://github.com/owo-colors/owo-colors",
+        "CARGO_PKG_VERSION": "4.3.0",
+        "CARGO_PKG_VERSION_MAJOR": "4",
+        "CARGO_PKG_VERSION_MINOR": "3",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+)
+
+http_archive(
+    name = "owo-colors-4.3.0.crate",
+    sha256 = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d",
+    strip_prefix = "owo-colors-4.3.0",
+    urls = ["https://static.crates.io/crates/owo-colors/4.3.0/download"],
     visibility = [],
 )
 

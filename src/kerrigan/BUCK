@@ -5,6 +5,7 @@ KERRIGAN_DEPS = [
     "//third-party:anyhow",
     "//third-party:clap",
     "//third-party:clap_complete",
+    "//third-party:owo-colors",
     "//third-party:serde_json",
     "//third-party:tokio",
 ]
