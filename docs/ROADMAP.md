@@ -83,8 +83,8 @@ Everything else runs autonomously as drone work.
 - Depends on: #3, #4
 
 **6. Job templates for dev stages** `[done — stage subtypes + seeded definitions]`
-- Stage-specific CLAUDE.md generation: spec (brainstorming), plan (writing-plans), implement (subagent-driven-development), review (pr-review-toolkit)
-- Overseer seeds 5 definitions on startup: default, spec-from-problem, plan-from-spec, implement-from-plan, review-pr
+- Stage-specific CLAUDE.md generation: spec (brainstorming), plan (writing-plans), implement (subagent-driven-development), review (pr-review-toolkit), evolve (issue creation)
+- Overseer seeds 6 definitions on startup: default, spec-from-problem, plan-from-spec, implement-from-plan, review-pr, evolve-from-analysis
 - Single claude-drone binary, stage dispatched via `config.stage`
 - Depends on: #2, #5
 
@@ -104,11 +104,14 @@ Everything else runs autonomously as drone work.
 - Drones get fast file lookups, symbol search
 - Depends on: Creep v1 merged (#7)
 
-**9. Evolution Chamber v1** `[spec needed]`
-- Heuristic analysis of completed drone sessions
-- Metrics: context usage, tool call patterns, failures, cost
-- Targeted LLM analysis on flagged segments
-- Outputs problem specs → GitHub issues → feeds back into the dev loop
+**9. Evolution Chamber v1** `[done — PR #23]`
+- `src/evolution/` library crate: fetch → parse → metrics → rules pipeline
+- Metrics: cost summary, tool call patterns (retry detection, error rates), context pressure, failure analysis
+- Heuristic rules engine generates recommendations with severity levels
+- Queen evolution actor: polls completed runs, triggers analysis on count/time thresholds
+- Submits `evolve-from-analysis` job; evolve drone creates GitHub issues for recommendations
+- Overseer seeds `evolve-from-analysis` job definition on startup
+- Disabled by default (`[evolution] enabled = false` in hatchery.toml)
 - Depends on: #5 (needs real drone output to analyze)
 
 **10. Auth flow** `[implementation]`
