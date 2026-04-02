@@ -691,7 +691,11 @@ impl OverseerMcp {
                 &p.content_type,
                 &data,
                 p.run_id.as_deref(),
-                p.artifact_type.as_deref(),
+                p.artifact_type
+                    .as_deref()
+                    .map(|s| s.parse::<crate::db::models::ArtifactType>())
+                    .transpose()
+                    .map_err(|e| McpError::invalid_params(e, None))?,
             )
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;

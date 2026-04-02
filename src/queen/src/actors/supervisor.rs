@@ -22,6 +22,29 @@ fn gzip_bytes(data: &[u8]) -> Vec<u8> {
     encoder.finish().expect("gzip finish failed")
 }
 
+async fn store_session_artifact(client: &NydusClient, run_id: &str, session_b64: &str) {
+    use base64::Engine;
+    match base64::engine::general_purpose::STANDARD.decode(session_b64) {
+        Ok(session_gz) => {
+            if let Err(e) = client
+                .store_artifact(
+                    &format!("{run_id}-session.jsonl.gz"),
+                    "application/gzip",
+                    &session_gz,
+                    Some(run_id),
+                    Some("session"),
+                )
+                .await
+            {
+                tracing::warn!(job_run_id = %run_id, error = %e, "failed to store session JSONL artifact");
+            }
+        }
+        Err(e) => {
+            tracing::warn!(job_run_id = %run_id, error = %e, "failed to decode session JSONL base64");
+        }
+    }
+}
+
 #[allow(dead_code)]
 struct DroneHandle {
     job_run_id: String,
@@ -395,36 +418,7 @@ async fn drain_protocol_messages(
 
                             // Store full session JSONL if present
                             if let Some(session_b64) = &output.session_jsonl_gz {
-                                use base64::Engine;
-                                match base64::engine::general_purpose::STANDARD.decode(session_b64)
-                                {
-                                    Ok(session_gz) => {
-                                        let session_name = format!("{id}-session.jsonl.gz");
-                                        if let Err(e) = client
-                                            .store_artifact(
-                                                &session_name,
-                                                "application/gzip",
-                                                &session_gz,
-                                                Some(id),
-                                                Some("session"),
-                                            )
-                                            .await
-                                        {
-                                            tracing::warn!(
-                                                job_run_id = %id,
-                                                error = %e,
-                                                "failed to store session JSONL artifact"
-                                            );
-                                        }
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            job_run_id = %id,
-                                            error = %e,
-                                            "failed to decode session JSONL base64"
-                                        );
-                                    }
-                                }
+                                store_session_artifact(client, id, session_b64).await;
                             }
 
                             // Update job run status — require PR URL for success
@@ -538,27 +532,7 @@ async fn check_drones(
 
                             // Store full session JSONL if present
                             if let Some(session_b64) = &output.session_jsonl_gz {
-                                use base64::Engine;
-                                match base64::engine::general_purpose::STANDARD.decode(session_b64)
-                                {
-                                    Ok(session_gz) => {
-                                        if let Err(e) = client
-                                            .store_artifact(
-                                                &format!("{id}-session.jsonl.gz"),
-                                                "application/gzip",
-                                                &session_gz,
-                                                Some(id),
-                                                Some("session"),
-                                            )
-                                            .await
-                                        {
-                                            tracing::warn!(job_run_id = %id, error = %e, "failed to store session JSONL artifact");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(job_run_id = %id, error = %e, "failed to decode session JSONL base64");
-                                    }
-                                }
+                                store_session_artifact(client, id, session_b64).await;
                             }
 
                             let result_value = serde_json::to_value(&output).ok();

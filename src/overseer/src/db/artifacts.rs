@@ -4,17 +4,19 @@ use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
 
 pub use super::models::ArtifactMetadata;
+use super::models::ArtifactType;
 use super::tables::Artifacts;
 use crate::error::{OverseerError, Result};
 
 fn row_to_artifact(row: &sqlx::sqlite::SqliteRow) -> ArtifactMetadata {
+    let at_str: String = row.get("artifact_type");
     ArtifactMetadata {
         id: row.get("id"),
         name: row.get("name"),
         content_type: row.get("content_type"),
         size: row.get("size"),
         run_id: row.get("run_id"),
-        artifact_type: row.get("artifact_type"),
+        artifact_type: at_str.parse().unwrap_or_default(),
         created_at: row.get::<NaiveDateTime, _>("created_at").and_utc(),
     }
 }
@@ -26,7 +28,7 @@ pub async fn insert_artifact(
     content_type: &str,
     size: i64,
     run_id: Option<&str>,
-    artifact_type: &str,
+    artifact_type: &ArtifactType,
 ) -> Result<ArtifactMetadata> {
     let (sql, values) = Query::insert()
         .into_table(Artifacts::Table)
@@ -44,7 +46,7 @@ pub async fn insert_artifact(
             content_type.into(),
             size.into(),
             run_id.map(|s| s.to_string()).into(),
-            artifact_type.into(),
+            artifact_type.to_string().into(),
         ])
         .returning(Query::returning().columns([
             Artifacts::Id,
@@ -90,7 +92,7 @@ pub async fn get_artifact(pool: &SqlitePool, id: &str) -> Result<Option<Artifact
 
 pub async fn list_artifacts(
     pool: &SqlitePool,
-    filter: &crate::db::ArtifactFilter<'_>,
+    filter: &crate::db::ArtifactFilter,
 ) -> Result<Vec<ArtifactMetadata>> {
     let mut query = Query::select();
     query
@@ -105,11 +107,11 @@ pub async fn list_artifacts(
         ])
         .from(Artifacts::Table);
 
-    if let Some(rid) = filter.run_id {
-        query.and_where(Expr::col(Artifacts::RunId).eq(rid));
+    if let Some(rid) = &filter.run_id {
+        query.and_where(Expr::col(Artifacts::RunId).eq(rid.as_str()));
     }
-    if let Some(at) = filter.artifact_type {
-        query.and_where(Expr::col(Artifacts::ArtifactType).eq(at));
+    if let Some(at) = &filter.artifact_type {
+        query.and_where(Expr::col(Artifacts::ArtifactType).eq(at.to_string()));
     }
     if let Some(since) = filter.since {
         query.and_where(
@@ -147,7 +149,7 @@ mod tests {
             "application/pdf",
             1024,
             None,
-            "generic",
+            &ArtifactType::Generic,
         )
         .await
         .expect("insert succeeds");
@@ -157,7 +159,7 @@ mod tests {
         assert_eq!(artifact.content_type, "application/pdf");
         assert_eq!(artifact.size, 1024);
         assert!(artifact.run_id.is_none());
-        assert_eq!(artifact.artifact_type, "generic");
+        assert_eq!(artifact.artifact_type, ArtifactType::Generic);
 
         let fetched = get_artifact(&pool, &artifact.id)
             .await
@@ -175,7 +177,7 @@ mod tests {
         let by_run = list_artifacts(
             &pool,
             &crate::db::ArtifactFilter {
-                run_id: Some("nonexistent-run"),
+                run_id: Some("nonexistent-run".to_string()),
                 ..Default::default()
             },
         )
@@ -210,7 +212,7 @@ mod tests {
             "text/plain",
             100,
             Some(&run.id),
-            "generic",
+            &ArtifactType::Generic,
         )
         .await
         .expect("insert 1");
@@ -221,7 +223,7 @@ mod tests {
             "text/plain",
             200,
             Some(&run.id),
-            "session",
+            &ArtifactType::Session,
         )
         .await
         .expect("insert 2");
@@ -232,7 +234,7 @@ mod tests {
             "text/plain",
             300,
             None,
-            "generic",
+            &ArtifactType::Generic,
         )
         .await
         .expect("insert 3");
@@ -240,7 +242,7 @@ mod tests {
         let by_run = list_artifacts(
             &pool,
             &crate::db::ArtifactFilter {
-                run_id: Some(&run.id),
+                run_id: Some(run.id.clone()),
                 ..Default::default()
             },
         )

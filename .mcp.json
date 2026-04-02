@@ -2,8 +2,7 @@
   "mcpServers": {
     "overseer": {
       "type": "http",
-      "url": "http://localhost:3100/mcp",
-      "auth": null
+      "url": "http://localhost:3100/mcp"
     }
   }
 }

@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 
+use crate::db::models::ArtifactType;
 use crate::error::{OverseerError, Result};
 use crate::services::AppState;
 
@@ -43,7 +44,11 @@ async fn store_artifact(
             &body.content_type,
             &data,
             body.run_id.as_deref(),
-            body.artifact_type.as_deref(),
+            body.artifact_type
+                .as_deref()
+                .map(|s| s.parse::<ArtifactType>())
+                .transpose()
+                .map_err(OverseerError::Validation)?,
         )
         .await?;
     Ok(Json(
@@ -82,9 +87,15 @@ async fn list_artifacts(
                 .map_err(|e| OverseerError::Validation(format!("invalid since timestamp: {e}")))
         })
         .transpose()?;
+    let artifact_type = params
+        .artifact_type
+        .as_deref()
+        .map(|s| s.parse::<ArtifactType>())
+        .transpose()
+        .map_err(OverseerError::Validation)?;
     let filter = crate::db::ArtifactFilter {
-        run_id: params.run_id.as_deref(),
-        artifact_type: params.artifact_type.as_deref(),
+        run_id: params.run_id,
+        artifact_type,
         since,
     };
     let results = state.artifacts.list(&filter).await?;

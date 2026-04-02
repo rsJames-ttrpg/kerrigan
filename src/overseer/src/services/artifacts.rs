@@ -6,7 +6,7 @@ use object_store::PutPayload;
 use object_store::path::Path as ObjectPath;
 
 use crate::db::Database;
-use crate::db::models::ArtifactMetadata;
+use crate::db::models::{ArtifactMetadata, ArtifactType};
 use crate::error::{OverseerError, Result};
 
 pub struct ArtifactService {
@@ -25,11 +25,11 @@ impl ArtifactService {
         content_type: &str,
         data: &[u8],
         run_id: Option<&str>,
-        artifact_type: Option<&str>,
+        artifact_type: Option<ArtifactType>,
     ) -> Result<ArtifactMetadata> {
         let id = uuid::Uuid::new_v4().to_string();
         let path = ObjectPath::from(format!("artifacts/{id}"));
-        let artifact_type = artifact_type.unwrap_or("generic");
+        let artifact_type = artifact_type.unwrap_or_default();
 
         self.store
             .put(&path, PutPayload::from(data.to_vec()))
@@ -43,7 +43,7 @@ impl ArtifactService {
                 content_type,
                 data.len() as i64,
                 run_id,
-                artifact_type,
+                &artifact_type,
             )
             .await
         {
@@ -73,10 +73,7 @@ impl ArtifactService {
         Ok((metadata, data.to_vec()))
     }
 
-    pub async fn list(
-        &self,
-        filter: &crate::db::ArtifactFilter<'_>,
-    ) -> Result<Vec<ArtifactMetadata>> {
+    pub async fn list(&self, filter: &crate::db::ArtifactFilter) -> Result<Vec<ArtifactMetadata>> {
         self.db.list_artifacts(filter).await
     }
 }
@@ -126,7 +123,7 @@ mod tests {
             "application/octet-stream",
             b"bbb",
             None,
-            Some("session"),
+            Some(ArtifactType::Session),
         )
         .await
         .expect("store b");

@@ -8,6 +8,7 @@ pub mod postgres;
 pub mod sqlite;
 pub mod tables;
 mod trait_def;
+pub use models::ArtifactType;
 pub use postgres::PostgresDatabase;
 pub use sqlite::SqliteDatabase;
 #[allow(unused_imports)]
@@ -75,7 +76,14 @@ pub async fn open_in_memory_named(name: &str) -> Result<SqlitePool, OverseerErro
 pub(crate) async fn trait_conformance_suite(db: Arc<dyn Database>) {
     // Artifacts
     let artifact = db
-        .insert_artifact("test-id", "test.txt", "text/plain", 42, None, "generic")
+        .insert_artifact(
+            "test-id",
+            "test.txt",
+            "text/plain",
+            42,
+            None,
+            &ArtifactType::Generic,
+        )
         .await
         .expect("insert artifact");
     assert_eq!(artifact.name, "test.txt");

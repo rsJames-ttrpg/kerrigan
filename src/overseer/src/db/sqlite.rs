@@ -284,7 +284,7 @@ impl ArtifactStore for SqliteDatabase {
         content_type: &str,
         size: i64,
         run_id: Option<&str>,
-        artifact_type: &str,
+        artifact_type: &ArtifactType,
     ) -> Result<ArtifactMetadata> {
         super::artifacts::insert_artifact(
             &self.pool,
@@ -304,7 +304,7 @@ impl ArtifactStore for SqliteDatabase {
 
     async fn list_artifacts(
         &self,
-        filter: &crate::db::ArtifactFilter<'_>,
+        filter: &crate::db::ArtifactFilter,
     ) -> Result<Vec<ArtifactMetadata>> {
         super::artifacts::list_artifacts(&self.pool, filter).await
     }
