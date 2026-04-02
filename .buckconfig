@@ -34,5 +34,3 @@ digest_algorithms = SHA256
   engine_address = remote.buildbuddy.io
   action_cache_address = remote.buildbuddy.io
   cas_address = remote.buildbuddy.io
-  bes_backend = remote.buildbuddy.io
-  bes_results_url = https://app.buildbuddy.io/invocation/

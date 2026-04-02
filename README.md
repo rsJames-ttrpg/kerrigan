@@ -135,7 +135,7 @@ Runtime config in `overseer.toml`. Database backend selected by URL scheme (`sql
 Which buck2?
 
 ```sh
-gh release download 2026-01-19 --repo facebook/buck2 --pattern 'buck2-x86_64-unknown-linux-gnu.zst' -O - | zstd -d | sudo tee /usr/local/bin/buck2
+gh release download 2026-01-19 --repo facebook/buck2 --pattern 'buck2-x86_64-unknown-linux-gnu.zst' -O /tmp/buck2.zst && zstd -d /tmp/buck2.zst -o /tmp/buck2 && sudo install -m 755 /tmp/buck2 /usr/local/bin/buck2
 ```
 
 
