@@ -148,13 +148,29 @@ mod tests {
             total_cost_usd: 15.0,
             cost_by_stage: HashMap::new(),
             cost_trend: Trend::Increasing,
-            highest_cost_runs: vec![
-                RunCostEntry { run_id: "r1".into(), cost_usd: 5.0, stage: "implement".into() },
-            ],
+            highest_cost_runs: vec![RunCostEntry {
+                run_id: "r1".into(),
+                cost_usd: 5.0,
+                stage: "implement".into(),
+            }],
         };
-        let tools = ToolPatterns { call_counts: HashMap::new(), retry_sequences: vec![], error_rates: HashMap::new(), top_context_consumers: vec![] };
-        let context = ContextPressure { avg_turns: 20.0, median_turns: 18.0, compression_events: 0, avg_cache_hit_ratio: 0.9 };
-        let failures = FailureAnalysis { failure_rate: 0.0, failure_by_stage: HashMap::new(), common_errors: vec![] };
+        let tools = ToolPatterns {
+            call_counts: HashMap::new(),
+            retry_sequences: vec![],
+            error_rates: HashMap::new(),
+            top_context_consumers: vec![],
+        };
+        let context = ContextPressure {
+            avg_turns: 20.0,
+            median_turns: 18.0,
+            compression_events: 0,
+            avg_cache_hit_ratio: 0.9,
+        };
+        let failures = FailureAnalysis {
+            failure_rate: 0.0,
+            failure_by_stage: HashMap::new(),
+            common_errors: vec![],
+        };
 
         let recs = generate_recommendations(&cost, &tools, &context, &failures);
         assert!(recs.iter().any(|r| r.title.contains("Cost trend")));
@@ -168,21 +184,62 @@ mod tests {
         let mut call_counts = HashMap::new();
         call_counts.insert("Edit".to_string(), 20);
 
-        let tools = ToolPatterns { call_counts, retry_sequences: vec![], error_rates, top_context_consumers: vec![] };
-        let cost = CostSummary { total_cost_usd: 1.0, cost_by_stage: HashMap::new(), cost_trend: Trend::Stable, highest_cost_runs: vec![] };
-        let context = ContextPressure { avg_turns: 20.0, median_turns: 18.0, compression_events: 0, avg_cache_hit_ratio: 0.9 };
-        let failures = FailureAnalysis { failure_rate: 0.0, failure_by_stage: HashMap::new(), common_errors: vec![] };
+        let tools = ToolPatterns {
+            call_counts,
+            retry_sequences: vec![],
+            error_rates,
+            top_context_consumers: vec![],
+        };
+        let cost = CostSummary {
+            total_cost_usd: 1.0,
+            cost_by_stage: HashMap::new(),
+            cost_trend: Trend::Stable,
+            highest_cost_runs: vec![],
+        };
+        let context = ContextPressure {
+            avg_turns: 20.0,
+            median_turns: 18.0,
+            compression_events: 0,
+            avg_cache_hit_ratio: 0.9,
+        };
+        let failures = FailureAnalysis {
+            failure_rate: 0.0,
+            failure_by_stage: HashMap::new(),
+            common_errors: vec![],
+        };
 
         let recs = generate_recommendations(&cost, &tools, &context, &failures);
-        assert!(recs.iter().any(|r| r.title.contains("High error rate") && r.title.contains("Edit")));
+        assert!(
+            recs.iter()
+                .any(|r| r.title.contains("High error rate") && r.title.contains("Edit"))
+        );
     }
 
     #[test]
     fn test_compression_recommendation() {
-        let cost = CostSummary { total_cost_usd: 1.0, cost_by_stage: HashMap::new(), cost_trend: Trend::Stable, highest_cost_runs: vec![] };
-        let tools = ToolPatterns { call_counts: HashMap::new(), retry_sequences: vec![], error_rates: HashMap::new(), top_context_consumers: vec![] };
-        let context = ContextPressure { avg_turns: 80.0, median_turns: 75.0, compression_events: 5, avg_cache_hit_ratio: 0.6 };
-        let failures = FailureAnalysis { failure_rate: 0.0, failure_by_stage: HashMap::new(), common_errors: vec![] };
+        let cost = CostSummary {
+            total_cost_usd: 1.0,
+            cost_by_stage: HashMap::new(),
+            cost_trend: Trend::Stable,
+            highest_cost_runs: vec![],
+        };
+        let tools = ToolPatterns {
+            call_counts: HashMap::new(),
+            retry_sequences: vec![],
+            error_rates: HashMap::new(),
+            top_context_consumers: vec![],
+        };
+        let context = ContextPressure {
+            avg_turns: 80.0,
+            median_turns: 75.0,
+            compression_events: 5,
+            avg_cache_hit_ratio: 0.6,
+        };
+        let failures = FailureAnalysis {
+            failure_rate: 0.0,
+            failure_by_stage: HashMap::new(),
+            common_errors: vec![],
+        };
 
         let recs = generate_recommendations(&cost, &tools, &context, &failures);
         assert!(recs.iter().any(|r| r.title.contains("compression")));
@@ -191,10 +248,29 @@ mod tests {
 
     #[test]
     fn test_no_recommendations_when_clean() {
-        let cost = CostSummary { total_cost_usd: 1.0, cost_by_stage: HashMap::new(), cost_trend: Trend::Stable, highest_cost_runs: vec![] };
-        let tools = ToolPatterns { call_counts: HashMap::new(), retry_sequences: vec![], error_rates: HashMap::new(), top_context_consumers: vec![] };
-        let context = ContextPressure { avg_turns: 20.0, median_turns: 18.0, compression_events: 0, avg_cache_hit_ratio: 0.9 };
-        let failures = FailureAnalysis { failure_rate: 0.1, failure_by_stage: HashMap::new(), common_errors: vec![] };
+        let cost = CostSummary {
+            total_cost_usd: 1.0,
+            cost_by_stage: HashMap::new(),
+            cost_trend: Trend::Stable,
+            highest_cost_runs: vec![],
+        };
+        let tools = ToolPatterns {
+            call_counts: HashMap::new(),
+            retry_sequences: vec![],
+            error_rates: HashMap::new(),
+            top_context_consumers: vec![],
+        };
+        let context = ContextPressure {
+            avg_turns: 20.0,
+            median_turns: 18.0,
+            compression_events: 0,
+            avg_cache_hit_ratio: 0.9,
+        };
+        let failures = FailureAnalysis {
+            failure_rate: 0.1,
+            failure_by_stage: HashMap::new(),
+            common_errors: vec![],
+        };
 
         let recs = generate_recommendations(&cost, &tools, &context, &failures);
         assert!(recs.is_empty());

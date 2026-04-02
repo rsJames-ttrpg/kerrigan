@@ -158,10 +158,6 @@ fn default_time_interval() -> String {
     "24h".to_string()
 }
 
-fn default_repo_run_interval() -> usize {
-    5
-}
-
 fn default_evolution_definition() -> String {
     "evolve-from-analysis".to_string()
 }
@@ -176,8 +172,6 @@ pub struct EvolutionConfig {
     pub run_interval: usize,
     #[serde(default = "default_time_interval")]
     pub time_interval: String,
-    #[serde(default = "default_repo_run_interval")]
-    pub repo_run_interval: usize,
     #[serde(default = "default_evolution_definition")]
     pub drone_definition: String,
 }
@@ -189,7 +183,6 @@ impl Default for EvolutionConfig {
             min_sessions: default_min_sessions(),
             run_interval: default_run_interval(),
             time_interval: default_time_interval(),
-            repo_run_interval: default_repo_run_interval(),
             drone_definition: default_evolution_definition(),
         }
     }
@@ -228,6 +221,17 @@ impl Config {
         }
         if self.queen.poll_interval == 0 {
             anyhow::bail!("queen.poll_interval must be greater than 0");
+        }
+        if self.evolution.enabled {
+            if self.evolution.min_sessions == 0 {
+                anyhow::bail!("evolution.min_sessions must be greater than 0");
+            }
+            if crate::parse_duration(&self.evolution.time_interval).is_err() {
+                anyhow::bail!(
+                    "evolution.time_interval '{}' is not a valid duration (use e.g. '24h', '30m', '60s')",
+                    self.evolution.time_interval
+                );
+            }
         }
         if self.notifications.backend == "webhook" {
             if self.notifications.url.as_ref().is_none_or(|u| u.is_empty()) {

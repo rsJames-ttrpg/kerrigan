@@ -417,7 +417,18 @@ impl NydusClient {
             params.push(format!("artifact_type={at}"));
         }
         if let Some(s) = since {
-            params.push(format!("since={s}"));
+            // URL-encode the timestamp to handle '+' in non-UTC timezone offsets
+            let encoded: String = s
+                .bytes()
+                .map(|b| {
+                    if b == b'+' {
+                        "%2B".to_string()
+                    } else {
+                        (b as char).to_string()
+                    }
+                })
+                .collect();
+            params.push(format!("since={encoded}"));
         }
         if !params.is_empty() {
             url.push('?');

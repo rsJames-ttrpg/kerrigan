@@ -3,14 +3,23 @@ use std::collections::HashMap;
 use anyhow::Result;
 
 use crate::parse::{ConversationSummary, SessionDetail};
-use crate::report::{ContextPressure, CostSummary, ErrorPattern, FailureAnalysis, RetrySequence, RunCostEntry, Trend, ToolPatterns};
+use crate::report::{
+    ContextPressure, CostSummary, ErrorPattern, FailureAnalysis, RetrySequence, RunCostEntry,
+    ToolPatterns, Trend,
+};
 
-pub fn build_cost_summary(conversations: &[ConversationSummary], stage_map: &HashMap<String, String>) -> Result<CostSummary> {
+pub fn build_cost_summary(
+    conversations: &[ConversationSummary],
+    stage_map: &HashMap<String, String>,
+) -> Result<CostSummary> {
     let total_cost_usd: f64 = conversations.iter().map(|c| c.cost_usd).sum();
 
     let mut cost_by_stage: HashMap<String, f64> = HashMap::new();
     for c in conversations {
-        let stage = stage_map.get(&c.run_id).cloned().unwrap_or_else(|| "unknown".to_string());
+        let stage = stage_map
+            .get(&c.run_id)
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_string());
         *cost_by_stage.entry(stage).or_default() += c.cost_usd;
     }
 
@@ -19,17 +28,26 @@ pub fn build_cost_summary(conversations: &[ConversationSummary], stage_map: &Has
         .map(|c| RunCostEntry {
             run_id: c.run_id.clone(),
             cost_usd: c.cost_usd,
-            stage: stage_map.get(&c.run_id).cloned().unwrap_or_else(|| "unknown".to_string()),
+            stage: stage_map
+                .get(&c.run_id)
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string()),
         })
         .collect();
-    highest_cost_runs.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
+    highest_cost_runs.sort_by(|a, b| {
+        b.cost_usd
+            .partial_cmp(&a.cost_usd)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     highest_cost_runs.truncate(10);
 
     // Simple trend: compare first half avg to second half avg
     let cost_trend = if conversations.len() >= 4 {
         let mid = conversations.len() / 2;
-        let first_avg: f64 = conversations[..mid].iter().map(|c| c.cost_usd).sum::<f64>() / mid as f64;
-        let second_avg: f64 = conversations[mid..].iter().map(|c| c.cost_usd).sum::<f64>() / (conversations.len() - mid) as f64;
+        let first_avg: f64 =
+            conversations[..mid].iter().map(|c| c.cost_usd).sum::<f64>() / mid as f64;
+        let second_avg: f64 = conversations[mid..].iter().map(|c| c.cost_usd).sum::<f64>()
+            / (conversations.len() - mid) as f64;
         if second_avg > first_avg * 1.2 {
             Trend::Increasing
         } else if second_avg < first_avg * 0.8 {
@@ -77,7 +95,11 @@ pub fn build_tool_patterns(sessions: &[SessionDetail]) -> Result<ToolPatterns> {
     // Top context consumers: tools with highest total call count (proxy for context usage)
     let mut sorted_tools: Vec<(String, u64)> = call_counts.clone().into_iter().collect();
     sorted_tools.sort_by(|a, b| b.1.cmp(&a.1));
-    let top_context_consumers: Vec<String> = sorted_tools.into_iter().take(5).map(|(name, _)| name).collect();
+    let top_context_consumers: Vec<String> = sorted_tools
+        .into_iter()
+        .take(5)
+        .map(|(name, _)| name)
+        .collect();
 
     Ok(ToolPatterns {
         call_counts,
@@ -115,16 +137,28 @@ fn detect_retries(sessions: &[SessionDetail]) -> Vec<RetrySequence> {
     retries
 }
 
-pub fn build_context_pressure(conversations: &[ConversationSummary], sessions: &[SessionDetail]) -> ContextPressure {
+pub fn build_context_pressure(
+    conversations: &[ConversationSummary],
+    sessions: &[SessionDetail],
+) -> ContextPressure {
     let turns: Vec<f64> = conversations.iter().map(|c| c.num_turns as f64).collect();
-    let avg_turns = if turns.is_empty() { 0.0 } else { turns.iter().sum::<f64>() / turns.len() as f64 };
+    let avg_turns = if turns.is_empty() {
+        0.0
+    } else {
+        turns.iter().sum::<f64>() / turns.len() as f64
+    };
 
     let median_turns = if turns.is_empty() {
         0.0
     } else {
         let mut sorted = turns.clone();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        sorted[sorted.len() / 2]
+        let mid = sorted.len() / 2;
+        if sorted.len() % 2 == 0 {
+            (sorted[mid - 1] + sorted[mid]) / 2.0
+        } else {
+            sorted[mid]
+        }
     };
 
     let compression_events: usize = sessions.iter().map(|s| s.compression_events).sum();
@@ -143,7 +177,11 @@ pub fn build_context_pressure(conversations: &[ConversationSummary], sessions: &
                 }
             })
             .collect();
-        if ratios.is_empty() { 0.0 } else { ratios.iter().sum::<f64>() / ratios.len() as f64 }
+        if ratios.is_empty() {
+            0.0
+        } else {
+            ratios.iter().sum::<f64>() / ratios.len() as f64
+        }
     };
 
     ContextPressure {
@@ -154,14 +192,24 @@ pub fn build_context_pressure(conversations: &[ConversationSummary], sessions: &
     }
 }
 
-pub fn build_failure_analysis(conversations: &[ConversationSummary], stage_map: &HashMap<String, String>) -> FailureAnalysis {
+pub fn build_failure_analysis(
+    conversations: &[ConversationSummary],
+    stage_map: &HashMap<String, String>,
+) -> FailureAnalysis {
     let total = conversations.len();
     let failures: Vec<&ConversationSummary> = conversations.iter().filter(|c| !c.success).collect();
-    let failure_rate = if total > 0 { failures.len() as f64 / total as f64 } else { 0.0 };
+    let failure_rate = if total > 0 {
+        failures.len() as f64 / total as f64
+    } else {
+        0.0
+    };
 
     let mut stage_failures: HashMap<String, (u64, u64)> = HashMap::new(); // (failures, total)
     for c in conversations {
-        let stage = stage_map.get(&c.run_id).cloned().unwrap_or_else(|| "unknown".to_string());
+        let stage = stage_map
+            .get(&c.run_id)
+            .cloned()
+            .unwrap_or_else(|| "unknown".to_string());
         let entry = stage_failures.entry(stage).or_insert((0, 0));
         entry.1 += 1;
         if !c.success {
@@ -187,7 +235,12 @@ pub fn build_failure_analysis(conversations: &[ConversationSummary], stage_map: 
 mod tests {
     use super::*;
 
-    fn make_conversation(run_id: &str, cost: f64, turns: u64, success: bool) -> ConversationSummary {
+    fn make_conversation(
+        run_id: &str,
+        cost: f64,
+        turns: u64,
+        success: bool,
+    ) -> ConversationSummary {
         ConversationSummary {
             run_id: run_id.to_string(),
             cost_usd: cost,
@@ -225,10 +278,26 @@ mod tests {
         let sessions = vec![SessionDetail {
             run_id: "r1".to_string(),
             tool_calls: vec![
-                crate::parse::ToolCall { name: "Edit".to_string(), first_arg: "/src/main.rs".to_string(), is_error: true },
-                crate::parse::ToolCall { name: "Edit".to_string(), first_arg: "/src/main.rs".to_string(), is_error: true },
-                crate::parse::ToolCall { name: "Edit".to_string(), first_arg: "/src/main.rs".to_string(), is_error: false },
-                crate::parse::ToolCall { name: "Read".to_string(), first_arg: "/src/lib.rs".to_string(), is_error: false },
+                crate::parse::ToolCall {
+                    name: "Edit".to_string(),
+                    first_arg: "/src/main.rs".to_string(),
+                    is_error: true,
+                },
+                crate::parse::ToolCall {
+                    name: "Edit".to_string(),
+                    first_arg: "/src/main.rs".to_string(),
+                    is_error: true,
+                },
+                crate::parse::ToolCall {
+                    name: "Edit".to_string(),
+                    first_arg: "/src/main.rs".to_string(),
+                    is_error: false,
+                },
+                crate::parse::ToolCall {
+                    name: "Read".to_string(),
+                    first_arg: "/src/lib.rs".to_string(),
+                    is_error: false,
+                },
             ],
             message_count: 8,
             compression_events: 0,
@@ -268,9 +337,24 @@ mod tests {
             make_conversation("r3", 0.5, 60, true),
         ];
         let sessions = vec![
-            SessionDetail { run_id: "r1".to_string(), tool_calls: vec![], message_count: 20, compression_events: 0 },
-            SessionDetail { run_id: "r2".to_string(), tool_calls: vec![], message_count: 40, compression_events: 1 },
-            SessionDetail { run_id: "r3".to_string(), tool_calls: vec![], message_count: 60, compression_events: 2 },
+            SessionDetail {
+                run_id: "r1".to_string(),
+                tool_calls: vec![],
+                message_count: 20,
+                compression_events: 0,
+            },
+            SessionDetail {
+                run_id: "r2".to_string(),
+                tool_calls: vec![],
+                message_count: 40,
+                compression_events: 1,
+            },
+            SessionDetail {
+                run_id: "r3".to_string(),
+                tool_calls: vec![],
+                message_count: 60,
+                compression_events: 2,
+            },
         ];
 
         let pressure = build_context_pressure(&convos, &sessions);

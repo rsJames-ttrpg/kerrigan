@@ -5,7 +5,6 @@ EVOLUTION_DEPS = [
     "//third-party:anyhow",
     "//third-party:chrono",
     "//third-party:flate2",
-    "//third-party:polars",
     "//third-party:serde",
     "//third-party:serde_json",
     "//third-party:tracing",

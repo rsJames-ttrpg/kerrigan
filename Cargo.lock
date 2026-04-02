@@ -758,6 +758,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "evolution"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "flate2",
+ "nydus",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2077,6 +2090,7 @@ dependencies = [
  "chrono",
  "clap",
  "drone-sdk",
+ "evolution",
  "flate2",
  "nydus",
  "reqwest",
@@ -2152,7 +2166,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.3",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

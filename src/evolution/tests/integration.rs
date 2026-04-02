@@ -7,7 +7,8 @@ fn test_full_pipeline_with_fixtures() {
     let session_data = include_bytes!("fixtures/session.jsonl");
 
     // Parse
-    let conversation = evolution::parse::parse_conversation("run-fixture", conversation_data).unwrap();
+    let conversation =
+        evolution::parse::parse_conversation("run-fixture", conversation_data).unwrap();
     let session = evolution::parse::parse_session("run-fixture", session_data).unwrap();
 
     assert!(conversation.success);
@@ -22,7 +23,8 @@ fn test_full_pipeline_with_fixtures() {
     let stage_map = HashMap::new();
     let cost = evolution::metrics::build_cost_summary(&[conversation.clone()], &stage_map).unwrap();
     let tools = evolution::metrics::build_tool_patterns(&[session.clone()]).unwrap();
-    let context = evolution::metrics::build_context_pressure(&[conversation.clone()], &[session.clone()]);
+    let context =
+        evolution::metrics::build_context_pressure(&[conversation.clone()], &[session.clone()]);
     let failures = evolution::metrics::build_failure_analysis(&[conversation], &stage_map);
 
     assert!(cost.total_cost_usd > 1.0);

@@ -251,7 +251,7 @@ mod tests {
     #[test]
     fn test_all_stages_include_base_rules() {
         let config = json!({"spec_path": "x", "plan_path": "x", "pr_url": "x"});
-        for stage in ["spec", "plan", "implement", "review"] {
+        for stage in ["spec", "plan", "implement", "review", "evolve"] {
             let content = generate_claude_md(stage, &config).unwrap();
             assert!(
                 content.contains("Do NOT merge the PR"),

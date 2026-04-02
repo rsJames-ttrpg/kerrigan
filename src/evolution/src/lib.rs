@@ -28,7 +28,8 @@ impl EvolutionChamber {
         min_sessions: usize,
     ) -> anyhow::Result<Option<AnalysisReport>> {
         // 1. Fetch artifacts
-        let conversation_artifacts = fetch::fetch_artifacts(&self.client, "conversation", &since).await?;
+        let conversation_artifacts =
+            fetch::fetch_artifacts(&self.client, "conversation", &since).await?;
         let session_artifacts = fetch::fetch_artifacts(&self.client, "session", &since).await?;
 
         if conversation_artifacts.len() < min_sessions {
@@ -45,7 +46,9 @@ impl EvolutionChamber {
         for artifact in &conversation_artifacts {
             match parse::parse_conversation(&artifact.run_id, &artifact.data) {
                 Ok(summary) => conversations.push(summary),
-                Err(e) => tracing::warn!(run_id = %artifact.run_id, error = %e, "failed to parse conversation"),
+                Err(e) => {
+                    tracing::warn!(run_id = %artifact.run_id, error = %e, "failed to parse conversation")
+                }
             }
         }
 
@@ -53,7 +56,9 @@ impl EvolutionChamber {
         for artifact in &session_artifacts {
             match parse::parse_session(&artifact.run_id, &artifact.data) {
                 Ok(detail) => sessions.push(detail),
-                Err(e) => tracing::warn!(run_id = %artifact.run_id, error = %e, "failed to parse session"),
+                Err(e) => {
+                    tracing::warn!(run_id = %artifact.run_id, error = %e, "failed to parse session")
+                }
             }
         }
 

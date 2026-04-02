@@ -15,11 +15,13 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
     }
 
     let chamber = EvolutionChamber::new(client.clone());
-    let time_interval = crate::parse_duration(&config.time_interval).unwrap_or(Duration::from_secs(86400));
+    let time_interval =
+        crate::parse_duration(&config.time_interval).unwrap_or(Duration::from_secs(86400));
 
     let mut last_analysis = Instant::now();
     let mut completed_since_last = 0usize;
     let mut last_analysis_time: DateTime<Utc> = Utc::now();
+    let mut previous_completed_total = 0usize;
 
     let poll_interval = Duration::from_secs(60);
 
@@ -32,7 +34,7 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
             _ = tokio::time::sleep(poll_interval) => {}
         }
 
-        // Count completed runs since last analysis
+        // Count completed runs since last analysis by tracking delta
         let runs = match client.list_runs(Some("completed")).await {
             Ok(r) => r,
             Err(e) => {
@@ -40,7 +42,11 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
                 continue;
             }
         };
-        completed_since_last = runs.len(); // simplified: count all completed
+        let current_total = runs.len();
+        if current_total > previous_completed_total {
+            completed_since_last += current_total - previous_completed_total;
+        }
+        previous_completed_total = current_total;
 
         let time_triggered = last_analysis.elapsed() >= time_interval;
         let count_triggered = completed_since_last >= config.run_interval;
@@ -58,7 +64,11 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
 
         // Run global analysis
         match chamber
-            .analyze(AnalysisScope::Global, last_analysis_time, config.min_sessions)
+            .analyze(
+                AnalysisScope::Global,
+                last_analysis_time,
+                config.min_sessions,
+            )
             .await
         {
             Ok(Some(report)) => {
@@ -68,14 +78,25 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
                     "evolution analysis complete"
                 );
                 // Submit report as job via start_run with task in config_overrides
-                let report_json = serde_json::to_string_pretty(&report).unwrap_or_default();
+                let report_json = match serde_json::to_string_pretty(&report) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "failed to serialize evolution report");
+                        continue;
+                    }
+                };
                 let task = format!(
                     "Analyze the following Evolution Chamber report and create GitHub issues for each high/medium severity recommendation.\n\nLabel issues with `evolution-chamber`.\n\n```json\n{}\n```",
                     report_json
                 );
                 let config_overrides = serde_json::json!({ "task": task, "stage": "evolve" });
                 if let Err(e) = client
-                    .start_run(&config.drone_definition, "evolution-chamber", None, Some(config_overrides))
+                    .start_run(
+                        &config.drone_definition,
+                        "evolution-chamber",
+                        None,
+                        Some(config_overrides),
+                    )
                     .await
                 {
                     tracing::warn!(error = %e, "failed to submit evolution report job");
