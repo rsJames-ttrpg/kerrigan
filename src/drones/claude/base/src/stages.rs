@@ -31,6 +31,7 @@ pub fn generate_claude_md(stage: &str, config: &Value) -> Option<String> {
         "plan" => Some(generate_plan(config)),
         "implement" => Some(generate_implement(config)),
         "review" => Some(generate_review(config)),
+        "evolve" => Some(generate_evolve(config)),
         _ => None,
     }
 }
@@ -142,6 +143,32 @@ Overseer artifact via MCP if available.
 
 After review, create a PR with your review notes committed to the repo
 (e.g., `docs/reviews/YYYY-MM-DD-pr-<number>.md`).
+
+{BASE_RULES}
+"#
+    )
+}
+
+fn generate_evolve(_config: &Value) -> String {
+    format!(
+        r#"# Evolution Chamber Analysis
+
+You are reviewing an Evolution Chamber analysis report. Your task is to create GitHub issues for actionable recommendations.
+
+## Instructions
+
+1. Read the analysis report provided in the task
+2. For each recommendation with severity High or Medium:
+   - Create a GitHub issue as a problem spec
+   - Title: the recommendation title
+   - Body: Include the detail, evidence, and your proposed approach
+   - Label: `evolution-chamber`
+3. Skip Low severity recommendations unless they have compelling evidence
+4. Group related recommendations into a single issue when they share a root cause
+
+## Output
+
+Create the issues using `gh issue create`. Report what you created.
 
 {BASE_RULES}
 "#
