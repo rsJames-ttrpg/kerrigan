@@ -22,13 +22,13 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Cache buck-out
-        uses: actions/cache@v4
-        with:
-          path: buck-out/
-          key: buck-out-${{ hashFiles('toolchains/BUCK', 'third-party/BUCK', 'Cargo.lock') }}
-          restore-keys: |
-            buck-out-
+      # - name: Cache buck-out
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: buck-out/
+      #     key: buck-out-${{ hashFiles('toolchains/BUCK', 'third-party/BUCK', 'Cargo.lock') }}
+      #     restore-keys: |
+      #       buck-out-
 
       - name: Install Buck2
         run: |
