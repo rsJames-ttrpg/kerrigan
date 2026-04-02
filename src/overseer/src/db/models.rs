@@ -237,6 +237,51 @@ pub struct Hatchery {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialType {
+    GithubPat,
+}
+
+impl fmt::Display for CredentialType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GithubPat => write!(f, "github_pat"),
+        }
+    }
+}
+
+impl FromStr for CredentialType {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        match s {
+            "github_pat" => Ok(Self::GithubPat),
+            other => Err(format!("unsupported credential type: {other}")),
+        }
+    }
+}
+
+impl CredentialType {
+    /// Map this credential type to the secrets key injected into job config.
+    /// Only `github_pat` is implemented; others panic.
+    pub fn secrets_key(&self) -> &'static str {
+        match self {
+            Self::GithubPat => "github_pat",
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Credential {
+    pub id: String,
+    pub pattern: String,
+    pub credential_type: CredentialType,
+    #[serde(skip_serializing)]
+    pub secret: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

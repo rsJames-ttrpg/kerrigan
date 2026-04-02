@@ -100,3 +100,14 @@ pub enum Hatcheries {
     CreatedAt,
     UpdatedAt,
 }
+
+#[derive(Iden)]
+pub enum Credentials {
+    Table,
+    Id,
+    Pattern,
+    CredentialType,
+    Secret,
+    CreatedAt,
+    UpdatedAt,
+}
