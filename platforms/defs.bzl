@@ -6,7 +6,7 @@ def _executor_config():
         return CommandExecutorConfig(
             local_enabled = True,
             remote_enabled = True,
-            use_limited_hybrid = True,
+            use_limited_hybrid = not read_root_config("project", "remote_only", None),
             remote_execution_properties = {
                 "OSFamily": "Linux",
                 "container-image": "docker://gcr.io/flame-public/rbe-ubuntu24-04:latest",
