@@ -91,3 +91,64 @@ http_file(
     sha256 = CLAUDE_CLI_SHA256,
     visibility = ["PUBLIC"],
 )
+
+export_file(
+    name = "toolchain-resolve",
+    src = "toolchain-resolve.sh",
+)
+
+# -- hermetic toolchain wrappers -----------------------------------------------
+# Produces a self-relocatable bin/ directory with cargo, rustc, rustdoc, rustfmt,
+# and clippy-driver. Path resolved at runtime via readlink -f, not baked in.
+# Usage: buck2 build root//tools:toolchain-bin --show-full-output
+
+genrule(
+    name = "toolchain-bin",
+    srcs = [
+        "toolchains//:rustc-x86_64-linux",
+        "toolchains//:cargo-x86_64-linux",
+        "toolchains//:rustfmt-x86_64-linux",
+        "toolchains//:clippy-x86_64-linux",
+        ":toolchain-resolve",
+    ],
+    out = "toolchain-bin",
+    bash = """
+        set -euo pipefail
+        RUSTC_DIST="$PWD/$(location toolchains//:rustc-x86_64-linux)"
+        RUSTFMT_DIST="$PWD/$(location toolchains//:rustfmt-x86_64-linux)"
+        CARGO_DIST="$PWD/$(location toolchains//:cargo-x86_64-linux)"
+        CLIPPY_DIST="$PWD/$(location toolchains//:clippy-x86_64-linux)"
+        RESOLVE="$PWD/$(location :toolchain-resolve)"
+
+        mkdir -p "$OUT/rustc-dist" "$OUT/cargo-dist" "$OUT/rustfmt-dist" "$OUT/bin"
+
+        # Copy relevant subtrees, dereferencing symlinks so output is self-contained
+        cp -rfL "$RUSTC_DIST"/. "$OUT/rustc-dist/"
+        cp -rfL "$CARGO_DIST"/. "$OUT/cargo-dist/"
+        cp -rfL "$RUSTFMT_DIST"/. "$OUT/rustfmt-dist/"
+        # Only the clippy-driver binary; its sysroot lives in rustc-dist
+        cp -L "$CLIPPY_DIST/bin/clippy-driver" "$OUT/bin/clippy-driver-bin"
+        # Resolver script — wrappers source this to find TOOLCHAIN_ROOT.
+        # Kept in a separate file to avoid subshell syntax that conflicts
+        # with Buck2 arg macro parsing.
+        cp "$RESOLVE" "$OUT/bin/_resolve.sh"
+
+        # Write thin wrappers that source the resolver and exec the real binary.
+        # Uses ${0%/*} (parameter expansion, no subshell) to find _resolve.sh
+        # relative to the wrapper — keeps wrappers self-relocatable.
+        write_wrapper() {
+            local name="$1" exec_path="$2"
+            echo '#!/usr/bin/env bash' > "$OUT/bin/$name"
+            echo 'source "${0%/*}/_resolve.sh"' >> "$OUT/bin/$name"
+            echo 'exec "$TOOLCHAIN_ROOT/'"$exec_path"'" "$@"' >> "$OUT/bin/$name"
+            chmod +x "$OUT/bin/$name"
+        }
+
+        write_wrapper cargo   "cargo-dist/bin/cargo"
+        write_wrapper rustc   "rustc-dist/bin/rustc"
+        write_wrapper rustdoc "rustc-dist/bin/rustdoc"
+        write_wrapper rustfmt "rustfmt-dist/bin/rustfmt"
+        write_wrapper clippy-driver "bin/clippy-driver-bin"
+    """,
+    visibility = ["PUBLIC"],
+)

@@ -21,6 +21,17 @@ Run `./tools/buckstrap.sh` after cloning. It installs the pinned Buck2 release, 
 
 Cargo is still available for local dev convenience (`cargo check` / `cargo test` from `src/overseer/`), but Buck2 is authoritative for builds.
 
+**Hermetic dev tools:** After running `./tools/buckstrap.sh`, `cargo`, `rustc`, `rustdoc`,
+`rustfmt`, and `clippy-driver` are available on PATH via hermetic wrappers symlinked to
+`~/.local/bin/`. These use the exact same toolchain as Buck2 builds — no system rustup needed.
+
+- `cargo check` / `cargo test` — fast feedback loop, use freely
+- `cargo build` — avoid; use `buck2 build` instead to keep the build graph consistent
+  and leverage the shared remote cache
+- `cargo clippy` — acceptable for quick checks; use
+  `buck2 build 'root//src/<crate>:<crate>[clippy.txt]'` for CI-equivalent results
+- `rustfmt --check` / `rustfmt` — use directly (same binary as `buck2 run root//tools:rustfmt`)
+
 ### Remote Execution (BuildBuddy)
 
 Builds can execute remotely on BuildBuddy workers for shared caching and faster CI.

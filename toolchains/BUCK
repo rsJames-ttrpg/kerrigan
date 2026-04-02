@@ -35,10 +35,19 @@ http_archive(
 )
 
 http_archive(
+    name = "cargo-x86_64-linux",
+    urls = ["https://static.rust-lang.org/dist/{}/cargo-nightly-{}.tar.xz".format(RUST_NIGHTLY, RUST_HOST)],
+    sha256 = "836cd48b8f8fc4957156272d53ae0b260a808a2ce485a18af75fa3908d414ff2",
+    strip_prefix = "cargo-nightly-{}/cargo".format(RUST_HOST),
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
     name = "clippy-x86_64-linux",
     urls = ["https://static.rust-lang.org/dist/{}/clippy-nightly-{}.tar.xz".format(RUST_NIGHTLY, RUST_HOST)],
     sha256 = "d79368518f92ed0a06610f7aa89e38b382fe1324baf381464dc87c1816ed6a09",
     strip_prefix = "clippy-nightly-{}/clippy-preview".format(RUST_HOST),
+    visibility = ["PUBLIC"],
 )
 
 http_archive(
