@@ -326,6 +326,67 @@ pub fn print_hatcheries(hatcheries: &[Hatchery]) {
     }
 }
 
+fn colored_artifact_type(t: &str) -> String {
+    if !use_color() {
+        return t.to_string();
+    }
+    match t {
+        "conversation" => t.cyan().to_string(),
+        "session" => t.yellow().to_string(),
+        "evolution-report" => t.green().to_string(),
+        "generic" => t.dimmed().to_string(),
+        _ => t.to_string(),
+    }
+}
+
+pub fn print_artifacts_list(artifacts: &[Artifact]) {
+    if artifacts.is_empty() {
+        println!("No artifacts found.");
+        return;
+    }
+
+    for a in artifacts {
+        let type_label = colored_artifact_type(&a.artifact_type);
+        let run_label = a.run_id.as_deref().map(short_id).unwrap_or("-");
+        let ts = a
+            .created_at
+            .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_default();
+
+        println!(
+            "  {}  {:<40} {:<20} run:{}  {:>8}  {}",
+            short_id(&a.id),
+            a.name,
+            type_label,
+            run_label,
+            humanize_bytes(a.size),
+            if use_color() {
+                ts.dimmed().to_string()
+            } else {
+                ts
+            },
+        );
+    }
+}
+
+pub fn resolve_artifact<'a>(
+    artifacts: &'a [Artifact],
+    partial: &str,
+) -> anyhow::Result<&'a Artifact> {
+    if let Some(a) = artifacts.iter().find(|a| a.id == partial) {
+        return Ok(a);
+    }
+    let matches: Vec<&Artifact> = artifacts
+        .iter()
+        .filter(|a| a.id.starts_with(partial))
+        .collect();
+    match matches.len() {
+        0 => anyhow::bail!("no artifact matching '{partial}'"),
+        1 => Ok(matches[0]),
+        n => anyhow::bail!("'{partial}' is ambiguous ({n} artifacts — use more characters)"),
+    }
+}
+
 pub fn print_log(artifacts: &[Artifact], tasks: &[Task], run_id: &str) {
     if artifacts.is_empty() && tasks.is_empty() {
         println!("No artifacts or tasks for run {}.", short_id(run_id));

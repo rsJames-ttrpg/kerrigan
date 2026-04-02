@@ -12,3 +12,4 @@ anyhow = "1"
 clap_complete = { version = "4.6", features = ["unstable-dynamic"] }
 owo-colors = "4"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+flate2 = "1"
