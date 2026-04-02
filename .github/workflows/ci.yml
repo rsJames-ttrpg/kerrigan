@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUCK2_RELEASE: "2026-01-19"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache buck-out
+        uses: actions/cache@v4
+        with:
+          path: buck-out/
+          key: buck-out-${{ hashFiles('toolchains/BUCK', 'third-party/BUCK', 'Cargo.lock') }}
+          restore-keys: |
+            buck-out-
+
+      - name: Install Buck2
+        run: |
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_RELEASE}/buck2-x86_64-unknown-linux-gnu.zst" \
+            | zstd -d > /tmp/buck2
+          chmod +x /tmp/buck2
+          sudo install -m 755 /tmp/buck2 /usr/local/bin/buck2
+          buck2 --version
+
+      - name: Fetch base branch
+        if: github.event_name == 'pull_request'
+        run: git fetch origin ${{ github.base_ref }} --depth=1
+
+      - name: Lint (prek)
+        env:
+          BUCK2_RE_HTTP_HEADERS: ${{ secrets.BUCK2_RE_HTTP_HEADERS }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            buck2 run root//tools:prek -- run --from-ref origin/${{ github.base_ref }} --to-ref HEAD
+          else
+            buck2 run root//tools:prek -- run --last-commit
+          fi
+
+      - name: Build all targets
+        env:
+          BUCK2_RE_HTTP_HEADERS: ${{ secrets.BUCK2_RE_HTTP_HEADERS }}
+        run: buck2 build root//...
+
+      - name: Run tests
+        env:
+          BUCK2_RE_HTTP_HEADERS: ${{ secrets.BUCK2_RE_HTTP_HEADERS }}
+        run: buck2 test //src/...

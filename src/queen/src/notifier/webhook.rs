@@ -402,6 +402,97 @@ mod tests {
     }
 
     #[test]
+    fn test_build_placeholders_completed() {
+        let event = QueenEvent::DroneCompleted {
+            job_run_id: "run-4".into(),
+            exit_code: 0,
+        };
+        let p = build_placeholders(&event);
+        let map: std::collections::HashMap<&str, &str> =
+            p.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert_eq!(map["event_type"], "drone_completed");
+        assert_eq!(map["job_run_id"], "run-4");
+        assert_eq!(
+            map["message"],
+            "Drone completed for job run-4 (exit code 0)"
+        );
+    }
+
+    #[test]
+    fn test_build_placeholders_spawned() {
+        let event = QueenEvent::DroneSpawned {
+            job_run_id: "run-5".into(),
+            drone_type: "claude".into(),
+        };
+        let p = build_placeholders(&event);
+        let map: std::collections::HashMap<&str, &str> =
+            p.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert_eq!(map["event_type"], "drone_spawned");
+        assert_eq!(map["job_run_id"], "run-5");
+        assert_eq!(map["message"], "Drone spawned for job run-5 (type: claude)");
+    }
+
+    #[test]
+    fn test_build_placeholders_hatchery_registered() {
+        let event = QueenEvent::HatcheryRegistered {
+            name: "prod-hatchery".into(),
+            id: "h-123".into(),
+        };
+        let p = build_placeholders(&event);
+        let map: std::collections::HashMap<&str, &str> =
+            p.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert_eq!(map["event_type"], "hatchery_registered");
+        assert_eq!(map["job_run_id"], "");
+        assert_eq!(map["message"], "Hatchery registered: prod-hatchery (h-123)");
+    }
+
+    #[test]
+    fn test_build_placeholders_auth_requested() {
+        let event = QueenEvent::AuthRequested {
+            job_run_id: "run-6".into(),
+            url: "https://auth.example.com".into(),
+            message: "Please authenticate".into(),
+        };
+        let p = build_placeholders(&event);
+        let map: std::collections::HashMap<&str, &str> =
+            p.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert_eq!(map["event_type"], "auth_requested");
+        assert_eq!(map["job_run_id"], "run-6");
+        assert_eq!(
+            map["message"],
+            "Auth requested for job run-6: Please authenticate — https://auth.example.com"
+        );
+    }
+
+    #[test]
+    fn test_build_placeholders_creep_started() {
+        let p = build_placeholders(&QueenEvent::CreepStarted);
+        let map: std::collections::HashMap<&str, &str> =
+            p.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert_eq!(map["event_type"], "creep_started");
+        assert_eq!(map["message"], "Creep sidecar started");
+    }
+
+    #[test]
+    fn test_build_placeholders_creep_died() {
+        let event = QueenEvent::CreepDied { restart_in_secs: 5 };
+        let p = build_placeholders(&event);
+        let map: std::collections::HashMap<&str, &str> =
+            p.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert_eq!(map["event_type"], "creep_died");
+        assert_eq!(map["message"], "Creep sidecar died, restarting in 5s");
+    }
+
+    #[test]
+    fn test_build_placeholders_shutting_down() {
+        let p = build_placeholders(&QueenEvent::ShuttingDown);
+        let map: std::collections::HashMap<&str, &str> =
+            p.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        assert_eq!(map["event_type"], "shutting_down");
+        assert_eq!(map["message"], "Queen shutting down");
+    }
+
+    #[test]
     fn test_from_config_valid() {
         let config = NotificationConfig {
             backend: "webhook".into(),
