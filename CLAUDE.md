@@ -99,6 +99,13 @@ Persistent file-indexing gRPC sidecar. tonic server with FileIndex service + sta
 - **Test:** `cd src/creep && cargo test`
 - **Proto:** `src/creep/proto/creep.proto` — codegen via tonic-build in build.rs. Pre-generated Rust in `proto_gen/` for Buck2.
 
+### Creep CLI (`src/creep-cli/`)
+Thin CLI client for Creep's gRPC API. Used by skills and drone hooks for file discovery.
+
+- **Build:** `buck2 build root//src/creep-cli:creep-cli`
+- **Install plugin:** `buck2 run root//src/drones/claude/plugins:install` (installs creep-discovery skill to ~/.claude/plugins/)
+- **Usage:** `creep-cli search "*.rs" --json`, `creep-cli metadata <path>`, `creep-cli register <path>`, `creep-cli unregister <path>`
+
 ### Nydus (`src/nydus/`)
 Shared Overseer HTTP client library. Stateless typed wrapper over Overseer's REST API. Used by Queen, kerrigan CLI, and future htmx UI. Methods for jobs, tasks, hatcheries, artifacts, auth, and pipeline advancement.
 
@@ -222,6 +229,9 @@ src/kerrigan/               # Operator CLI (submit, status, approve, reject, aut
   install.sh              # Install script (buck2 run root//src/kerrigan:install)
 src/queen/                  # Hatchery process manager (see above)
 src/creep/                  # File-indexing gRPC sidecar (see above)
+src/creep-cli/              # Thin CLI client for Creep gRPC API (search, metadata, register, unregister)
+src/drones/claude/plugins/  # Claude Code skill plugins bundled into drone home
+  creep-discovery/          # creep-discovery skill — teaches drones to use creep-cli
 src/evolution/              # Evolution Chamber library (heuristic analysis of drone sessions)
   src/fetch.rs            # Artifact fetching from Overseer
   src/parse.rs            # Conversation + session JSONL parsing
