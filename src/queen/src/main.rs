@@ -120,6 +120,14 @@ async fn main() -> anyhow::Result<()> {
         .await;
     });
 
+    // 8.5. Start Evolution actor
+    let evolution_client = client.clone();
+    let evolution_config = config.evolution;
+    let evolution_token = token.clone();
+    tokio::spawn(async move {
+        actors::evolution::run(evolution_client, evolution_config, evolution_token).await;
+    });
+
     // 9. Await Ctrl+C
     tokio::signal::ctrl_c().await?;
     tracing::info!("shutdown signal received");

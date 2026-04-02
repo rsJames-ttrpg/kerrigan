@@ -5,6 +5,7 @@ QUEEN_DEPS = [
     "//third-party:base64",
     "//src/drone-sdk:drone-sdk",
     "//src/nydus:nydus",
+    "//src/evolution:evolution",
     "//third-party:async-trait",
     "//third-party:chrono",
     "//third-party:clap",
