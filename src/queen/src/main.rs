@@ -139,10 +139,10 @@ async fn main() -> anyhow::Result<()> {
     let _ = supervisor_handle.await;
 
     // Deregister from Overseer
-    if let Some(id) = hatchery_id.read().await.as_ref() {
-        if let Err(e) = client.deregister_hatchery(id).await {
-            tracing::warn!(error = %e, "failed to deregister from overseer");
-        }
+    if let Some(id) = hatchery_id.read().await.as_ref()
+        && let Err(e) = client.deregister_hatchery(id).await
+    {
+        tracing::warn!(error = %e, "failed to deregister from overseer");
     }
 
     notifier.notify(notifier::QueenEvent::ShuttingDown).await;

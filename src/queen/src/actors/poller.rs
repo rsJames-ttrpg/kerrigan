@@ -76,11 +76,11 @@ pub async fn run(
 
             // Merge config_overrides on top of definition config
             let mut config = def.config.clone();
-            if let Some(overrides) = &run.config_overrides {
-                if let (Some(base), Some(over)) = (config.as_object_mut(), overrides.as_object()) {
-                    for (k, v) in over {
-                        base.insert(k.clone(), v.clone());
-                    }
+            if let Some(overrides) = &run.config_overrides
+                && let (Some(base), Some(over)) = (config.as_object_mut(), overrides.as_object())
+            {
+                for (k, v) in over {
+                    base.insert(k.clone(), v.clone());
                 }
             }
 
