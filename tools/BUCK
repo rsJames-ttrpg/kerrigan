@@ -91,3 +91,60 @@ http_file(
     sha256 = CLAUDE_CLI_SHA256,
     visibility = ["PUBLIC"],
 )
+
+# -- hermetic toolchain wrappers -----------------------------------------------
+# Produces a self-relocatable bin/ directory with cargo, rustc, rustdoc, rustfmt,
+# and clippy-driver. Path resolved at runtime via readlink -f, not baked in.
+# Usage: buck2 build root//tools:toolchain-bin --show-full-output
+
+genrule(
+    name = "toolchain-bin",
+    srcs = [
+        "toolchains//:rustc-x86_64-linux",
+        "toolchains//:rustfmt-x86_64-linux",
+        "toolchains//:clippy-x86_64-linux",
+    ],
+    out = "toolchain-bin",
+    bash = """
+        set -euo pipefail
+        RUSTC_DIST="$PWD/$(location toolchains//:rustc-x86_64-linux)"
+        RUSTFMT_DIST="$PWD/$(location toolchains//:rustfmt-x86_64-linux)"
+        CLIPPY_DIST="$PWD/$(location toolchains//:clippy-x86_64-linux)"
+
+        mkdir -p "$OUT/rustc-dist" "$OUT/rustfmt-dist" "$OUT/bin"
+
+        # Copy relevant subtrees, dereferencing symlinks so output is self-contained
+        cp -rfL "$RUSTC_DIST"/. "$OUT/rustc-dist/"
+        cp -rfL "$RUSTFMT_DIST"/. "$OUT/rustfmt-dist/"
+        # Only the clippy-driver binary; its sysroot lives in rustc-dist
+        cp -L "$CLIPPY_DIST/bin/clippy-driver" "$OUT/bin/clippy-driver-bin"
+
+        # Helper: write a self-relocatable wrapper for a binary inside rustc-dist or rustfmt-dist.
+        # TOOLCHAIN_ROOT resolves to $OUT at runtime (one level above bin/).
+        write_wrapper() {
+            local name="$1" exec_path="$2"
+            cat > "$OUT/bin/$name" <<WRAPPER
+#!/usr/bin/env bash
+TOOLCHAIN_ROOT="\$(cd "\$(dirname "\$(readlink -f "\$0")")/.." && pwd)"
+export LD_LIBRARY_PATH="\$TOOLCHAIN_ROOT/rustc-dist/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+exec "\$TOOLCHAIN_ROOT/$exec_path" "\$@"
+WRAPPER
+            chmod +x "$OUT/bin/$name"
+        }
+
+        write_wrapper cargo   "rustc-dist/bin/cargo"
+        write_wrapper rustc   "rustc-dist/bin/rustc"
+        write_wrapper rustdoc "rustc-dist/bin/rustdoc"
+        write_wrapper rustfmt "rustfmt-dist/bin/rustfmt"
+
+        # clippy-driver: same LD_LIBRARY_PATH treatment, but exec the copied binary
+        cat > "$OUT/bin/clippy-driver" <<'WRAPPER'
+#!/usr/bin/env bash
+TOOLCHAIN_ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+export LD_LIBRARY_PATH="$TOOLCHAIN_ROOT/rustc-dist/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$TOOLCHAIN_ROOT/bin/clippy-driver-bin" "$@"
+WRAPPER
+        chmod +x "$OUT/bin/clippy-driver"
+    """,
+    visibility = ["PUBLIC"],
+)
