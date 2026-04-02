@@ -1750,6 +1750,7 @@ name = "nydus"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "chrono",
  "reqwest",
  "serde",
  "serde_json",

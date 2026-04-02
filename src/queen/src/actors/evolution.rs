@@ -8,6 +8,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::EvolutionConfig;
 
+const ARTIFACT_TYPE: &str = "evolution-report";
+
 pub async fn run(client: NydusClient, config: EvolutionConfig, token: CancellationToken) {
     if !config.enabled {
         tracing::info!("evolution chamber disabled");
@@ -18,9 +20,10 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
     let time_interval =
         crate::parse_duration(&config.time_interval).unwrap_or(Duration::from_secs(86400));
 
+    // Recover last analysis time from the most recent evolution-report artifact
+    let mut last_analysis_time: DateTime<Utc> = recover_last_analysis_time(&client).await;
     let mut last_analysis = Instant::now();
     let mut completed_since_last = 0usize;
-    let mut last_analysis_time: DateTime<Utc> = Utc::now();
     let mut previous_completed_total = 0usize;
 
     let poll_interval = Duration::from_secs(60);
@@ -85,6 +88,23 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
                         continue;
                     }
                 };
+
+                // Store the report as an artifact for audit trail and restart recovery
+                let artifact_name =
+                    format!("evolution-report-{}", Utc::now().format("%Y%m%d-%H%M%S"));
+                if let Err(e) = client
+                    .store_artifact(
+                        &artifact_name,
+                        "application/json",
+                        report_json.as_bytes(),
+                        None,
+                        Some(ARTIFACT_TYPE),
+                    )
+                    .await
+                {
+                    tracing::warn!(error = %e, "failed to store evolution report artifact");
+                }
+
                 let task = format!(
                     "Analyze the following Evolution Chamber report and create GitHub issues for each high/medium severity recommendation.\n\nLabel issues with `evolution-chamber`.\n\n```json\n{}\n```",
                     report_json
@@ -113,5 +133,33 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
         last_analysis = Instant::now();
         last_analysis_time = Utc::now();
         completed_since_last = 0;
+    }
+}
+
+/// Fetch the most recent evolution-report artifact to recover the last analysis timestamp.
+/// Falls back to `Utc::now()` if no previous report exists.
+async fn recover_last_analysis_time(client: &NydusClient) -> DateTime<Utc> {
+    match client.list_artifacts(None, Some(ARTIFACT_TYPE), None).await {
+        Ok(artifacts) => {
+            if let Some(latest) = artifacts
+                .iter()
+                .filter_map(|a| a.created_at.map(|ts| (a, ts)))
+                .max_by_key(|(_, ts)| *ts)
+            {
+                tracing::info!(
+                    artifact = %latest.0.name,
+                    last_analysis = %latest.1,
+                    "recovered last evolution analysis time"
+                );
+                latest.1
+            } else {
+                tracing::info!("no previous evolution reports found, starting fresh");
+                Utc::now()
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to fetch evolution report history, starting fresh");
+            Utc::now()
+        }
     }
 }

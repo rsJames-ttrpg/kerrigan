@@ -19,3 +19,10 @@ events = ["drone_spawned", "drone_completed", "drone_failed", "drone_stalled", "
 message = "{{message}}"
 number = "YOUR_NUMBER"
 recipients = ["YOUR_NUMBER"]
+
+[evolution]
+enabled = false
+# min_sessions = 5        # minimum sessions required before analysis runs
+# run_interval = 10       # trigger after this many completed runs since last analysis
+# time_interval = "24h"   # trigger after this duration since last analysis
+# drone_definition = "evolve-from-analysis"  # job definition to submit with report
