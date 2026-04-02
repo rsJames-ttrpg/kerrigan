@@ -99,9 +99,11 @@ Everything else runs autonomously as drone work.
 
 ### Phase 4: Quality and Feedback
 
-**8. Creep integration with drones** `[implementation]`
-- Creep gRPC client in drone-sdk or as an MCP server bundled in drone config
-- Drones get fast file lookups, symbol search
+**8. Creep integration with drones** `[done — CLI + skill + drone hooks]`
+- `creep-cli` crate: thin gRPC client wrapping Creep's four RPCs (search, metadata, register, unregister)
+- `creep-discovery` Claude Code skill plugin: teaches drones to use creep-cli for file discovery
+- Drone hooks: auto-register workspace on setup, unregister on teardown
+- Plugin bundled into drone home, CLI shipped in container
 - Depends on: Creep v1 merged (#7)
 
 **9. Evolution Chamber v1** `[done — PR #23]`
