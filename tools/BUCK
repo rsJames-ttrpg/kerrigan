@@ -121,9 +121,9 @@ genrule(
 
         # Helper: write a self-relocatable wrapper for a binary inside rustc-dist or rustfmt-dist.
         # TOOLCHAIN_ROOT resolves to $OUT at runtime (one level above bin/).
-        # NOTE: uses unquoted <<WRAPPER so $exec_path interpolates at build time;
-        # \$ produces literal $ in the installed script. The clippy-driver block
-        # below uses quoted <<'WRAPPER' since it has no build-time variables.
+        # NOTE: all heredocs use unquoted <<WRAPPER with \$ escaping because
+        # Buck2's arg parser interprets raw $( as macro references. \$ produces
+        # literal $ in the installed script; $exec_path interpolates at build time.
         write_wrapper() {
             local name="$1" exec_path="$2"
             cat > "$OUT/bin/$name" <<WRAPPER
@@ -140,12 +140,13 @@ WRAPPER
         write_wrapper rustdoc "rustc-dist/bin/rustdoc"
         write_wrapper rustfmt "rustfmt-dist/bin/rustfmt"
 
-        # clippy-driver: same LD_LIBRARY_PATH treatment, but exec the copied binary
-        cat > "$OUT/bin/clippy-driver" <<'WRAPPER'
+        # clippy-driver: same LD_LIBRARY_PATH treatment, but exec the copied binary.
+        # Uses same \$ escaping as write_wrapper — Buck2's arg parser sees raw $( as macros.
+        cat > "$OUT/bin/clippy-driver" <<WRAPPER
 #!/usr/bin/env bash
-TOOLCHAIN_ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-export LD_LIBRARY_PATH="$TOOLCHAIN_ROOT/rustc-dist/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-exec "$TOOLCHAIN_ROOT/bin/clippy-driver-bin" "$@"
+TOOLCHAIN_ROOT="\$(cd "\$(dirname "\$(readlink -f "\$0")")/.." && pwd)"
+export LD_LIBRARY_PATH="\$TOOLCHAIN_ROOT/rustc-dist/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+exec "\$TOOLCHAIN_ROOT/bin/clippy-driver-bin" "\$@"
 WRAPPER
         chmod +x "$OUT/bin/clippy-driver"
     """,
