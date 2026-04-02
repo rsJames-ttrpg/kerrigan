@@ -22,13 +22,16 @@ jobs:
         with:
           fetch-depth: 2
 
-      # - name: Cache buck-out
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: buck-out/
-      #     key: buck-out-${{ hashFiles('toolchains/BUCK', 'third-party/BUCK', 'Cargo.lock') }}
-      #     restore-keys: |
-      #       buck-out-
+      - name: Cache materializer state
+        uses: actions/cache@v4
+        with:
+          path: |
+            buck-out/v2/cache/
+            buck-out/v2/tmp/
+            buck-out/v2/materializer_state
+          key: buck-out-state-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            buck-out-state-${{ runner.os }}-
 
       - name: Install Buck2
         run: |
@@ -55,7 +58,7 @@ jobs:
       - name: Build all targets
         env:
           BUCK2_RE_HTTP_HEADERS: ${{ secrets.BUCK2_RE_HTTP_HEADERS }}
-        run: buck2 build root//...
+        run: buck2 build root//... --materializations none --config project.remote_only=true
 
       - name: Run tests
         env:

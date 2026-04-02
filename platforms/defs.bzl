@@ -1,12 +1,12 @@
 load("@prelude//platforms:defs.bzl", "host_configuration")
 
 def _executor_config():
-    """Return a CommandExecutorConfig with RE enabled only when configured."""
     if read_root_config("project", "remote_enabled", None):
+        remote_only = read_root_config("project", "remote_only", None)
         return CommandExecutorConfig(
             local_enabled = True,
             remote_enabled = True,
-            use_limited_hybrid = True,
+            use_limited_hybrid = not remote_only,
             remote_execution_properties = {
                 "OSFamily": "Linux",
                 "container-image": "docker://gcr.io/flame-public/rbe-ubuntu24-04:latest",
