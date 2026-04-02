@@ -39,6 +39,7 @@ http_archive(
     urls = ["https://static.rust-lang.org/dist/{}/clippy-nightly-{}.tar.xz".format(RUST_NIGHTLY, RUST_HOST)],
     sha256 = "d79368518f92ed0a06610f7aa89e38b382fe1324baf381464dc87c1816ed6a09",
     strip_prefix = "clippy-nightly-{}/clippy-preview".format(RUST_HOST),
+    visibility = ["PUBLIC"],
 )
 
 http_archive(
