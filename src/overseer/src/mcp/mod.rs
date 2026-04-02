@@ -188,6 +188,8 @@ pub struct StoreArtifactParams {
     pub data: String,
     #[schemars(description = "Optional job run ID to associate with")]
     pub run_id: Option<String>,
+    #[schemars(description = "Artifact type (e.g. conversation, session, generic)")]
+    pub artifact_type: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -684,7 +686,13 @@ impl OverseerMcp {
         let result = self
             .state
             .artifacts
-            .store(&p.name, &p.content_type, &data, p.run_id.as_deref())
+            .store(
+                &p.name,
+                &p.content_type,
+                &data,
+                p.run_id.as_deref(),
+                p.artifact_type.as_deref(),
+            )
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         let json = serde_json::to_string_pretty(&result).unwrap_or_else(|e| e.to_string());

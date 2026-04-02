@@ -187,6 +187,7 @@ pub struct ArtifactMetadata {
     pub content_type: String,
     pub size: i64,
     pub run_id: Option<String>,
+    pub artifact_type: String,
     pub created_at: DateTime<Utc>,
 }
 

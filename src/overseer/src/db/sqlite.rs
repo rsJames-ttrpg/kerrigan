@@ -284,16 +284,29 @@ impl ArtifactStore for SqliteDatabase {
         content_type: &str,
         size: i64,
         run_id: Option<&str>,
+        artifact_type: &str,
     ) -> Result<ArtifactMetadata> {
-        super::artifacts::insert_artifact(&self.pool, id, name, content_type, size, run_id).await
+        super::artifacts::insert_artifact(
+            &self.pool,
+            id,
+            name,
+            content_type,
+            size,
+            run_id,
+            artifact_type,
+        )
+        .await
     }
 
     async fn get_artifact(&self, id: &str) -> Result<Option<ArtifactMetadata>> {
         super::artifacts::get_artifact(&self.pool, id).await
     }
 
-    async fn list_artifacts(&self, run_id: Option<&str>) -> Result<Vec<ArtifactMetadata>> {
-        super::artifacts::list_artifacts(&self.pool, run_id).await
+    async fn list_artifacts(
+        &self,
+        filter: &crate::db::ArtifactFilter<'_>,
+    ) -> Result<Vec<ArtifactMetadata>> {
+        super::artifacts::list_artifacts(&self.pool, filter).await
     }
 }
 

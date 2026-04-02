@@ -25,9 +25,11 @@ impl ArtifactService {
         content_type: &str,
         data: &[u8],
         run_id: Option<&str>,
+        artifact_type: Option<&str>,
     ) -> Result<ArtifactMetadata> {
         let id = uuid::Uuid::new_v4().to_string();
         let path = ObjectPath::from(format!("artifacts/{id}"));
+        let artifact_type = artifact_type.unwrap_or("generic");
 
         self.store
             .put(&path, PutPayload::from(data.to_vec()))
@@ -35,7 +37,14 @@ impl ArtifactService {
 
         match self
             .db
-            .insert_artifact(&id, name, content_type, data.len() as i64, run_id)
+            .insert_artifact(
+                &id,
+                name,
+                content_type,
+                data.len() as i64,
+                run_id,
+                artifact_type,
+            )
             .await
         {
             Ok(metadata) => Ok(metadata),
@@ -64,8 +73,11 @@ impl ArtifactService {
         Ok((metadata, data.to_vec()))
     }
 
-    pub async fn list(&self, run_id: Option<&str>) -> Result<Vec<ArtifactMetadata>> {
-        self.db.list_artifacts(run_id).await
+    pub async fn list(
+        &self,
+        filter: &crate::db::ArtifactFilter<'_>,
+    ) -> Result<Vec<ArtifactMetadata>> {
+        self.db.list_artifacts(filter).await
     }
 }
 
@@ -85,7 +97,7 @@ mod tests {
 
         let data = b"hello artifact world";
         let meta = svc
-            .store("hello.txt", "text/plain", data, None)
+            .store("hello.txt", "text/plain", data, None, None)
             .await
             .expect("store succeeds");
 
@@ -106,14 +118,23 @@ mod tests {
         let store = create_in_memory_store();
         let svc = ArtifactService::new(Arc::new(sqlite_db), store);
 
-        svc.store("a.bin", "application/octet-stream", b"aaa", None)
+        svc.store("a.bin", "application/octet-stream", b"aaa", None, None)
             .await
             .expect("store a");
-        svc.store("b.bin", "application/octet-stream", b"bbb", None)
-            .await
-            .expect("store b");
+        svc.store(
+            "b.bin",
+            "application/octet-stream",
+            b"bbb",
+            None,
+            Some("session"),
+        )
+        .await
+        .expect("store b");
 
-        let all = svc.list(None).await.expect("list all");
+        let all = svc
+            .list(&crate::db::ArtifactFilter::default())
+            .await
+            .expect("list all");
         assert_eq!(all.len(), 2);
     }
 

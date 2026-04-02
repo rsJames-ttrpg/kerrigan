@@ -131,11 +131,19 @@ pub trait ArtifactStore: Send + Sync {
         content_type: &str,
         size: i64,
         run_id: Option<&str>,
+        artifact_type: &str,
     ) -> Result<ArtifactMetadata>;
 
     async fn get_artifact(&self, id: &str) -> Result<Option<ArtifactMetadata>>;
 
-    async fn list_artifacts(&self, run_id: Option<&str>) -> Result<Vec<ArtifactMetadata>>;
+    async fn list_artifacts(&self, filter: &ArtifactFilter<'_>) -> Result<Vec<ArtifactMetadata>>;
+}
+
+#[derive(Debug, Default)]
+pub struct ArtifactFilter<'a> {
+    pub run_id: Option<&'a str>,
+    pub artifact_type: Option<&'a str>,
+    pub since: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[async_trait]

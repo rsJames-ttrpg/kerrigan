@@ -208,12 +208,14 @@ impl DroneRunner for ClaudeDrone {
 
                         let task_text = task.chars().take(200).collect::<String>();
                         let git_refs = ensure_pr(&env.workspace, &env.home, &task_text).await;
+                        let session_jsonl_gz = collect_session_jsonl(&env.home).await;
 
                         return Ok(DroneOutput {
                             exit_code,
                             conversation,
                             artifacts: vec![],
                             git_refs,
+                            session_jsonl_gz,
                         });
                     }
                 }
@@ -506,6 +508,50 @@ async fn ensure_pr(workspace: &Path, home: &Path, task: &str) -> GitRefs {
             }
         }
     }
+}
+
+/// Find and collect the session JSONL from the drone's Claude Code data dir.
+/// Returns gzipped + base64-encoded content, or None if not found.
+async fn collect_session_jsonl(home: &Path) -> Option<String> {
+    use base64::Engine;
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use std::io::Write;
+
+    let projects_dir = home.join(".claude/projects");
+    let mut jsonl_path = None;
+
+    // Walk .claude/projects/ looking for .jsonl files
+    let mut dirs = tokio::fs::read_dir(&projects_dir).await.ok()?;
+    while let Ok(Some(entry)) = dirs.next_entry().await {
+        if entry.file_type().await.ok()?.is_dir() {
+            let mut inner = tokio::fs::read_dir(entry.path()).await.ok()?;
+            while let Ok(Some(file)) = inner.next_entry().await {
+                let path = file.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+                    // Take the largest JSONL (most likely the main session)
+                    let size = file.metadata().await.ok()?.len();
+                    match &jsonl_path {
+                        Some((_, existing_size)) if size <= *existing_size => {}
+                        _ => jsonl_path = Some((path, size)),
+                    }
+                }
+            }
+        }
+    }
+
+    let (path, _) = jsonl_path?;
+    let data = tokio::fs::read(&path).await.ok()?;
+    tracing::info!(
+        path = %path.display(),
+        size_bytes = data.len(),
+        "collected session JSONL"
+    );
+
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(&data).ok()?;
+    let compressed = encoder.finish().ok()?;
+    Some(base64::engine::general_purpose::STANDARD.encode(&compressed))
 }
 
 /// Extract a URL from a line of text.
