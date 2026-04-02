@@ -99,6 +99,11 @@ enum Command {
         #[command(subcommand)]
         action: ArtifactsAction,
     },
+    /// Manage repository credentials
+    Creds {
+        #[command(subcommand)]
+        action: CredsAction,
+    },
     /// Generate shell completions
     Completions {
         /// Shell to generate for
@@ -124,6 +129,29 @@ enum ArtifactsAction {
     Get {
         /// Artifact ID (prefix ok)
         #[arg(add = ArgValueCompleter::new(ArtifactIdCompleter))]
+        id: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum CredsAction {
+    /// Add a credential for a repo pattern
+    Add {
+        /// URL pattern (e.g. "github.com/org/*" or "github.com/org/repo")
+        #[arg(long)]
+        pattern: String,
+        /// Credential type
+        #[arg(long = "type", default_value = "github_pat")]
+        credential_type: String,
+        /// Secret value
+        #[arg(long)]
+        secret: String,
+    },
+    /// List all credentials (secrets redacted)
+    List,
+    /// Remove a credential
+    Rm {
+        /// Credential ID (prefix ok)
         id: String,
     },
 }
@@ -173,6 +201,15 @@ async fn async_main() -> Result<()> {
             ArtifactsAction::Get { id } => cmd_artifacts_get(&client, &id).await,
         },
         Command::Hatcheries { status } => cmd_hatcheries(&client, status.as_deref()).await,
+        Command::Creds { action } => match action {
+            CredsAction::Add {
+                pattern,
+                credential_type,
+                secret,
+            } => cmd_creds_add(&client, &pattern, &credential_type, &secret).await,
+            CredsAction::List => cmd_creds_list(&client).await,
+            CredsAction::Rm { id } => cmd_creds_rm(&client, &id).await,
+        },
         Command::Completions { shell } => {
             clap_complete::generate(
                 shell,
@@ -389,5 +426,55 @@ async fn cmd_artifacts_get(client: &NydusClient, partial_id: &str) -> Result<()>
 async fn cmd_hatcheries(client: &NydusClient, status: Option<&str>) -> Result<()> {
     let hatcheries = client.list_hatcheries(status).await?;
     display::print_hatcheries(&hatcheries);
+    Ok(())
+}
+
+async fn cmd_creds_add(
+    client: &NydusClient,
+    pattern: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<()> {
+    let cred = client
+        .create_credential(pattern, credential_type, secret)
+        .await?;
+    println!(
+        "Created credential {} for pattern '{}' (type: {})",
+        display::short_id(&cred.id),
+        cred.pattern,
+        cred.credential_type,
+    );
+    Ok(())
+}
+
+async fn cmd_creds_list(client: &NydusClient) -> Result<()> {
+    let creds = client.list_credentials().await?;
+    if creds.is_empty() {
+        println!("No credentials configured.");
+        return Ok(());
+    }
+    for cred in &creds {
+        println!(
+            "  {} {} [{}]",
+            display::short_id(&cred.id),
+            cred.pattern,
+            cred.credential_type,
+        );
+    }
+    Ok(())
+}
+
+async fn cmd_creds_rm(client: &NydusClient, id: &str) -> Result<()> {
+    // For prefix matching, list creds and find the one that starts with id
+    let creds = client.list_credentials().await?;
+    let matching: Vec<_> = creds.iter().filter(|c| c.id.starts_with(id)).collect();
+    match matching.len() {
+        0 => anyhow::bail!("no credential matching '{id}'"),
+        1 => {
+            client.delete_credential(&matching[0].id).await?;
+            println!("Deleted credential {}", display::short_id(&matching[0].id));
+        }
+        n => anyhow::bail!("ambiguous prefix '{id}' matches {n} credentials"),
+    }
     Ok(())
 }
