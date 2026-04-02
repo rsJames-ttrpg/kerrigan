@@ -1109,6 +1109,171 @@ impl HatcheryStore for PostgresDatabase {
     }
 }
 
+fn row_to_credential(row: &sqlx::postgres::PgRow) -> Credential {
+    use crate::db::models::CredentialType;
+    Credential {
+        id: row.get("id"),
+        pattern: row.get("pattern"),
+        credential_type: row
+            .get::<String, _>("credential_type")
+            .parse()
+            .unwrap_or(CredentialType::GithubPat),
+        secret: row.get("secret"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    }
+}
+
+#[async_trait]
+impl super::trait_def::CredentialStore for PostgresDatabase {
+    async fn create_credential(
+        &self,
+        pattern: &str,
+        credential_type: &str,
+        secret: &str,
+    ) -> Result<Credential> {
+        let id = Uuid::new_v4().to_string();
+        let (sql, values) = Query::insert()
+            .into_table(Credentials::Table)
+            .columns([
+                Credentials::Id,
+                Credentials::Pattern,
+                Credentials::CredentialType,
+                Credentials::Secret,
+            ])
+            .values_panic([
+                id.clone().into(),
+                pattern.into(),
+                credential_type.into(),
+                secret.into(),
+            ])
+            .build_sqlx(PostgresQueryBuilder);
+
+        sqlx::query_with(&sql, values)
+            .execute(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        self.get_credential(&id)
+            .await?
+            .ok_or_else(|| OverseerError::Internal("credential not found after insert".into()))
+    }
+
+    async fn get_credential(&self, id: &str) -> Result<Option<Credential>> {
+        let (sql, values) = Query::select()
+            .column(sea_query::Asterisk)
+            .from(Credentials::Table)
+            .and_where(Expr::col(Credentials::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row.as_ref().map(row_to_credential))
+    }
+
+    async fn delete_credential(&self, id: &str) -> Result<()> {
+        let (sql, values) = Query::delete()
+            .from_table(Credentials::Table)
+            .and_where(Expr::col(Credentials::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+
+        sqlx::query_with(&sql, values)
+            .execute(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(())
+    }
+
+    async fn list_credentials(&self) -> Result<Vec<Credential>> {
+        let (sql, values) = Query::select()
+            .column(sea_query::Asterisk)
+            .from(Credentials::Table)
+            .order_by(Credentials::CreatedAt, Order::Desc)
+            .build_sqlx(PostgresQueryBuilder);
+
+        let rows = sqlx::query_with(&sql, values)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(rows.iter().map(row_to_credential).collect())
+    }
+
+    async fn upsert_credential(
+        &self,
+        pattern: &str,
+        credential_type: &str,
+        secret: &str,
+    ) -> Result<Credential> {
+        let (sql, values) = Query::select()
+            .column(sea_query::Asterisk)
+            .from(Credentials::Table)
+            .and_where(Expr::col(Credentials::Pattern).eq(pattern))
+            .and_where(Expr::col(Credentials::CredentialType).eq(credential_type))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let existing = sqlx::query_with(&sql, values)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        if let Some(row) = existing {
+            let id: String = row.get("id");
+            let (sql, values) = Query::update()
+                .table(Credentials::Table)
+                .value(Credentials::Secret, secret)
+                .value(Credentials::UpdatedAt, Expr::current_timestamp())
+                .and_where(Expr::col(Credentials::Id).eq(&id))
+                .build_sqlx(PostgresQueryBuilder);
+
+            sqlx::query_with(&sql, values)
+                .execute(&self.pool)
+                .await
+                .map_err(OverseerError::Storage)?;
+
+            self.get_credential(&id)
+                .await?
+                .ok_or_else(|| OverseerError::Internal("credential not found after upsert".into()))
+        } else {
+            self.create_credential(pattern, credential_type, secret)
+                .await
+        }
+    }
+
+    async fn match_credentials(&self, repo_url: &str) -> Result<Vec<Credential>> {
+        use nydus::normalize::{normalize_repo_url, pattern_matches};
+
+        let normalized = normalize_repo_url(repo_url);
+        let all = self.list_credentials().await?;
+
+        let mut best: std::collections::HashMap<String, (usize, Credential)> =
+            std::collections::HashMap::new();
+
+        for cred in all {
+            let normalized_pattern = normalize_repo_url(&cred.pattern);
+            if let Some(score) = pattern_matches(&normalized, &normalized_pattern) {
+                let type_key = cred.credential_type.to_string();
+                match best.entry(type_key) {
+                    std::collections::hash_map::Entry::Vacant(e) => {
+                        e.insert((score, cred));
+                    }
+                    std::collections::hash_map::Entry::Occupied(mut e) => {
+                        if score > e.get().0 {
+                            e.insert((score, cred));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(best.into_values().map(|(_, cred)| cred).collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -27,6 +27,7 @@ OVERSEER_DEPS = [
     "//third-party:uuid",
     "//third-party:zerocopy",
     "//third-party:object_store",
+    "//src/nydus:nydus",
 ]
 
 rust_binary(
