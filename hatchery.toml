@@ -1,12 +1,12 @@
 [queen]
 name = "dev-hatchery"
 overseer_url = "http://localhost:3100"
-drone_dir = "/opt/kerrigan/drones"
-max_concurrency = 1
+drone_dir = "./drones"
+max_concurrency = 4
 drone_timeout = "2h"
 
 [creep]
-enabled = false
+enabled = true
 
 [notifications]
 backend = "webhook"
@@ -17,4 +17,5 @@ events = ["drone_spawned", "drone_completed", "drone_failed", "drone_stalled", "
 
 [notifications.body]
 message = "{{message}}"
-recipients = ["REPLACE_WITH_YOUR_SIGNAL_NUMBER"]
+number = "YOUR_NUMBER"
+recipients = ["YOUR_NUMBER"]

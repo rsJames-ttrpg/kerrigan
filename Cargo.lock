@@ -2076,6 +2076,7 @@ dependencies = [
  "drone-sdk",
  "flate2",
  "nydus",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",

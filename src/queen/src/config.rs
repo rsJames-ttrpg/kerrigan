@@ -118,16 +118,26 @@ impl Default for CreepConfig {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct NotificationConfig {
     #[serde(default = "default_notification_backend")]
     pub backend: String,
+    pub url: Option<String>,
+    pub token: Option<String>,
+    pub events: Option<Vec<String>>,
+    pub body: Option<serde_json::Value>,
+    #[serde(default)]
+    pub tls_skip_verify: bool,
 }
 
 impl Default for NotificationConfig {
     fn default() -> Self {
         Self {
             backend: default_notification_backend(),
+            url: None,
+            token: None,
+            events: None,
+            body: None,
+            tls_skip_verify: false,
         }
     }
 }
@@ -138,7 +148,6 @@ pub struct Config {
     #[serde(default)]
     pub creep: CreepConfig,
     #[serde(default)]
-    #[allow(dead_code)]
     pub notifications: NotificationConfig,
 }
 
@@ -164,6 +173,19 @@ impl Config {
         }
         if self.queen.poll_interval == 0 {
             anyhow::bail!("queen.poll_interval must be greater than 0");
+        }
+        if self.notifications.backend == "webhook" {
+            if self.notifications.url.as_ref().is_none_or(|u| u.is_empty()) {
+                anyhow::bail!("notifications.url is required for webhook backend");
+            }
+            if let Some(events) = &self.notifications.events {
+                use crate::notifier::webhook::VALID_EVENTS;
+                for e in events {
+                    if !VALID_EVENTS.contains(&e.as_str()) {
+                        anyhow::bail!("unknown notification event: '{e}'");
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -332,6 +354,100 @@ max_concurrency = -1
             err.to_string()
                 .contains("queen.max_concurrency must be greater than 0")
         );
+    }
+
+    #[test]
+    fn test_parse_webhook_notifications() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[notifications]
+backend = "webhook"
+url = "http://localhost:8080/v2/send"
+token = "my-secret-token"
+events = ["drone_failed", "drone_stalled", "drone_timed_out"]
+
+[notifications.body]
+message = "{{message}}"
+number = "+1234567890"
+recipients = ["+0987654321"]
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert_eq!(config.notifications.backend, "webhook");
+        assert_eq!(
+            config.notifications.url.as_deref(),
+            Some("http://localhost:8080/v2/send")
+        );
+        assert_eq!(
+            config.notifications.token.as_deref(),
+            Some("my-secret-token")
+        );
+        assert_eq!(
+            config.notifications.events,
+            Some(vec![
+                "drone_failed".to_string(),
+                "drone_stalled".to_string(),
+                "drone_timed_out".to_string()
+            ])
+        );
+        assert!(config.notifications.body.is_some());
+        let body = config.notifications.body.unwrap();
+        assert_eq!(body["message"], "{{message}}");
+        assert_eq!(body["number"], "+1234567890");
+    }
+
+    #[test]
+    fn test_log_backend_ignores_webhook_fields() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[notifications]
+backend = "log"
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert_eq!(config.notifications.backend, "log");
+        assert!(config.notifications.url.is_none());
+        assert!(config.notifications.token.is_none());
+        assert!(config.notifications.events.is_none());
+        assert!(config.notifications.body.is_none());
+    }
+
+    #[test]
+    fn test_validate_webhook_missing_url() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[notifications]
+backend = "webhook"
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(err.to_string().contains("notifications.url is required"));
+    }
+
+    #[test]
+    fn test_validate_webhook_invalid_event() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[notifications]
+backend = "webhook"
+url = "http://localhost:8080"
+events = ["drone_failed", "not_a_real_event"]
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(err.to_string().contains("unknown notification event"));
     }
 
     #[test]

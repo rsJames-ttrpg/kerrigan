@@ -10,6 +10,7 @@ use std::time::Duration;
 use clap::Parser;
 use config::{Cli, Config};
 use notifier::log::LogNotifier;
+use notifier::webhook::WebhookNotifier;
 use nydus::NydusClient;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -31,7 +32,10 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(name = %config.queen.name, "queen starting");
 
     let client = NydusClient::new(config.queen.overseer_url.clone());
-    let notifier: Arc<dyn notifier::Notifier> = Arc::new(LogNotifier);
+    let notifier: Arc<dyn notifier::Notifier> = match config.notifications.backend.as_str() {
+        "webhook" => Arc::new(WebhookNotifier::from_config(&config.notifications)?),
+        _ => Arc::new(LogNotifier),
+    };
     let hatchery_id: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
 
     // 1. Register with Overseer (blocks until successful)

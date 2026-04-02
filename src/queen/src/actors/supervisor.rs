@@ -30,7 +30,9 @@ struct DroneHandle {
     started_at: Instant,
     timeout: Duration,
     last_activity: Instant,
+    stall_notified: bool,
     protocol_rx: mpsc::Receiver<DroneMessage>,
+    stderr_rx: mpsc::Receiver<()>,
     stdin_tx: Option<mpsc::Sender<QueenMessage>>,
 }
 
@@ -140,7 +142,7 @@ async fn spawn_drone(
     let mut process = match tokio::process::Command::new(&binary)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::piped())
         .spawn()
     {
         Ok(child) => child,
@@ -244,6 +246,35 @@ async fn spawn_drone(
         }
     });
 
+    // Monitor stderr for liveness — any output means the drone is active.
+    // Lines are also printed to our stderr so the operator can still see them.
+    let stderr = process.stderr.take().expect("stderr was piped");
+    let (stderr_tx, stderr_rx) = mpsc::channel::<()>(1);
+    let job_run_id_for_stderr = request.job_run_id.clone();
+    tokio::task::spawn_blocking(move || {
+        let fd: std::os::fd::OwnedFd = stderr.into_owned_fd().expect("take stderr fd");
+        let stderr = std::process::ChildStderr::from(fd);
+        let reader = std::io::BufReader::new(stderr);
+        for line_result in reader.lines() {
+            match line_result {
+                Ok(line) => {
+                    eprintln!("[{job_run_id_for_stderr}] {line}");
+                    // Non-blocking send — we only need to signal "alive", not queue every line
+                    let _ = stderr_tx.try_send(());
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    // Mark the run as "running" in Overseer
+    if let Err(e) = client
+        .update_run(&request.job_run_id, Some("running"), None, None)
+        .await
+    {
+        tracing::warn!(job_run_id = %request.job_run_id, error = %e, "failed to set run to running");
+    }
+
     let now = Instant::now();
     let handle = DroneHandle {
         job_run_id: request.job_run_id.clone(),
@@ -252,7 +283,9 @@ async fn spawn_drone(
         started_at: now,
         timeout: default_timeout,
         last_activity: now,
+        stall_notified: false,
         protocol_rx,
+        stderr_rx,
         stdin_tx: Some(stdin_tx),
     };
 
@@ -277,6 +310,7 @@ async fn drain_protocol_messages(
             match handle.protocol_rx.try_recv() {
                 Ok(msg) => {
                     handle.last_activity = Instant::now();
+                    handle.stall_notified = false;
                     match msg {
                         DroneMessage::Progress(progress) => {
                             tracing::info!(
@@ -585,8 +619,15 @@ async fn check_drones(
             continue;
         }
 
-        // Check stall (based on protocol activity)
-        if now.duration_since(handle.last_activity) > stall_threshold {
+        // Drain stderr liveness pings — any output means the drone is active
+        while handle.stderr_rx.try_recv().is_ok() {
+            handle.last_activity = Instant::now();
+            handle.stall_notified = false;
+        }
+
+        // Check stall (based on protocol + stderr activity)
+        if now.duration_since(handle.last_activity) > stall_threshold && !handle.stall_notified {
+            handle.stall_notified = true;
             notifier
                 .notify(QueenEvent::DroneStalled {
                     job_run_id: id.clone(),

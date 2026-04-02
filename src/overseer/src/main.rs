@@ -133,6 +133,8 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(&http_addr).await?;
     tracing::info!("HTTP server listening on {}", http_addr);
 
+    let ct = tokio_util::sync::CancellationToken::new();
+
     match config.server.mcp_transport.as_str() {
         "stdio" => {
             // Run HTTP in background, MCP on stdio in foreground
@@ -145,8 +147,33 @@ async fn main() -> anyhow::Result<()> {
             let service = rmcp::ServiceExt::serve(mcp_server, rmcp::transport::stdio()).await?;
             service.waiting().await?;
         }
+        "http" => {
+            // Mount MCP as streamable HTTP at /mcp alongside the REST API
+            let mcp_service: rmcp::transport::StreamableHttpService<OverseerMcp> =
+                rmcp::transport::StreamableHttpService::new(
+                    move || Ok(OverseerMcp::new(state.clone())),
+                    Default::default(),
+                    rmcp::transport::StreamableHttpServerConfig {
+                        stateful_mode: true,
+                        cancellation_token: ct.clone(),
+                        ..Default::default()
+                    },
+                );
+
+            let router = http_router.nest_service("/mcp", mcp_service);
+
+            tracing::info!("MCP server available at /mcp (streamable HTTP)");
+            let ct2 = ct.clone();
+            axum::serve(listener, router)
+                .with_graceful_shutdown(async move {
+                    tokio::signal::ctrl_c().await.unwrap();
+                    tracing::info!("shutting down");
+                    ct2.cancel();
+                })
+                .await?;
+        }
         _ => {
-            // HTTP only mode
+            // HTTP only mode (no MCP)
             tracing::info!("running in HTTP-only mode");
             axum::serve(listener, http_router)
                 .with_graceful_shutdown(async {
