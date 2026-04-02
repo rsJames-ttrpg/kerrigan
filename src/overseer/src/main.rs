@@ -132,6 +132,31 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Seed credentials from config (deploy-time provisioning)
+    for cred_seed in &config.credentials {
+        match std::env::var(&cred_seed.secret_env) {
+            Ok(secret) => {
+                state
+                    .credentials
+                    .upsert_credential(&cred_seed.pattern, &cred_seed.credential_type, &secret)
+                    .await?;
+                tracing::info!(
+                    pattern = %cred_seed.pattern,
+                    credential_type = %cred_seed.credential_type,
+                    "seeded credential from env var {}",
+                    cred_seed.secret_env,
+                );
+            }
+            Err(_) => {
+                tracing::warn!(
+                    pattern = %cred_seed.pattern,
+                    env_var = %cred_seed.secret_env,
+                    "skipping credential seed: env var not set",
+                );
+            }
+        }
+    }
+
     // HTTP server
     let http_router = api::router(state.clone());
     let http_addr = format!("0.0.0.0:{}", config.server.http_port);
