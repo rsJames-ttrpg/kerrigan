@@ -154,12 +154,11 @@ pub fn parse_session(run_id: &str, data: &[u8]) -> Result<SessionDetail> {
             }
             "system" => {
                 // Detect context compression — match Claude Code's specific compression message
-                if let Some(msg) = v.pointer("/message/content").and_then(|c| c.as_str()) {
-                    if msg.contains("summary of the conversation")
-                        || msg.contains("context window is approaching")
-                    {
-                        compression_events += 1;
-                    }
+                if let Some(msg) = v.pointer("/message/content").and_then(|c| c.as_str())
+                    && (msg.contains("summary of the conversation")
+                        || msg.contains("context window is approaching"))
+                {
+                    compression_events += 1;
                 }
             }
             _ => {}
@@ -244,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_parse_session_tool_calls() {
-        let lines = vec![
+        let lines = [
             serde_json::json!({"type": "user", "message": {"role": "user", "content": "fix bug"}}),
             serde_json::json!({"type": "assistant", "message": {"role": "assistant", "content": [
                 {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "/src/main.rs"}},
@@ -279,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_parse_session_compression_detection() {
-        let lines = vec![
+        let lines = [
             serde_json::json!({"type": "system", "message": {"content": "This is a summary of the conversation so far"}}),
             serde_json::json!({"type": "user", "message": {"role": "user", "content": "continue"}}),
         ];
