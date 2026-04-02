@@ -64,6 +64,28 @@ impl DroneRunner for ClaudeDrone {
             environment::write_env_vars(&env.home, &env_vars).await?;
         }
 
+        // Install Claude Code plugins into the drone home
+        environment::install_plugins(&env.home).await?;
+
+        // Best-effort: register workspace with Creep for fast file discovery
+        match tokio::process::Command::new("creep-cli")
+            .args(["register", &env.workspace.to_string_lossy()])
+            .output()
+            .await
+        {
+            Ok(output) if output.status.success() => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                tracing::info!(output = %stdout.trim(), "registered workspace with Creep");
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::warn!(stderr = %stderr.trim(), "creep-cli register failed");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "creep-cli not available, skipping workspace registration");
+            }
+        }
+
         Ok(env)
     }
 
@@ -232,6 +254,19 @@ impl DroneRunner for ClaudeDrone {
     }
 
     async fn teardown(&self, env: &DroneEnvironment) {
+        // Best-effort: unregister workspace from Creep
+        match tokio::process::Command::new("creep-cli")
+            .args(["unregister", &env.workspace.to_string_lossy()])
+            .output()
+            .await
+        {
+            Ok(output) if output.status.success() => {
+                tracing::info!("unregistered workspace from Creep");
+            }
+            Ok(_) | Err(_) => {
+                tracing::debug!("creep-cli unregister skipped (not available or failed)");
+            }
+        }
         environment::cleanup(&env.home).await;
     }
 }
