@@ -365,6 +365,7 @@ impl NydusClient {
         content_type: &str,
         data: &[u8],
         run_id: Option<&str>,
+        artifact_type: Option<&str>,
     ) -> Result<Artifact, Error> {
         #[derive(Serialize)]
         struct Body<'a> {
@@ -373,6 +374,8 @@ impl NydusClient {
             data: String,
             #[serde(skip_serializing_if = "Option::is_none")]
             run_id: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            artifact_type: Option<&'a str>,
         }
         let data = base64::engine::general_purpose::STANDARD.encode(data);
         let resp = self
@@ -383,6 +386,7 @@ impl NydusClient {
                 content_type,
                 data,
                 run_id,
+                artifact_type,
             })
             .send()
             .await?;

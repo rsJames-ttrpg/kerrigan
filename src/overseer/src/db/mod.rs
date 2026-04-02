@@ -8,10 +8,13 @@ pub mod postgres;
 pub mod sqlite;
 pub mod tables;
 mod trait_def;
+pub use models::ArtifactType;
 pub use postgres::PostgresDatabase;
 pub use sqlite::SqliteDatabase;
 #[allow(unused_imports)]
-pub use trait_def::{ArtifactStore, Database, DecisionStore, HatcheryStore, JobStore, MemoryStore};
+pub use trait_def::{
+    ArtifactFilter, ArtifactStore, Database, DecisionStore, HatcheryStore, JobStore, MemoryStore,
+};
 
 #[allow(unused_imports)]
 pub use models::*;
@@ -73,7 +76,14 @@ pub async fn open_in_memory_named(name: &str) -> Result<SqlitePool, OverseerErro
 pub(crate) async fn trait_conformance_suite(db: Arc<dyn Database>) {
     // Artifacts
     let artifact = db
-        .insert_artifact("test-id", "test.txt", "text/plain", 42, None)
+        .insert_artifact(
+            "test-id",
+            "test.txt",
+            "text/plain",
+            42,
+            None,
+            &ArtifactType::Generic,
+        )
         .await
         .expect("insert artifact");
     assert_eq!(artifact.name, "test.txt");
@@ -81,7 +91,10 @@ pub(crate) async fn trait_conformance_suite(db: Arc<dyn Database>) {
     let fetched = db.get_artifact("test-id").await.expect("get artifact");
     assert!(fetched.is_some());
 
-    let listed = db.list_artifacts(None).await.expect("list artifacts");
+    let listed = db
+        .list_artifacts(&trait_def::ArtifactFilter::default())
+        .await
+        .expect("list artifacts");
     assert!(!listed.is_empty());
 
     // Job definitions

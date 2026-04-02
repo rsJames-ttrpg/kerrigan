@@ -65,6 +65,9 @@ pub struct DroneOutput {
     pub conversation: Value,
     pub artifacts: Vec<String>,
     pub git_refs: GitRefs,
+    /// Full session JSONL, gzipped and base64-encoded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_jsonl_gz: Option<String>,
 }
 
 /// Git references produced by a completed Drone job.
@@ -139,6 +142,7 @@ mod tests {
                 branch: Some("feat/fix-bug".to_string()),
                 pr_url: Some("https://github.com/example/repo/pull/1".to_string()),
             },
+            session_jsonl_gz: None,
         };
         let msg = DroneMessage::Result(output);
         let json = serde_json::to_string(&msg).unwrap();

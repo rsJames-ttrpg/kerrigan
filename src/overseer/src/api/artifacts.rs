@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
 
+use crate::db::models::ArtifactType;
 use crate::error::{OverseerError, Result};
 use crate::services::AppState;
 
@@ -26,6 +27,7 @@ struct StoreArtifactRequest {
     content_type: String,
     data: String, // base64-encoded
     run_id: Option<String>,
+    artifact_type: Option<String>,
 }
 
 async fn store_artifact(
@@ -42,6 +44,11 @@ async fn store_artifact(
             &body.content_type,
             &data,
             body.run_id.as_deref(),
+            body.artifact_type
+                .as_deref()
+                .map(|s| s.parse::<ArtifactType>())
+                .transpose()
+                .map_err(OverseerError::Validation)?,
         )
         .await?;
     Ok(Json(
@@ -63,13 +70,35 @@ async fn get_artifact(
 #[derive(Deserialize)]
 struct ListArtifactsQuery {
     run_id: Option<String>,
+    artifact_type: Option<String>,
+    since: Option<String>,
 }
 
 async fn list_artifacts(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListArtifactsQuery>,
 ) -> Result<Json<Value>> {
-    let results = state.artifacts.list(params.run_id.as_deref()).await?;
+    let since = params
+        .since
+        .as_deref()
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .map_err(|e| OverseerError::Validation(format!("invalid since timestamp: {e}")))
+        })
+        .transpose()?;
+    let artifact_type = params
+        .artifact_type
+        .as_deref()
+        .map(|s| s.parse::<ArtifactType>())
+        .transpose()
+        .map_err(OverseerError::Validation)?;
+    let filter = crate::db::ArtifactFilter {
+        run_id: params.run_id,
+        artifact_type,
+        since,
+    };
+    let results = state.artifacts.list(&filter).await?;
     Ok(Json(
         serde_json::to_value(results).map_err(|e| OverseerError::Internal(e.to_string()))?,
     ))

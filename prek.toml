@@ -20,7 +20,7 @@ types = ["rust"]
 [[repos.hooks]]
 id = "clippy"
 name = "clippy (hermetic)"
-entry = "bash -c 'OUTPUT=$(buck2 build \"root//src/overseer:overseer[clippy.txt]\" --show-output 2>/dev/null | awk \"{print \\$2}\") && [ -f \"$OUTPUT\" ] && ! grep -q \"warning\\|error\" \"$OUTPUT\"'"
+entry = "bash -c 'OUTPUT=$(buck2 build \"root//src/overseer:overseer[clippy.txt]\" --show-output 2>/dev/null | awk \"{print \\$2}\") && [ -f \"$OUTPUT\" ] && { grep \"warning\\|error\" \"$OUTPUT\" && exit 1 || exit 0; }'"
 language = "system"
 types = ["rust"]
 pass_filenames = false

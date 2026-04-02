@@ -49,4 +49,10 @@ pub struct Artifact {
     pub content_type: String,
     pub size: i64,
     pub run_id: Option<String>,
+    #[serde(default = "default_artifact_type")]
+    pub artifact_type: String,
+}
+
+fn default_artifact_type() -> String {
+    "generic".to_string()
 }

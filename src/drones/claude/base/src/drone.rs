@@ -208,12 +208,14 @@ impl DroneRunner for ClaudeDrone {
 
                         let task_text = task.chars().take(200).collect::<String>();
                         let git_refs = ensure_pr(&env.workspace, &env.home, &task_text).await;
+                        let session_jsonl_gz = collect_session_jsonl(&env.home, &conversation).await;
 
                         return Ok(DroneOutput {
                             exit_code,
                             conversation,
                             artifacts: vec![],
                             git_refs,
+                            session_jsonl_gz,
                         });
                     }
                 }
@@ -506,6 +508,124 @@ async fn ensure_pr(workspace: &Path, home: &Path, task: &str) -> GitRefs {
             }
         }
     }
+}
+
+/// Find and collect the session JSONL from the drone's Claude Code data dir.
+/// Uses the session_id from the conversation output to target the exact file,
+/// falling back to the largest .jsonl if session_id is not available.
+/// Returns gzipped + base64-encoded content, or None if not found.
+async fn collect_session_jsonl(home: &Path, conversation: &serde_json::Value) -> Option<String> {
+    use base64::Engine;
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use std::io::Write;
+
+    let projects_dir = home.join(".claude/projects");
+    let session_id = conversation.get("session_id").and_then(|v| v.as_str());
+
+    if let Some(sid) = session_id {
+        tracing::debug!(session_id = %sid, "looking for session JSONL by ID");
+    }
+
+    let mut jsonl_path: Option<(std::path::PathBuf, u64)> = None;
+    let mut exact_match: Option<std::path::PathBuf> = None;
+
+    // Walk .claude/projects/ looking for .jsonl files
+    let mut dirs = match tokio::fs::read_dir(&projects_dir).await {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!(path = %projects_dir.display(), error = %e, "cannot read claude projects dir");
+            return None;
+        }
+    };
+    while let Ok(Some(entry)) = dirs.next_entry().await {
+        let Ok(ft) = entry.file_type().await else {
+            tracing::debug!(path = %entry.path().display(), "skipping entry, cannot read file type");
+            continue;
+        };
+        if !ft.is_dir() {
+            continue;
+        }
+        let mut inner = match tokio::fs::read_dir(entry.path()).await {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::debug!(path = %entry.path().display(), error = %e, "cannot read project subdir");
+                continue;
+            }
+        };
+        while let Ok(Some(file)) = inner.next_entry().await {
+            let path = file.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+
+            // Check for exact session ID match in filename (e.g. <session_id>.jsonl)
+            if let Some(sid) = session_id {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    if stem == sid {
+                        exact_match = Some(path.clone());
+                    }
+                }
+            }
+
+            // Track largest as fallback
+            let size = match file.metadata().await {
+                Ok(m) => m.len(),
+                Err(e) => {
+                    tracing::debug!(path = %path.display(), error = %e, "cannot read jsonl metadata");
+                    continue;
+                }
+            };
+            match &jsonl_path {
+                Some((_, existing_size)) if size <= *existing_size => {}
+                _ => jsonl_path = Some((path, size)),
+            }
+        }
+    }
+
+    let path = match exact_match {
+        Some(p) => {
+            tracing::debug!(path = %p.display(), "matched session JSONL by session_id");
+            p
+        }
+        None => match jsonl_path {
+            Some((p, _)) => {
+                tracing::debug!(path = %p.display(), "no session_id match, using largest JSONL");
+                p
+            }
+            None => {
+                tracing::debug!("no session JSONL files found");
+                return None;
+            }
+        },
+    };
+
+    let data = match tokio::fs::read(&path).await {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "failed to read session JSONL");
+            return None;
+        }
+    };
+    tracing::info!(
+        path = %path.display(),
+        size_bytes = data.len(),
+        "collected session JSONL"
+    );
+
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    if let Err(e) = encoder.write_all(&data) {
+        tracing::warn!(error = %e, "failed to gzip session JSONL");
+        return None;
+    }
+    let compressed = match encoder.finish() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to finalize gzip for session JSONL");
+            return None;
+        }
+    };
+    Some(base64::engine::general_purpose::STANDARD.encode(&compressed))
 }
 
 /// Extract a URL from a line of text.

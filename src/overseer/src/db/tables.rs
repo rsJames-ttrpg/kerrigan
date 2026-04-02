@@ -83,6 +83,7 @@ pub enum Artifacts {
     ContentType,
     Size,
     RunId,
+    ArtifactType,
     CreatedAt,
 }
 

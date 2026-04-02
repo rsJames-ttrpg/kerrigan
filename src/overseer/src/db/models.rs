@@ -180,6 +180,36 @@ pub struct Decision {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub enum ArtifactType {
+    #[default]
+    Generic,
+    Conversation,
+    Session,
+}
+
+impl fmt::Display for ArtifactType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Generic => write!(f, "generic"),
+            Self::Conversation => write!(f, "conversation"),
+            Self::Session => write!(f, "session"),
+        }
+    }
+}
+
+impl FromStr for ArtifactType {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        match s {
+            "generic" => Ok(Self::Generic),
+            "conversation" => Ok(Self::Conversation),
+            "session" => Ok(Self::Session),
+            other => Err(format!("invalid artifact type: {other}")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ArtifactMetadata {
     pub id: String,
@@ -187,6 +217,7 @@ pub struct ArtifactMetadata {
     pub content_type: String,
     pub size: i64,
     pub run_id: Option<String>,
+    pub artifact_type: ArtifactType,
     pub created_at: DateTime<Utc>,
 }
 

@@ -119,12 +119,14 @@ fn row_to_decision(row: &sqlx::postgres::PgRow) -> Decision {
 }
 
 fn row_to_artifact(row: &sqlx::postgres::PgRow) -> ArtifactMetadata {
+    let at_str: String = row.get("artifact_type");
     ArtifactMetadata {
         id: row.get("id"),
         name: row.get("name"),
         content_type: row.get("content_type"),
         size: row.get("size"),
         run_id: row.get("run_id"),
+        artifact_type: at_str.parse().unwrap_or_default(),
         created_at: row.get("created_at"),
     }
 }
@@ -951,6 +953,7 @@ impl ArtifactStore for PostgresDatabase {
         content_type: &str,
         size: i64,
         run_id: Option<&str>,
+        artifact_type: &ArtifactType,
     ) -> Result<ArtifactMetadata> {
         let (sql, values) = Query::insert()
             .into_table(Artifacts::Table)
@@ -960,6 +963,7 @@ impl ArtifactStore for PostgresDatabase {
                 Artifacts::ContentType,
                 Artifacts::Size,
                 Artifacts::RunId,
+                Artifacts::ArtifactType,
             ])
             .values([
                 id.into(),
@@ -967,6 +971,7 @@ impl ArtifactStore for PostgresDatabase {
                 content_type.into(),
                 size.into(),
                 run_id.map(|s| s.to_string()).into(),
+                artifact_type.to_string().into(),
             ])
             .map_err(|e| OverseerError::Internal(format!("query build error: {e}")))?
             .returning(Query::returning().columns([
@@ -975,6 +980,7 @@ impl ArtifactStore for PostgresDatabase {
                 Artifacts::ContentType,
                 Artifacts::Size,
                 Artifacts::RunId,
+                Artifacts::ArtifactType,
                 Artifacts::CreatedAt,
             ]))
             .build_sqlx(PostgresQueryBuilder);
@@ -995,6 +1001,7 @@ impl ArtifactStore for PostgresDatabase {
                 Artifacts::ContentType,
                 Artifacts::Size,
                 Artifacts::RunId,
+                Artifacts::ArtifactType,
                 Artifacts::CreatedAt,
             ])
             .from(Artifacts::Table)
@@ -1009,7 +1016,10 @@ impl ArtifactStore for PostgresDatabase {
         Ok(row.as_ref().map(row_to_artifact))
     }
 
-    async fn list_artifacts(&self, run_id: Option<&str>) -> Result<Vec<ArtifactMetadata>> {
+    async fn list_artifacts(
+        &self,
+        filter: &crate::db::ArtifactFilter,
+    ) -> Result<Vec<ArtifactMetadata>> {
         let mut query = Query::select();
         query
             .columns([
@@ -1018,12 +1028,19 @@ impl ArtifactStore for PostgresDatabase {
                 Artifacts::ContentType,
                 Artifacts::Size,
                 Artifacts::RunId,
+                Artifacts::ArtifactType,
                 Artifacts::CreatedAt,
             ])
             .from(Artifacts::Table);
 
-        if let Some(rid) = run_id {
-            query.and_where(Expr::col(Artifacts::RunId).eq(rid));
+        if let Some(rid) = &filter.run_id {
+            query.and_where(Expr::col(Artifacts::RunId).eq(rid.as_str()));
+        }
+        if let Some(at) = &filter.artifact_type {
+            query.and_where(Expr::col(Artifacts::ArtifactType).eq(at.to_string()));
+        }
+        if let Some(since) = filter.since {
+            query.and_where(Expr::col(Artifacts::CreatedAt).gte(since.to_rfc3339()));
         }
 
         query.order_by(Artifacts::CreatedAt, Order::Asc);
@@ -1117,7 +1134,14 @@ mod tests {
 
         let artifact_id = Uuid::new_v4().to_string();
         let artifact = db
-            .insert_artifact(&artifact_id, "report.pdf", "application/pdf", 1024, None)
+            .insert_artifact(
+                &artifact_id,
+                "report.pdf",
+                "application/pdf",
+                1024,
+                None,
+                &ArtifactType::Generic,
+            )
             .await
             .expect("insert succeeds");
 
@@ -1131,7 +1155,10 @@ mod tests {
             .expect("artifact exists");
         assert_eq!(fetched.id, artifact.id);
 
-        let all = db.list_artifacts(None).await.expect("list succeeds");
+        let all = db
+            .list_artifacts(&crate::db::ArtifactFilter::default())
+            .await
+            .expect("list succeeds");
         assert!(!all.is_empty());
     }
 

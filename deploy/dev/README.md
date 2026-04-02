@@ -9,7 +9,7 @@ Run the docker file
 
 ```sh
 docker run -it --rm -p 3100:3100 \
-    -v kerrigan-data:/data \
+    -v kerrigan-live:/data \
     -v /tmp/claude-creds.json:/home/kerrigan/.claude/.credentials.json:ro \
     -v $(pwd)/deploy/dev/hatchery.local.toml:/opt/kerrigan/config/hatchery.toml:ro \
     -e SIGNAL_API_TOKEN=$SIGNAL_API_KEY \

@@ -4,16 +4,19 @@ use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
 
 pub use super::models::ArtifactMetadata;
+use super::models::ArtifactType;
 use super::tables::Artifacts;
 use crate::error::{OverseerError, Result};
 
 fn row_to_artifact(row: &sqlx::sqlite::SqliteRow) -> ArtifactMetadata {
+    let at_str: String = row.get("artifact_type");
     ArtifactMetadata {
         id: row.get("id"),
         name: row.get("name"),
         content_type: row.get("content_type"),
         size: row.get("size"),
         run_id: row.get("run_id"),
+        artifact_type: at_str.parse().unwrap_or_default(),
         created_at: row.get::<NaiveDateTime, _>("created_at").and_utc(),
     }
 }
@@ -25,6 +28,7 @@ pub async fn insert_artifact(
     content_type: &str,
     size: i64,
     run_id: Option<&str>,
+    artifact_type: &ArtifactType,
 ) -> Result<ArtifactMetadata> {
     let (sql, values) = Query::insert()
         .into_table(Artifacts::Table)
@@ -34,6 +38,7 @@ pub async fn insert_artifact(
             Artifacts::ContentType,
             Artifacts::Size,
             Artifacts::RunId,
+            Artifacts::ArtifactType,
         ])
         .values_panic([
             id.into(),
@@ -41,6 +46,7 @@ pub async fn insert_artifact(
             content_type.into(),
             size.into(),
             run_id.map(|s| s.to_string()).into(),
+            artifact_type.to_string().into(),
         ])
         .returning(Query::returning().columns([
             Artifacts::Id,
@@ -48,6 +54,7 @@ pub async fn insert_artifact(
             Artifacts::ContentType,
             Artifacts::Size,
             Artifacts::RunId,
+            Artifacts::ArtifactType,
             Artifacts::CreatedAt,
         ]))
         .build_sqlx(SqliteQueryBuilder);
@@ -68,6 +75,7 @@ pub async fn get_artifact(pool: &SqlitePool, id: &str) -> Result<Option<Artifact
             Artifacts::ContentType,
             Artifacts::Size,
             Artifacts::RunId,
+            Artifacts::ArtifactType,
             Artifacts::CreatedAt,
         ])
         .from(Artifacts::Table)
@@ -84,7 +92,7 @@ pub async fn get_artifact(pool: &SqlitePool, id: &str) -> Result<Option<Artifact
 
 pub async fn list_artifacts(
     pool: &SqlitePool,
-    run_id: Option<&str>,
+    filter: &crate::db::ArtifactFilter,
 ) -> Result<Vec<ArtifactMetadata>> {
     let mut query = Query::select();
     query
@@ -94,12 +102,21 @@ pub async fn list_artifacts(
             Artifacts::ContentType,
             Artifacts::Size,
             Artifacts::RunId,
+            Artifacts::ArtifactType,
             Artifacts::CreatedAt,
         ])
         .from(Artifacts::Table);
 
-    if let Some(rid) = run_id {
-        query.and_where(Expr::col(Artifacts::RunId).eq(rid));
+    if let Some(rid) = &filter.run_id {
+        query.and_where(Expr::col(Artifacts::RunId).eq(rid.as_str()));
+    }
+    if let Some(at) = &filter.artifact_type {
+        query.and_where(Expr::col(Artifacts::ArtifactType).eq(at.to_string()));
+    }
+    if let Some(since) = filter.since {
+        query.and_where(
+            Expr::col(Artifacts::CreatedAt).gte(since.format("%Y-%m-%d %H:%M:%S").to_string()),
+        );
     }
 
     query.order_by(Artifacts::CreatedAt, Order::Asc);
@@ -132,6 +149,7 @@ mod tests {
             "application/pdf",
             1024,
             None,
+            &ArtifactType::Generic,
         )
         .await
         .expect("insert succeeds");
@@ -141,6 +159,7 @@ mod tests {
         assert_eq!(artifact.content_type, "application/pdf");
         assert_eq!(artifact.size, 1024);
         assert!(artifact.run_id.is_none());
+        assert_eq!(artifact.artifact_type, ArtifactType::Generic);
 
         let fetched = get_artifact(&pool, &artifact.id)
             .await
@@ -150,12 +169,20 @@ mod tests {
         assert_eq!(fetched.name, artifact.name);
         assert_eq!(fetched.size, artifact.size);
 
-        let all = list_artifacts(&pool, None).await.expect("list all");
+        let all = list_artifacts(&pool, &crate::db::ArtifactFilter::default())
+            .await
+            .expect("list all");
         assert_eq!(all.len(), 1);
 
-        let by_run = list_artifacts(&pool, Some("nonexistent-run"))
-            .await
-            .expect("list by run");
+        let by_run = list_artifacts(
+            &pool,
+            &crate::db::ArtifactFilter {
+                run_id: Some("nonexistent-run".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("list by run");
         assert!(by_run.is_empty());
     }
 
@@ -178,22 +205,54 @@ mod tests {
             .await
             .expect("start run");
 
-        insert_artifact(&pool, "id-1", "file1.txt", "text/plain", 100, Some(&run.id))
-            .await
-            .expect("insert 1");
-        insert_artifact(&pool, "id-2", "file2.txt", "text/plain", 200, Some(&run.id))
-            .await
-            .expect("insert 2");
-        insert_artifact(&pool, "id-3", "file3.txt", "text/plain", 300, None)
-            .await
-            .expect("insert 3");
+        insert_artifact(
+            &pool,
+            "id-1",
+            "file1.txt",
+            "text/plain",
+            100,
+            Some(&run.id),
+            &ArtifactType::Generic,
+        )
+        .await
+        .expect("insert 1");
+        insert_artifact(
+            &pool,
+            "id-2",
+            "file2.txt",
+            "text/plain",
+            200,
+            Some(&run.id),
+            &ArtifactType::Session,
+        )
+        .await
+        .expect("insert 2");
+        insert_artifact(
+            &pool,
+            "id-3",
+            "file3.txt",
+            "text/plain",
+            300,
+            None,
+            &ArtifactType::Generic,
+        )
+        .await
+        .expect("insert 3");
 
-        let by_run = list_artifacts(&pool, Some(&run.id))
-            .await
-            .expect("list by run");
+        let by_run = list_artifacts(
+            &pool,
+            &crate::db::ArtifactFilter {
+                run_id: Some(run.id.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("list by run");
         assert_eq!(by_run.len(), 2);
 
-        let all = list_artifacts(&pool, None).await.expect("list all");
+        let all = list_artifacts(&pool, &crate::db::ArtifactFilter::default())
+            .await
+            .expect("list all");
         assert_eq!(all.len(), 3);
     }
 }

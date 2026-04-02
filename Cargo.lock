@@ -355,8 +355,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64",
  "dirs",
  "drone-sdk",
+ "flate2",
  "serde",
  "serde_json",
  "tokio",
@@ -2071,6 +2073,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64",
  "chrono",
  "clap",
  "drone-sdk",
