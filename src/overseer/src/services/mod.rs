@@ -1,5 +1,6 @@
 pub mod artifacts;
 pub mod auth;
+pub mod credentials;
 pub mod decisions;
 pub mod hatchery;
 pub mod jobs;
@@ -21,6 +22,7 @@ pub struct AppState {
     pub pipeline: pipeline::PipelineService,
     pub hatchery: hatchery::HatcheryService,
     pub auth: auth::AuthService,
+    pub credentials: credentials::CredentialService,
 }
 
 impl AppState {
@@ -35,8 +37,9 @@ impl AppState {
             decisions: decisions::DecisionService::new(db.clone()),
             artifacts: artifacts::ArtifactService::new(db.clone(), store),
             pipeline: pipeline::PipelineService::new(db.clone()),
-            hatchery: hatchery::HatcheryService::new(db),
+            hatchery: hatchery::HatcheryService::new(db.clone()),
             auth: auth::AuthService::new(),
+            credentials: credentials::CredentialService::new(db),
         }
     }
 }
