@@ -32,16 +32,6 @@ if ! curl -sf http://localhost:3100/api/jobs/definitions > /dev/null 2>&1; then
   exit 1
 fi
 
-echo "=== starting creep ==="
-/opt/kerrigan/bin/creep &
-CREEP_PID=$!
-sleep 1
-if ! kill -0 "$CREEP_PID" 2>/dev/null; then
-  echo "WARNING: creep exited immediately — file indexing will be unavailable"
-else
-  echo "creep started (pid $CREEP_PID)"
-fi
-
 echo "=== starting queen ==="
 # Dynamic name avoids UNIQUE constraint on re-registration with persisted DB
 export QUEEN_NAME="hatchery-$(hostname)"
