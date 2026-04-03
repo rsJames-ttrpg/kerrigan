@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use notify::{EventKind, RecursiveMode, Watcher as _};
+use notify::RecursiveMode;
+use notify_debouncer_mini::{Debouncer, new_debouncer};
 use tokio::sync::{Mutex, mpsc};
 
 use crate::index::FileIndex;
@@ -18,11 +20,11 @@ pub enum WatchEvent {
 /// Watches one or more workspace directories for file changes, filtering out
 /// gitignored paths using the `ignore` crate.
 pub struct FileWatcher {
-    /// One notify watcher per workspace so we can stop watching individually.
-    watchers: HashMap<PathBuf, notify::RecommendedWatcher>,
+    /// One debouncer per workspace so we can stop watching individually.
+    watchers: HashMap<PathBuf, Debouncer<notify::RecommendedWatcher>>,
     /// Gitignore matcher per workspace root, built when a workspace is registered.
     matchers: HashMap<PathBuf, ignore::gitignore::Gitignore>,
-    /// Sender half of the event channel — cloned into each notify watcher closure.
+    /// Sender half of the event channel — cloned into each debouncer closure.
     tx: mpsc::Sender<WatchEvent>,
 }
 
@@ -34,7 +36,7 @@ impl FileWatcher {
     ///   `watch`/`unwatch` and the event processor can call `is_ignored`.
     /// - An `mpsc::Receiver<WatchEvent>` — feed this to [`process_events`].
     pub fn new(_index: FileIndex) -> (Arc<Mutex<Self>>, mpsc::Receiver<WatchEvent>) {
-        let (tx, rx) = mpsc::channel::<WatchEvent>(256);
+        let (tx, rx) = mpsc::channel::<WatchEvent>(1024);
         let watcher = Arc::new(Mutex::new(Self {
             watchers: HashMap::new(),
             matchers: HashMap::new(),
@@ -69,33 +71,45 @@ impl FileWatcher {
         };
         self.matchers.insert(workspace_buf.clone(), matcher);
 
-        // Create a notify watcher. The closure runs on notify's own OS thread
-        // so we use `blocking_send` (safe outside the tokio runtime context).
+        // Create a debounced watcher. The closure runs on the debouncer's
+        // background thread so we use `try_send` (non-blocking).
         let tx = self.tx.clone();
-        let mut watcher =
-            notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                let event = match res {
-                    Ok(e) => e,
-                    Err(e) => {
-                        eprintln!("creep: notify watcher error: {e}");
+        let mut debouncer = new_debouncer(
+            Duration::from_millis(500),
+            move |res: notify_debouncer_mini::DebounceEventResult| {
+                let events = match res {
+                    Ok(events) => events,
+                    Err(errs) => {
+                        for e in errs {
+                            tracing::error!("creep: notify watcher error: {e}");
+                        }
                         return;
                     }
                 };
-                for path in event.paths {
-                    let watch_event = match event.kind {
-                        EventKind::Create(_) => WatchEvent::Created(path),
-                        EventKind::Modify(_) => WatchEvent::Modified(path),
-                        EventKind::Remove(_) => WatchEvent::Removed(path),
-                        _ => continue,
+                for event in events {
+                    let watch_event = if event.path.exists() {
+                        WatchEvent::Modified(event.path)
+                    } else {
+                        WatchEvent::Removed(event.path)
                     };
                     if let Err(e) = tx.try_send(watch_event) {
-                        eprintln!("creep: watcher event dropped: {e}");
+                        // Rate-limit overflow warnings to avoid log spam.
+                        static LAST_WARN: std::sync::Mutex<Option<Instant>> =
+                            std::sync::Mutex::new(None);
+                        let mut last = LAST_WARN.lock().unwrap();
+                        if last.is_none_or(|t| t.elapsed() > Duration::from_secs(10)) {
+                            tracing::warn!("creep: watcher event dropped: {e}");
+                            *last = Some(Instant::now());
+                        }
                     }
                 }
-            })?;
+            },
+        )?;
 
-        watcher.watch(workspace, RecursiveMode::Recursive)?;
-        self.watchers.insert(workspace_buf, watcher);
+        debouncer
+            .watcher()
+            .watch(workspace, RecursiveMode::Recursive)?;
+        self.watchers.insert(workspace_buf, debouncer);
         Ok(())
     }
 
