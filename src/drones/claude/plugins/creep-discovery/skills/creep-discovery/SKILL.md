@@ -5,7 +5,7 @@ description: "Use when exploring or navigating a codebase — find files by patt
 
 # Creep File Discovery
 
-Use `creep-cli` to search the pre-indexed file tree. The workspace was registered automatically on drone startup — files are already indexed with content hashes and type detection.
+Use `creep-cli` to search the pre-indexed file tree. The drone attempts to register the workspace with Creep during setup (after cloning). If Creep is not running or `creep-cli` is unavailable, registration is silently skipped — fall back to Glob/Grep in that case.
 
 ## When to Use
 

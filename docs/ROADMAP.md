@@ -24,7 +24,7 @@ Everything else runs autonomously as drone work.
 | drone-sdk (protocol + trait) | Merged | #5 |
 | claude-drone (skeleton) | Merged | #5 |
 | Queen-Drone integration | Merged | #6 |
-| Creep v1 (file index gRPC) | Open | #7 |
+| Creep v1 (file index gRPC) | Merged | #7 |
 | Dev container (all-in-one) | Done | — |
 | Claude CLI bundled in drone | Done | — |
 | Auth flow (stderr streaming, relay) | Done (partial) | — |

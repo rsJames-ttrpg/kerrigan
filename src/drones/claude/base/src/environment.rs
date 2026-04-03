@@ -211,7 +211,7 @@ pub async fn clone_repo(
 
 /// Copy the creep-discovery plugin into the drone's Claude plugins directory.
 /// Source: /opt/kerrigan/plugins/creep-discovery/ (container filesystem).
-/// Destination: {home}/.claude/plugins/creep-discovery/
+/// Destination: {home}/.claude/plugins/creep-discovery/ (preserving skill subdirectory structure).
 pub async fn install_plugins(home: &Path) -> Result<()> {
     let src = Path::new("/opt/kerrigan/plugins/creep-discovery");
     if !src.exists() {

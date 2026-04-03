@@ -194,7 +194,9 @@ impl DroneRunner for ClaudeDrone {
                 tokio::select! {
                     Some(url) = auth_rx.recv() => {
                         tracing::info!(url = %url, "claude CLI requesting auth");
-                        let _ = channel.progress("auth_required", &url);
+                        if let Err(e) = channel.progress("auth_required", &url) {
+                            tracing::warn!(error = %e, "failed to send auth_required progress to queen");
+                        }
                     }
                     status = child.wait() => {
                         let status = status.context("failed to wait for claude process")?;
@@ -203,7 +205,13 @@ impl DroneRunner for ClaudeDrone {
                         let stdout_bytes = stdout_handle.await
                             .context("stdout reader panicked")?
                             .context("failed to read stdout")?;
-                        let stderr_text = stderr_handle.await.unwrap_or_default();
+                        let stderr_text = match stderr_handle.await {
+                            Ok(text) => text,
+                            Err(e) => {
+                                tracing::warn!(error = %e, "stderr reader task panicked");
+                                String::new()
+                            }
+                        };
 
                         if !stderr_text.is_empty() {
                             tracing::debug!(stderr = %stderr_text, "claude CLI stderr");
@@ -263,8 +271,12 @@ impl DroneRunner for ClaudeDrone {
             Ok(output) if output.status.success() => {
                 tracing::info!("unregistered workspace from Creep");
             }
-            Ok(_) | Err(_) => {
-                tracing::debug!("creep-cli unregister skipped (not available or failed)");
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::warn!(stderr = %stderr.trim(), "creep-cli unregister failed");
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "creep-cli not available, skipping workspace unregister");
             }
         }
         environment::cleanup(&env.home).await;
@@ -385,7 +397,7 @@ async fn authenticate(
 
     match result {
         Ok(inner) => inner,
-        Err(_) => anyhow::bail!("claude auth login timed out after 5 minutes"),
+        Err(_) => anyhow::bail!("claude auth login timed out after {:?}", timeout_duration),
     }
 }
 
@@ -452,13 +464,23 @@ async fn ensure_pr(workspace: &Path, home: &Path, task: &str) -> GitRefs {
         let status_text = String::from_utf8_lossy(&output.stdout);
         if !status_text.trim().is_empty() {
             tracing::warn!("uncommitted changes found after Claude Code exit, committing");
-            let _ = Command::new("git")
+            match Command::new("git")
                 .args(["add", "-A"])
                 .env("HOME", home)
                 .current_dir(workspace)
                 .output()
-                .await;
-            let _ = Command::new("git")
+                .await
+            {
+                Ok(output) if !output.status.success() => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    tracing::warn!(stderr = %stderr.trim(), "safety net: git add failed");
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "safety net: failed to spawn git add");
+                }
+                _ => {}
+            }
+            match Command::new("git")
                 .args([
                     "commit",
                     "-m",
@@ -467,7 +489,17 @@ async fn ensure_pr(workspace: &Path, home: &Path, task: &str) -> GitRefs {
                 .env("HOME", home)
                 .current_dir(workspace)
                 .output()
-                .await;
+                .await
+            {
+                Ok(output) if !output.status.success() => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    tracing::warn!(stderr = %stderr.trim(), "safety net: git commit failed");
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "safety net: failed to spawn git commit");
+                }
+                _ => {}
+            }
         }
     }
 
