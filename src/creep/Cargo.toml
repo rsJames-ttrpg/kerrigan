@@ -19,6 +19,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1"
 tempfile = "3"
+tree-sitter = "0.26.8"
+tree-sitter-rust = "0.24.2"
 
 [build-dependencies]
 tonic-build = "0.13"
