@@ -45,7 +45,7 @@ Normalization runs on both the input `repo_url` and stored patterns at match tim
 
 - List/get endpoints redact the secret value.
 - The `/match` endpoint returns a `Vec` of matched credentials (best match per credential_type). Intended for Queen consumption at claim time.
-- No update endpoint. Delete and re-create to change a credential.
+- No REST update endpoint. To change a credential via CLI/API, delete and re-create. Internal upsert is used for deploy-time seeding (idempotent restarts).
 
 ## Credential Injection Flow
 
@@ -63,7 +63,7 @@ At job claim time in Queen's poller:
 Hardcoded for now:
 
 - `github_pat` → `secrets.github_pat`
-- Anything else → `unimplemented!()` panic
+- Anything else → skipped with a warning log (unsupported credential types are not injected)
 
 ## CLI: `kerrigan creds`
 

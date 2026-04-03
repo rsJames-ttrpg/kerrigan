@@ -51,6 +51,7 @@ Both transport layers are thin adapters. No business logic outside services.
 | `db/jobs.rs` | Job definitions, runs, tasks CRUD |
 | `db/decisions.rs` | Decision insert + query |
 | `db/artifacts.rs` | Artifact metadata CRUD |
+| `db/credentials.rs` | Credential CRUD, pattern matching, shared ranking logic |
 | `storage.rs` | `ObjectStore` wrapper — local filesystem or S3 |
 | `embedding/mod.rs` | `EmbeddingProvider` trait + `EmbeddingRegistry` named provider lookup |
 | `embedding/stub.rs` | Zero-vector stub (placeholder) |
@@ -60,8 +61,9 @@ Both transport layers are thin adapters. No business logic outside services.
 | `services/jobs.rs` | Delegates to db/jobs |
 | `services/decisions.rs` | Delegates to db/decisions |
 | `services/artifacts.rs` | Metadata in db + blob via ObjectStore |
+| `services/credentials.rs` | Credential CRUD + pattern matching delegation |
 | `api/mod.rs` | axum router construction |
-| `api/{memory,jobs,decisions,artifacts}.rs` | REST endpoint handlers |
+| `api/{memory,jobs,decisions,artifacts,credentials}.rs` | REST endpoint handlers |
 | `mcp/mod.rs` | MCP tool definitions (13 tools) |
 
 ## Configuration
