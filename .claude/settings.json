@@ -1,0 +1,60 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./tools/setup-hooks.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:buck2.build)",
+      "WebFetch(domain:github.com)",
+      "Bash(rustup target:*)",
+      "Bash(buck2 audit:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:static.rust-lang.org)",
+      "Bash(command grep:*)",
+      "Bash(rustc --version)",
+      "Bash(buck2 run:*)",
+      "Bash(buck2 clean:*)",
+      "Bash(buck2 build:*)",
+      "Bash(prek run:*)",
+      "Bash(cargo check:*)",
+      "Bash(git commit:*)",
+      "Bash(git add:*)",
+      "Bash(cargo metadata:*)",
+      "Bash(cargo doc:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(buck2 test:*)",
+      "Bash(buck2 log:*)",
+      "WebSearch",
+      "Bash(./tools/buckify.sh 2>&1)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo generate-lockfile:*)",
+      "Bash(cargo update:*)",
+      "Bash(cargo fetch:*)",
+      "Bash(git *)",
+      "Bash(buck2 *)",
+      "Bash(cargo *)",
+      "Bash(cd *)",
+      "Bash(mkdir *)",
+      "Bash(ls *)",
+      "Bash(docker *)",
+      "Bash(curl *)",
+      "Bash(file *)",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep"
+    ]
+  }
+}
