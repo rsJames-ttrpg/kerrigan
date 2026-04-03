@@ -42,15 +42,14 @@ fn generate_spec(_config: &Value) -> String {
 
 You are a Claude Code drone tasked with writing a design specification.
 
-## Your Task
+## First Step
 
-Use the `/brainstorm` skill (superpowers:brainstorming) to turn the problem description
-into a fully formed design spec. Follow the skill's process:
+Invoke `/superpowers:brainstorming` to turn the problem description into a fully formed
+design spec. You MUST use this skill — do not skip it or attempt to write the spec directly.
 
-1. Understand the problem
-2. Ask clarifying questions (answer them yourself based on the codebase)
-3. Propose 2-3 approaches with trade-offs
-4. Write the design spec
+Since you are an autonomous drone, answer any clarifying questions yourself based on
+what you learn from the codebase. Follow the skill's full process through to writing and
+committing the spec.
 
 Save the spec to `docs/specs/` following the naming convention `YYYY-MM-DD-<topic>-design.md`.
 
@@ -72,11 +71,14 @@ fn generate_plan(config: &Value) -> String {
 
 You are a Claude Code drone tasked with writing an implementation plan.
 
-## Your Task
+## First Step
 
-Read the design spec at `{spec_path}` and use the superpowers:writing-plans skill to create
-a detailed implementation plan. The plan should be comprehensive enough that another
-engineer (or drone) can implement it without additional context.
+Read the design spec at `{spec_path}`, then invoke `/superpowers:writing-plans` to create
+a detailed implementation plan. You MUST use this skill — do not skip it or write the plan
+directly.
+
+The plan should be comprehensive enough that another engineer (or drone) can implement it
+without additional context.
 
 Save the plan to `docs/plans/` following the naming convention `YYYY-MM-DD-<topic>.md`.
 
@@ -98,12 +100,15 @@ fn generate_implement(config: &Value) -> String {
 
 You are a Claude Code drone tasked with implementing code from a plan.
 
-## Your Task
+## First Step
 
-Read the implementation plan at `{plan_path}` and use the superpowers:subagent-driven-development
-skill to execute it task by task. Follow TDD: write tests first, then implement.
+Invoke `/superpowers:using-superpowers` to initialize your skill system. Then read the
+implementation plan at `{plan_path}` and invoke `/superpowers:subagent-driven-development`
+to execute it task by task.
 
-Implement all tasks in the plan. Run tests after each task. Commit frequently.
+You MUST use these skills — do not skip them or implement without the structured workflow.
+
+Follow TDD: write tests first, then implement. Run tests after each task. Commit frequently.
 
 When all tasks are complete, ensure all tests pass and create the PR.
 
@@ -123,20 +128,15 @@ fn generate_review(config: &Value) -> String {
 
 You are a Claude Code drone tasked with reviewing a pull request.
 
-## Your Task
+## First Step
 
 The PR to review: {pr_url}
 
-Use the pr-review-toolkit:review-pr skill to perform a thorough code review.
+Invoke `/pr-review-toolkit:review-pr` to perform a thorough code review. You MUST use
+this skill — do not skip it or review manually.
+
 You have full access to the codebase — run tests, trace code paths, check types,
 verify behavior.
-
-Review for:
-- Correctness and logic errors
-- Security vulnerabilities
-- Code quality and maintainability
-- Test coverage
-- Adherence to project conventions
 
 Post your review feedback as PR comments using `gh`. Also store the review as an
 Overseer artifact via MCP if available.
@@ -199,7 +199,7 @@ mod tests {
         assert!(md.is_some());
         let content = md.unwrap();
         assert!(content.contains("Spec Writer"));
-        assert!(content.contains("/brainstorm"));
+        assert!(content.contains("/superpowers:brainstorming"));
         assert!(content.contains("Git Workflow"));
     }
 
