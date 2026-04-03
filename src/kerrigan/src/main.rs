@@ -525,7 +525,9 @@ async fn cmd_evolve(
     use evolution::report::AnalysisScope;
 
     let since: DateTime<Utc> = match since {
-        Some(s) => s.parse().map_err(|e| anyhow::anyhow!("invalid --since timestamp: {e}"))?,
+        Some(s) => s
+            .parse()
+            .map_err(|e| anyhow::anyhow!("invalid --since timestamp: {e}"))?,
         None => DateTime::<Utc>::MIN_UTC,
     };
 

@@ -451,7 +451,10 @@ pub fn print_evolution_report(report: &evolution::report::AnalysisReport) {
         report.period_start.format("%Y-%m-%d %H:%M").to_string()
     };
 
-    println!("Evolution Report ({})", report.generated_at.format("%Y-%m-%dT%H:%M:%SZ"));
+    println!(
+        "Evolution Report ({})",
+        report.generated_at.format("%Y-%m-%dT%H:%M:%SZ")
+    );
     println!(
         "Scope: {} | Period: {} -> {} | Runs analyzed: {}",
         scope_label,
@@ -467,7 +470,10 @@ pub fn print_evolution_report(report: &evolution::report::AnalysisReport) {
         evolution::report::Trend::Stable => "Stable",
         evolution::report::Trend::Decreasing => "Decreasing",
     };
-    println!("  Total: ${:.2} | Trend: {}", report.cost_summary.total_cost_usd, trend);
+    println!(
+        "  Total: ${:.2} | Trend: {}",
+        report.cost_summary.total_cost_usd, trend
+    );
     if !report.cost_summary.highest_cost_runs.is_empty() {
         let top: Vec<String> = report
             .cost_summary
@@ -501,9 +507,20 @@ pub fn print_evolution_report(report: &evolution::report::AnalysisReport) {
         println!("  Error rates: none");
     } else {
         for (tool, rate) in &error_rates {
-            let total = report.tool_patterns.call_counts.get(*tool).copied().unwrap_or(0);
+            let total = report
+                .tool_patterns
+                .call_counts
+                .get(*tool)
+                .copied()
+                .unwrap_or(0);
             let errors = (*rate * total as f64).round() as u64;
-            println!("  Error rate: {} {:.0}% ({}/{})", tool, rate * 100.0, errors, total);
+            println!(
+                "  Error rate: {} {:.0}% ({}/{})",
+                tool,
+                rate * 100.0,
+                errors,
+                total
+            );
         }
     }
     if !report.tool_patterns.retry_sequences.is_empty() {
@@ -523,7 +540,12 @@ pub fn print_evolution_report(report: &evolution::report::AnalysisReport) {
             .top_context_consumers
             .iter()
             .map(|t| {
-                let count = report.tool_patterns.call_counts.get(t).copied().unwrap_or(0);
+                let count = report
+                    .tool_patterns
+                    .call_counts
+                    .get(t)
+                    .copied()
+                    .unwrap_or(0);
                 format!("{t} ({count})")
             })
             .collect();
@@ -536,8 +558,14 @@ pub fn print_evolution_report(report: &evolution::report::AnalysisReport) {
         "  Avg turns: {:.0} | Median turns: {:.0}",
         report.context_pressure.avg_turns, report.context_pressure.median_turns,
     );
-    println!("  Compression events: {}", report.context_pressure.compression_events);
-    println!("  Cache hit ratio: {:.0}%", report.context_pressure.avg_cache_hit_ratio * 100.0);
+    println!(
+        "  Compression events: {}",
+        report.context_pressure.compression_events
+    );
+    println!(
+        "  Cache hit ratio: {:.0}%",
+        report.context_pressure.avg_cache_hit_ratio * 100.0
+    );
 
     // Failure Analysis
     println!("\nFailure Analysis");
