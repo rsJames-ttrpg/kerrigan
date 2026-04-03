@@ -268,11 +268,11 @@ impl FromStr for CredentialType {
 
 impl CredentialType {
     /// Map this credential type to the secrets key injected into job config.
-    /// Only `github_pat` is implemented; others are unsupported.
-    pub fn secrets_key(&self) -> &'static str {
+    /// Returns `None` for unknown/unsupported types.
+    pub fn secrets_key(&self) -> Option<&'static str> {
         match self {
-            Self::GithubPat => "github_pat",
-            Self::Other(_) => unimplemented!("unsupported credential type"),
+            Self::GithubPat => Some("github_pat"),
+            Self::Other(_) => None,
         }
     }
 }

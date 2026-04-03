@@ -105,55 +105,50 @@ pub(crate) async fn upsert_credential(
     credential_type: &str,
     secret: &str,
 ) -> Result<Credential> {
-    // Check if exists
-    let (sql, values) = Query::select()
-        .column(sea_query::Asterisk)
-        .from(Credentials::Table)
-        .and_where(Expr::col(Credentials::Pattern).eq(pattern))
-        .and_where(Expr::col(Credentials::CredentialType).eq(credential_type))
-        .build_sqlx(SqliteQueryBuilder);
+    let id = Uuid::new_v4().to_string();
 
-    let existing = sqlx::query_with(&sql, values)
-        .fetch_optional(pool)
+    // Atomic upsert: INSERT or UPDATE on (pattern, credential_type) conflict
+    let sql = "\
+        INSERT INTO credentials (id, pattern, credential_type, secret) \
+        VALUES (?, ?, ?, ?) \
+        ON CONFLICT (pattern, credential_type) DO UPDATE SET \
+            secret = excluded.secret, \
+            updated_at = datetime('now') \
+        RETURNING *";
+
+    let row = sqlx::query(sql)
+        .bind(&id)
+        .bind(pattern)
+        .bind(credential_type)
+        .bind(secret)
+        .fetch_one(pool)
         .await
         .map_err(OverseerError::Storage)?;
 
-    if let Some(row) = existing {
-        let id: String = row.get("id");
-        let (sql, values) = Query::update()
-            .table(Credentials::Table)
-            .value(Credentials::Secret, secret)
-            .value(Credentials::UpdatedAt, sea_query::Expr::current_timestamp())
-            .and_where(Expr::col(Credentials::Id).eq(&id))
-            .build_sqlx(SqliteQueryBuilder);
-
-        sqlx::query_with(&sql, values)
-            .execute(pool)
-            .await
-            .map_err(OverseerError::Storage)?;
-
-        get_credential(pool, &id)
-            .await?
-            .ok_or_else(|| OverseerError::Internal("credential not found after upsert".into()))
-    } else {
-        create_credential(pool, pattern, credential_type, secret).await
-    }
+    Ok(row_to_credential(&row))
 }
 
 pub(crate) async fn match_credentials(
     pool: &SqlitePool,
     repo_url: &str,
 ) -> Result<Vec<Credential>> {
+    let all = list_credentials(pool).await?;
+    Ok(best_matches_for_url(repo_url, all))
+}
+
+/// Rank credentials by pattern specificity, returning the best match per credential_type.
+/// Shared between SQLite and Postgres backends.
+pub(crate) fn best_matches_for_url(
+    repo_url: &str,
+    credentials: Vec<Credential>,
+) -> Vec<Credential> {
     use nydus::normalize::{normalize_repo_url, pattern_matches};
 
     let normalized = normalize_repo_url(repo_url);
-    let all = list_credentials(pool).await?;
-
-    // Group by credential_type, keep best (highest specificity) match per type
     let mut best: std::collections::HashMap<String, (usize, Credential)> =
         std::collections::HashMap::new();
 
-    for cred in all {
+    for cred in credentials {
         let normalized_pattern = normalize_repo_url(&cred.pattern);
         if let Some(score) = pattern_matches(&normalized, &normalized_pattern) {
             let type_key = cred.credential_type.to_string();
@@ -170,7 +165,7 @@ pub(crate) async fn match_credentials(
         }
     }
 
-    Ok(best.into_values().map(|(_, cred)| cred).collect())
+    best.into_values().map(|(_, cred)| cred).collect()
 }
 
 #[cfg(test)]

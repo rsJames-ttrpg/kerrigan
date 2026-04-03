@@ -143,9 +143,9 @@ enum CredsAction {
         /// Credential type
         #[arg(long = "type", default_value = "github_pat")]
         credential_type: String,
-        /// Secret value
-        #[arg(long)]
-        secret: String,
+        /// Secret value (reads from KERRIGAN_CRED_SECRET env var, or stdin if omitted)
+        #[arg(long, env = "KERRIGAN_CRED_SECRET")]
+        secret: Option<String>,
     },
     /// List all credentials (secrets redacted)
     List,
@@ -206,7 +206,20 @@ async fn async_main() -> Result<()> {
                 pattern,
                 credential_type,
                 secret,
-            } => cmd_creds_add(&client, &pattern, &credential_type, &secret).await,
+            } => {
+                let secret = match secret {
+                    Some(s) => s,
+                    None => {
+                        if std::io::stdin().is_terminal() {
+                            eprint!("Secret: ");
+                        }
+                        let mut buf = String::new();
+                        std::io::stdin().read_line(&mut buf)?;
+                        buf.trim().to_string()
+                    }
+                };
+                cmd_creds_add(&client, &pattern, &credential_type, &secret).await
+            }
             CredsAction::List => cmd_creds_list(&client).await,
             CredsAction::Rm { id } => cmd_creds_rm(&client, &id).await,
         },

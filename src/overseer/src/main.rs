@@ -148,10 +148,10 @@ async fn main() -> anyhow::Result<()> {
                 );
             }
             Err(_) => {
-                tracing::warn!(
-                    pattern = %cred_seed.pattern,
-                    env_var = %cred_seed.secret_env,
-                    "skipping credential seed: env var not set",
+                anyhow::bail!(
+                    "credential seed for pattern '{}' requires env var '{}' but it is not set",
+                    cred_seed.pattern,
+                    cred_seed.secret_env,
                 );
             }
         }

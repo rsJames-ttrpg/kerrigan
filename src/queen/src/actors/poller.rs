@@ -123,11 +123,21 @@ pub async fn run(
                         }
                     }
                     Err(e) => {
-                        tracing::warn!(
+                        tracing::error!(
                             job_run_id = %run.id,
                             error = %e,
-                            "failed to fetch credentials, continuing without injection"
+                            "failed to fetch credentials — failing job run"
                         );
+                        let _ = client
+                            .update_run(
+                                &run.id,
+                                Some("failed"),
+                                None,
+                                Some(&format!("credential injection failed: {e}")),
+                            )
+                            .await;
+                        known_runs.insert(run.id);
+                        continue;
                     }
                 }
             }
