@@ -7,6 +7,7 @@ CLAUDE_DRONE_MAPPED_SRCS = {
     "src/config/settings.json": "src/config/settings.json",
     "src/config/CLAUDE.md": "src/config/CLAUDE.md",
     "//tools:claude-cli-linux-x64": "src/config/claude-cli",
+    "//tools:drone-plugins-tar": "src/config/drone-plugins.tar",
 }
 
 CLAUDE_DRONE_DEPS = [
@@ -18,6 +19,7 @@ CLAUDE_DRONE_DEPS = [
     "//third-party:flate2",
     "//third-party:serde",
     "//third-party:serde_json",
+    "//third-party:tar",
     "//third-party:tokio",
     "//third-party:tracing",
     "//third-party:tracing-subscriber",

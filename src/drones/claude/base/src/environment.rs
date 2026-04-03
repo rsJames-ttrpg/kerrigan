@@ -9,6 +9,7 @@ use tokio::process::Command;
 const SETTINGS_JSON: &[u8] = include_bytes!("config/settings.json");
 const CLAUDE_MD: &[u8] = include_bytes!("config/CLAUDE.md");
 const CLAUDE_CLI: &[u8] = include_bytes!("config/claude-cli");
+const DRONE_PLUGINS_TAR: &[u8] = include_bytes!("config/drone-plugins.tar");
 
 /// Create an isolated drone home directory for the given job run.
 ///
@@ -209,41 +210,85 @@ pub async fn clone_repo(
     Ok(())
 }
 
-/// Copy the creep-discovery plugin into the drone's Claude plugins directory.
-/// Source: /opt/kerrigan/plugins/creep-discovery/ (container filesystem).
-/// Destination: {home}/.claude/plugins/creep-discovery/ (preserving skill subdirectory structure).
-pub async fn install_plugins(home: &Path) -> Result<()> {
-    let src = Path::new("/opt/kerrigan/plugins/creep-discovery");
-    if !src.exists() {
-        tracing::debug!(
-            "creep-discovery plugin not found at {}, skipping",
-            src.display()
-        );
-        return Ok(());
-    }
+/// Vendored plugin definitions for installed_plugins.json generation.
+const VENDORED_PLUGINS: &[(&str, &str, &str)] = &[
+    (
+        "pr-review-toolkit@claude-plugins-official",
+        "claude-plugins-official/pr-review-toolkit",
+        "vendored",
+    ),
+    (
+        "code-simplifier@claude-plugins-official",
+        "claude-plugins-official/code-simplifier",
+        "vendored",
+    ),
+    (
+        "claude-code-setup@claude-plugins-official",
+        "claude-plugins-official/claude-code-setup",
+        "vendored",
+    ),
+    (
+        "feature-dev@claude-plugins-official",
+        "claude-plugins-official/feature-dev",
+        "vendored",
+    ),
+    (
+        "superpowers@claude-plugins-official",
+        "claude-plugins-official/superpowers",
+        "vendored",
+    ),
+    (
+        "creep-discovery@kerrigan",
+        "kerrigan/creep-discovery",
+        "0.1.0",
+    ),
+];
 
-    let dest = home.join(".claude/plugins/creep-discovery/skills/creep-discovery");
-    fs::create_dir_all(&dest)
+/// Extract vendored plugins from the embedded tarball and write installed_plugins.json.
+pub async fn install_plugins(home: &Path) -> Result<()> {
+    let plugins_dir = home.join(".claude/plugins");
+    fs::create_dir_all(&plugins_dir)
         .await
         .context("failed to create plugins directory")?;
 
-    // Copy package.json
-    fs::copy(
-        src.join("package.json"),
-        home.join(".claude/plugins/creep-discovery/package.json"),
-    )
+    // Extract tarball (sync I/O, wrapped in spawn_blocking)
+    let extract_dir = plugins_dir.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut archive = tar::Archive::new(DRONE_PLUGINS_TAR);
+        archive
+            .unpack(&extract_dir)
+            .context("failed to unpack drone-plugins.tar")
+    })
     .await
-    .context("failed to copy package.json")?;
+    .context("plugin extraction task panicked")??;
 
-    // Copy SKILL.md
-    fs::copy(
-        src.join("skills/creep-discovery/SKILL.md"),
-        dest.join("SKILL.md"),
-    )
-    .await
-    .context("failed to copy SKILL.md")?;
+    // Build installed_plugins.json
+    let mut plugins_map = serde_json::Map::new();
+    for &(key, rel_path, version) in VENDORED_PLUGINS {
+        let install_path = plugins_dir.join("cache").join(rel_path).join(version);
+        plugins_map.insert(
+            key.to_string(),
+            serde_json::json!([{
+                "scope": "user",
+                "installPath": install_path.to_string_lossy(),
+                "version": version,
+                "installedAt": "2026-01-01T00:00:00.000Z",
+                "lastUpdated": "2026-01-01T00:00:00.000Z",
+            }]),
+        );
+    }
 
-    tracing::info!("installed creep-discovery plugin");
+    let manifest = serde_json::json!({
+        "version": 2,
+        "plugins": serde_json::Value::Object(plugins_map),
+    });
+    let json = serde_json::to_string_pretty(&manifest)
+        .context("failed to serialize installed_plugins.json")?;
+    fs::write(plugins_dir.join("installed_plugins.json"), json)
+        .await
+        .context("failed to write installed_plugins.json")?;
+
+    tracing::info!(count = VENDORED_PLUGINS.len(), "installed vendored plugins");
     Ok(())
 }
 

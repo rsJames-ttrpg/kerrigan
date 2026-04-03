@@ -1,6 +1,9 @@
 filegroup(
     name = "creep-discovery",
-    srcs = glob(["creep-discovery/**"]),
+    srcs = glob(["creep-discovery/**"]) + [
+        # Buck2 glob skips dotfiles; enumerate .claude-plugin/ explicitly
+        "creep-discovery/.claude-plugin/plugin.json",
+    ],
     visibility = ["PUBLIC"],
 )
 

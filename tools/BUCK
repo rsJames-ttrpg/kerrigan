@@ -92,6 +92,70 @@ http_file(
     visibility = ["PUBLIC"],
 )
 
+# -- Claude Code plugins (vendored from anthropics/claude-plugins-official) ----
+# Pinned to commit SHA for hermetic builds. Update by changing PLUGINS_COMMIT
+# and regenerating SHA256: curl -sL <url>.tar.gz | sha256sum
+
+PLUGINS_COMMIT = "decc737a56c46c7e6243c648371ad6e7b7f6ebb4"
+PLUGINS_SHA256 = "34499ffcb1fd95a1a67fbfabb82547b8b1bf9d9257b8510bafeac397874ad7c9"
+
+# Fetches official Claude Code plugins, pinned to a commit SHA.
+http_archive(
+    name = "claude-plugins-official",
+    urls = ["https://github.com/anthropics/claude-plugins-official/archive/{}.tar.gz".format(PLUGINS_COMMIT)],
+    sha256 = PLUGINS_SHA256,
+    strip_prefix = "claude-plugins-official-{}/plugins".format(PLUGINS_COMMIT),
+)
+
+# -- Superpowers plugin (third-party, obra/superpowers) -----------------------
+SUPERPOWERS_COMMIT = "e4a2375cb705ca5800f0833528ce36a3faf9017a"
+SUPERPOWERS_SHA256 = "121e82440a6b06ef0b97e4559c49a9b1422c8025ad575a0530526c9144b8da5c"
+
+http_archive(
+    name = "superpowers-plugin",
+    urls = ["https://github.com/obra/superpowers/archive/{}.tar.gz".format(SUPERPOWERS_COMMIT)],
+    sha256 = SUPERPOWERS_SHA256,
+    strip_prefix = "superpowers-{}".format(SUPERPOWERS_COMMIT),
+)
+
+# Bundle selected plugins into a tarball for embedding in the drone binary.
+# Stages into cache/<namespace>/<plugin>/<version>/ structure matching
+# Claude Code's installed_plugins.json discovery paths.
+# Uses cp -rL to dereference http_archive symlinks.
+genrule(
+    name = "drone-plugins-tar",
+    srcs = [
+        ":claude-plugins-official",
+        ":superpowers-plugin",
+        "//src/drones/claude/plugins:creep-discovery",
+    ],
+    out = "drone-plugins.tar",
+    bash = """
+        set -euo pipefail
+        STAGING="$BUCK_SCRATCH_PATH/plugins"
+        OFFICIAL="$PWD/$(location :claude-plugins-official)"
+        SUPERPOWERS="$PWD/$(location :superpowers-plugin)"
+        CREEP="$PWD/$(location //src/drones/claude/plugins:creep-discovery)"
+
+        for plugin in pr-review-toolkit code-simplifier claude-code-setup feature-dev; do
+            DEST="$STAGING/cache/claude-plugins-official/$plugin/vendored"
+            mkdir -p "$DEST"
+            cp -rL "$OFFICIAL/$plugin/." "$DEST/"
+        done
+
+        DEST="$STAGING/cache/claude-plugins-official/superpowers/vendored"
+        mkdir -p "$DEST"
+        cp -rL "$SUPERPOWERS/." "$DEST/"
+
+        DEST="$STAGING/cache/kerrigan/creep-discovery/0.1.0"
+        mkdir -p "$DEST"
+        cp -rL "$CREEP/creep-discovery/." "$DEST/"
+
+        tar -cf "$OUT" -C "$STAGING" cache
+    """,
+    visibility = ["PUBLIC"],
+)
+
 export_file(
     name = "toolchain-resolve",
     src = "toolchain-resolve.sh",

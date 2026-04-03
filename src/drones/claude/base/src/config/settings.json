@@ -14,7 +14,8 @@
       "superpowers@claude-plugins-official": true,
       "code-simplifier@claude-plugins-official": true,
       "claude-code-setup@claude-plugins-official": true,
-      "feature-dev@claude-plugins-official": true
+      "feature-dev@claude-plugins-official": true,
+      "creep-discovery@kerrigan": true
     },
     "effortLevel": "medium"
 }

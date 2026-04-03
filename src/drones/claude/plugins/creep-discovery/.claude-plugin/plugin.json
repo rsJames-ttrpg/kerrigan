@@ -1,0 +1,5 @@
+{
+  "name": "creep-discovery",
+  "version": "0.1.0",
+  "description": "Fast file discovery via Creep index for Claude Code drones"
+}
