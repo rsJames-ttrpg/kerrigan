@@ -22,13 +22,20 @@ Everything else runs autonomously as drone work.
 | Overseer (central service) | Merged | #1, #2, #3 |
 | Queen (process manager) | Merged | #4, #6 |
 | drone-sdk (protocol + trait) | Merged | #5 |
-| claude-drone (skeleton) | Merged | #5 |
+| claude-drone (skeleton + stages) | Merged | #5 |
 | Queen-Drone integration | Merged | #6 |
 | Creep v1 (file index gRPC) | Merged | #7 |
+| Nydus client + kerrigan CLI | Merged | #8 |
+| Drone PR workflow + secrets | Merged | #9 |
+| Job chaining + pipeline | Merged | #13 |
+| Webhook notifications | Merged | #14 |
+| CI checks | Merged | #16 |
+| Hermetic toolchain on PATH | Merged | #19, #20, #21 |
+| Evolution Chamber v1 | Merged | #23 |
+| Creep CLI + drone integration | Merged | #28 |
+| Credential passthrough | Merged | #30, #31 |
 | Dev container (all-in-one) | Done | — |
-| Claude CLI bundled in drone | Done | — |
-| Auth flow (stderr streaming, relay) | Done (partial) | — |
-| Job status fix (pending not running) | Done | — |
+| Drone plugin packaging | Done | — |
 
 ## What's Missing
 
@@ -116,13 +123,15 @@ Everything else runs autonomously as drone work.
 - Disabled by default (`[evolution] enabled = false` in hatchery.toml)
 - Depends on: #5 (needs real drone output to analyze)
 
-**10. Auth flow** `[implementation]`
-- Queen forwards auth_response back to drones (currently stdin is closed after JobSpec)
-- Retain drone stdin handle in Queen's supervisor
-- Or: pre-auth on host and avoid the problem entirely
-- Depends on: #3
+**10. Credential management** `[done — PR #30, #31]`
+- Overseer `credentials` table (SQLite + Postgres) — URL pattern matching with wildcard support
+- Queen auto-injects matched credentials at claim time (no more `--set secrets.github_pat=...` per submit)
+- `kerrigan creds add/list/rm` CLI for managing stored credentials
+- Deploy-time seeding via `[[credentials]]` in `overseer.toml` (reads secrets from env vars)
+- Headless OAuth for interactive auth remains TODO (credential mount works as workaround)
+- Depends on: #3, #4
 
-### Operational Improvements (completed 2026-04-01)
+### Operational Improvements
 
 **Webhook notifications** `[done — PR #14]`
 - Generic `WebhookNotifier` — POSTs JSON to any HTTP endpoint on filtered events
@@ -145,6 +154,23 @@ Everything else runs autonomously as drone work.
 - Stall notification fires once per event, resets when activity resumes
 - Supervisor sets run status to "running" on spawn (was stuck at "pending")
 
+**CI checks** `[done — PR #16]`
+- Automated CI pipeline for build validation
+
+**Hermetic toolchain on PATH** `[done — PR #19, #20, #21]`
+- `buckstrap.sh` symlinks hermetic `cargo`, `rustc`, `rustfmt`, `clippy-driver` to `~/.local/bin/`
+- Drones and developers use the exact same toolchain as Buck2 builds — no system rustup needed
+
+**Artifact API extensions** `[done — PR #27]`
+- Extended artifact metadata and query capabilities
+
+**QoL CLI improvements** `[done — PR #25]`
+- Kerrigan CLI usability enhancements
+
+**Drone plugin packaging** `[done]`
+- Claude Code plugins bundled into drone home at build time
+- Creep discovery skill shipped as a plugin
+
 ### Phase 5: Scale and Polish
 
 **11. Creep v2** — tree-sitter AST parsing, symbol index
@@ -164,7 +190,11 @@ Everything else runs autonomously as drone work.
          │   └→ #5 PR workflow ✅ (drone PR + secrets + gzip)
          │       └→ #6 Job templates ✅ (stage subtypes)
          │           └→ #7 Job chaining ✅ (pipeline + MCP) ← DOGFOODING READY
-         └→ #10 Auth flow (partial — cred mount works, headless OAuth TODO)
+         └→ #10 Credential management ✅ (auto-inject at claim time)
 ```
 
-The critical path to dogfooding is complete. The platform can now orchestrate the full dev loop: problem → spec → plan → implement → review → PR. Next priorities are Phase 4 (quality/feedback) and operational improvements.
+The critical path to dogfooding is complete. Phases 1–4 are done. The platform orchestrates the full dev loop: problem → spec → plan → implement → review → PR. Credentials are auto-injected, evolution analysis runs on completed sessions, and Creep provides file discovery to drones.
+
+**Remaining gaps:**
+- Headless OAuth (credential mount workaround exists)
+- Phase 5 items: Creep v2/v3, dashboard, deployment, additional drone types
