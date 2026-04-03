@@ -127,9 +127,9 @@ You are a Claude Code drone tasked with reviewing a pull request.
 
 The PR to review: {pr_url}
 
-Check out the PR branch and use the pr-review-toolkit:review-pr skill to perform a
-thorough code review. You have full access to the codebase — run tests, trace code paths,
-check types, verify behavior.
+Use the pr-review-toolkit:review-pr skill to perform a thorough code review.
+You have full access to the codebase — run tests, trace code paths, check types,
+verify behavior.
 
 Review for:
 - Correctness and logic errors
@@ -141,10 +141,22 @@ Review for:
 Post your review feedback as PR comments using `gh`. Also store the review as an
 Overseer artifact via MCP if available.
 
-After review, create a PR with your review notes committed to the repo
-(e.g., `docs/reviews/YYYY-MM-DD-pr-<number>.md`).
+## Git Workflow
 
-{BASE_RULES}
+You are reviewing an existing PR. Do NOT create a new branch or a new PR.
+
+1. You are already on the PR branch — work here
+2. If you have review fix suggestions, commit them directly to this branch
+3. Push any commits to origin
+4. Post review comments on the existing PR using `gh pr review`
+
+Do NOT merge the PR. The operator will review and merge.
+
+## Artifacts
+
+When you produce a key output (spec, plan, review), store it as an Overseer artifact
+using the Overseer MCP tools available to you (if configured). This ensures traceability
+alongside the git commit.
 "#
     )
 }
@@ -249,15 +261,29 @@ mod tests {
     }
 
     #[test]
-    fn test_all_stages_include_base_rules() {
+    fn test_all_stages_include_do_not_merge() {
         let config = json!({"spec_path": "x", "plan_path": "x", "pr_url": "x"});
         for stage in ["spec", "plan", "implement", "review", "evolve"] {
             let content = generate_claude_md(stage, &config).unwrap();
             assert!(
                 content.contains("Do NOT merge the PR"),
-                "stage '{stage}' missing BASE_RULES content"
+                "stage '{stage}' missing 'Do NOT merge' instruction"
             );
         }
+    }
+
+    #[test]
+    fn test_review_stage_does_not_create_new_branch() {
+        let config = json!({"pr_url": "https://github.com/org/repo/pull/42"});
+        let content = generate_claude_md("review", &config).unwrap();
+        assert!(
+            !content.contains("Create a new branch"),
+            "review stage should NOT tell drone to create a new branch"
+        );
+        assert!(
+            content.contains("Do NOT create a new branch"),
+            "review stage should explicitly say not to create a new branch"
+        );
     }
 
     #[test]
