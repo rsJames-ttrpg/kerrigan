@@ -28,7 +28,6 @@ jobs:
           path: |
             buck-out/v2/cache/
             buck-out/v2/tmp/
-            buck-out/v2/materializer_state
           key: buck-out-state-${{ runner.os }}-${{ github.sha }}
           restore-keys: |
             buck-out-state-${{ runner.os }}-
