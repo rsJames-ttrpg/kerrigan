@@ -153,7 +153,10 @@ async fn cmd_register(
 
     let count = response.into_inner().files_indexed;
     if json {
-        println!(r#"{{"files_indexed":{count},"path":"{path}"}}"#);
+        print_json(&serde_json::json!({
+            "files_indexed": count,
+            "path": path,
+        }))?;
     } else {
         println!("Indexed {count} files in {path}");
     }
@@ -173,7 +176,10 @@ async fn cmd_unregister(
         .context("unregister_workspace RPC failed")?;
 
     if json {
-        println!(r#"{{"unregistered":true,"path":"{path}"}}"#);
+        print_json(&serde_json::json!({
+            "unregistered": true,
+            "path": path,
+        }))?;
     } else {
         println!("Unregistered workspace {path}");
     }
@@ -195,11 +201,7 @@ fn format_time(epoch_secs: i64) -> String {
 }
 
 fn truncate_hash(hash: &str) -> &str {
-    if hash.len() > 12 {
-        &hash[..12]
-    } else {
-        hash
-    }
+    if hash.len() > 12 { &hash[..12] } else { hash }
 }
 
 fn print_json<T: serde::Serialize>(value: &T) -> Result<()> {

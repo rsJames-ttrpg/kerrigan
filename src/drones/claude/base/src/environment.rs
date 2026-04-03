@@ -215,7 +215,10 @@ pub async fn clone_repo(
 pub async fn install_plugins(home: &Path) -> Result<()> {
     let src = Path::new("/opt/kerrigan/plugins/creep-discovery");
     if !src.exists() {
-        tracing::debug!("creep-discovery plugin not found at {}, skipping", src.display());
+        tracing::debug!(
+            "creep-discovery plugin not found at {}, skipping",
+            src.display()
+        );
         return Ok(());
     }
 

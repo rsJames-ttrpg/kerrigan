@@ -1,3 +1,4 @@
+// Canonical source: src/creep/proto/creep.proto — keep in sync manually.
 syntax = "proto3";
 package creep.v1;
 

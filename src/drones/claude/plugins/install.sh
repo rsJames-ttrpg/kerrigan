@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DEST="${HOME}/.claude/plugins/kerrigan-creep-discovery"
+DEST="${HOME}/.claude/plugins/creep-discovery"
 mkdir -p "$DEST/skills/creep-discovery"
 
 SCRIPT_DIR="$(dirname "$0")"
