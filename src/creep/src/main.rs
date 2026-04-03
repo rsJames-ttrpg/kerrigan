@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(n) => tracing::info!("indexed {n} files in {}", ws.display()),
             Err(e) => tracing::warn!("scan failed for {}: {e}", ws.display()),
         }
-        {
+        if config.creep.symbol_index {
             let si = symbol_index.clone();
             let ws_clone = ws.clone();
             match tokio::task::spawn_blocking(move || si.scan_workspace(&ws_clone)).await {
