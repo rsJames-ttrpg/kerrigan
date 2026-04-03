@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::IsTerminal;
 
+use chrono::Datelike;
 use nydus::{Artifact, Hatchery, JobDefinition, JobRun, Task};
 use owo_colors::OwoColorize;
 use serde_json::Value;
@@ -436,6 +437,164 @@ fn humanize_bytes(bytes: i64) -> String {
         format!("{:.1}KB", bytes as f64 / 1024.0)
     } else {
         format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
+pub fn print_evolution_report(report: &evolution::report::AnalysisReport) {
+    let scope_label = match &report.scope {
+        evolution::report::AnalysisScope::Global => "global".to_string(),
+        evolution::report::AnalysisScope::Repo(url) => url.clone(),
+    };
+    let period_start = if report.period_start.year() < 0 {
+        "all time".to_string()
+    } else {
+        report.period_start.format("%Y-%m-%d %H:%M").to_string()
+    };
+
+    println!("Evolution Report ({})", report.generated_at.format("%Y-%m-%dT%H:%M:%SZ"));
+    println!(
+        "Scope: {} | Period: {} -> {} | Runs analyzed: {}",
+        scope_label,
+        period_start,
+        report.period_end.format("%Y-%m-%d %H:%M"),
+        report.runs_analyzed,
+    );
+
+    // Cost Summary
+    println!("\nCost Summary");
+    let trend = match &report.cost_summary.cost_trend {
+        evolution::report::Trend::Increasing => "Increasing",
+        evolution::report::Trend::Stable => "Stable",
+        evolution::report::Trend::Decreasing => "Decreasing",
+    };
+    println!("  Total: ${:.2} | Trend: {}", report.cost_summary.total_cost_usd, trend);
+    if !report.cost_summary.highest_cost_runs.is_empty() {
+        let top: Vec<String> = report
+            .cost_summary
+            .highest_cost_runs
+            .iter()
+            .take(5)
+            .map(|r| format!("{} ${:.2}", short_id(&r.run_id), r.cost_usd))
+            .collect();
+        println!("  Top runs: {}", top.join(", "));
+    }
+    if !report.cost_summary.cost_by_stage.is_empty() {
+        let stages: Vec<String> = report
+            .cost_summary
+            .cost_by_stage
+            .iter()
+            .map(|(stage, cost)| format!("{stage}: ${cost:.2}"))
+            .collect();
+        println!("  By stage: {}", stages.join(", "));
+    }
+
+    // Tool Patterns
+    println!("\nTool Patterns");
+    let mut error_rates: Vec<(&String, &f64)> = report
+        .tool_patterns
+        .error_rates
+        .iter()
+        .filter(|(_, rate)| **rate > 0.0)
+        .collect();
+    error_rates.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+    if error_rates.is_empty() {
+        println!("  Error rates: none");
+    } else {
+        for (tool, rate) in &error_rates {
+            let total = report.tool_patterns.call_counts.get(*tool).copied().unwrap_or(0);
+            let errors = (*rate * total as f64).round() as u64;
+            println!("  Error rate: {} {:.0}% ({}/{})", tool, rate * 100.0, errors, total);
+        }
+    }
+    if !report.tool_patterns.retry_sequences.is_empty() {
+        for seq in &report.tool_patterns.retry_sequences {
+            println!(
+                "  Retry: {} retried {}x on {} (run {})",
+                seq.tool_name,
+                seq.count,
+                truncate_chars(&seq.first_arg_sample, 40),
+                short_id(&seq.run_id),
+            );
+        }
+    }
+    if !report.tool_patterns.top_context_consumers.is_empty() {
+        let consumers: Vec<String> = report
+            .tool_patterns
+            .top_context_consumers
+            .iter()
+            .map(|t| {
+                let count = report.tool_patterns.call_counts.get(t).copied().unwrap_or(0);
+                format!("{t} ({count})")
+            })
+            .collect();
+        println!("  Top consumers: {}", consumers.join(", "));
+    }
+
+    // Context Pressure
+    println!("\nContext Pressure");
+    println!(
+        "  Avg turns: {:.0} | Median turns: {:.0}",
+        report.context_pressure.avg_turns, report.context_pressure.median_turns,
+    );
+    println!("  Compression events: {}", report.context_pressure.compression_events);
+    println!("  Cache hit ratio: {:.0}%", report.context_pressure.avg_cache_hit_ratio * 100.0);
+
+    // Failure Analysis
+    println!("\nFailure Analysis");
+    println!(
+        "  Overall: {:.0}% ({}/{})",
+        report.failure_analysis.failure_rate * 100.0,
+        (report.failure_analysis.failure_rate * report.runs_analyzed as f64).round() as usize,
+        report.runs_analyzed,
+    );
+    if !report.failure_analysis.failure_by_stage.is_empty() {
+        let stages: Vec<String> = report
+            .failure_analysis
+            .failure_by_stage
+            .iter()
+            .map(|(stage, rate)| format!("{stage} {:.0}%", rate * 100.0))
+            .collect();
+        println!("  By stage: {}", stages.join(", "));
+    }
+
+    // Recommendations
+    if report.recommendations.is_empty() {
+        println!("\nNo recommendations.");
+    } else {
+        println!("\nRecommendations");
+        for rec in &report.recommendations {
+            let severity_tag = match rec.severity {
+                evolution::report::Severity::High => {
+                    if use_color() {
+                        "[HIGH]".red().bold().to_string()
+                    } else {
+                        "[HIGH]".to_string()
+                    }
+                }
+                evolution::report::Severity::Medium => {
+                    if use_color() {
+                        "[MED] ".yellow().bold().to_string()
+                    } else {
+                        "[MED] ".to_string()
+                    }
+                }
+                evolution::report::Severity::Low => {
+                    if use_color() {
+                        "[LOW] ".dimmed().to_string()
+                    } else {
+                        "[LOW] ".to_string()
+                    }
+                }
+            };
+            println!("  {} {} -- {}", severity_tag, rec.title, rec.detail);
+            if !rec.evidence.is_empty() {
+                if use_color() {
+                    println!("        {}", rec.evidence.dimmed());
+                } else {
+                    println!("        {}", rec.evidence);
+                }
+            }
+        }
     }
 }
 
