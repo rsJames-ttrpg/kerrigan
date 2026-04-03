@@ -81,8 +81,8 @@ genrule(
 # Usage: referenced via mapped_srcs in drone BUCK targets
 # Update: `./tools/update-claude-cli.sh`
 
-CLAUDE_CLI_VERSION = "2.1.89"
-CLAUDE_CLI_SHA256 = "903cb3c96b314d86856632c8702f5cdf971b804d0b19ef87446573bcd1d7df1c"
+CLAUDE_CLI_VERSION = "2.1.91"
+CLAUDE_CLI_SHA256 = "01b74e1b02e3330940b3526d2f6e00bf32f7fd9e6b3861be6a61e01cfd7296e6"
 CLAUDE_CLI_BUCKET = "https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases"
 
 http_file(
@@ -96,8 +96,8 @@ http_file(
 # Pinned to commit SHA for hermetic builds. Update by changing PLUGINS_COMMIT
 # and regenerating SHA256: curl -sL <url>.tar.gz | sha256sum
 
-PLUGINS_COMMIT = "decc737a56c46c7e6243c648371ad6e7b7f6ebb4"
-PLUGINS_SHA256 = "34499ffcb1fd95a1a67fbfabb82547b8b1bf9d9257b8510bafeac397874ad7c9"
+PLUGINS_COMMIT = "104d39be10b7b1380b2ae23a387a11a297b599c3"
+PLUGINS_SHA256 = "6f0e9b2b700be8d007811cd014d7a21e95697c82fbba95c0ae3036ed92d5af2f"
 
 # Fetches official Claude Code plugins, pinned to a commit SHA.
 http_archive(
@@ -108,8 +108,8 @@ http_archive(
 )
 
 # -- Superpowers plugin (third-party, obra/superpowers) -----------------------
-SUPERPOWERS_COMMIT = "e4a2375cb705ca5800f0833528ce36a3faf9017a"
-SUPERPOWERS_SHA256 = "121e82440a6b06ef0b97e4559c49a9b1422c8025ad575a0530526c9144b8da5c"
+SUPERPOWERS_COMMIT = "b7a8f76985f1e93e75dd2f2a3b424dc731bd9d37"
+SUPERPOWERS_SHA256 = "8bba19c7ca182cd5e33a565ce882db13ff4bb80a1c2034c823039ccacfbc8ff6"
 
 http_archive(
     name = "superpowers-plugin",
