@@ -137,6 +137,7 @@ impl FileWatcher {
 /// Runs until the sender side of `event_rx` is dropped (all watcher instances gone).
 pub async fn process_events(
     index: FileIndex,
+    symbol_index: crate::symbol_index::SymbolIndex,
     watcher: Arc<Mutex<FileWatcher>>,
     mut event_rx: mpsc::Receiver<WatchEvent>,
 ) {
@@ -162,10 +163,17 @@ pub async fn process_events(
                     } else {
                         tracing::debug!("indexed {}", p.display());
                     }
+                    let si = symbol_index.clone();
+                    let p2 = p.clone();
+                    if let Err(e) = tokio::task::spawn_blocking(move || si.reparse_file(&p2)).await
+                    {
+                        tracing::warn!("symbol reparse failed for {}: {e}", p.display());
+                    }
                 }
             }
             WatchEvent::Removed(p) => {
                 index.remove_file(&p).await;
+                symbol_index.remove_file(&p).await;
                 tracing::debug!("removed {} from index", p.display());
             }
         }
@@ -238,7 +246,8 @@ mod tests {
 
         let fw_clone = fw.clone();
         let index_clone = index.clone();
-        let handle = tokio::spawn(process_events(index_clone, fw_clone, rx));
+        let symbol_index = crate::symbol_index::SymbolIndex::new();
+        let handle = tokio::spawn(process_events(index_clone, symbol_index, fw_clone, rx));
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         handle.abort();
@@ -270,10 +279,85 @@ mod tests {
 
         let fw_clone = fw.clone();
         let index_clone = index.clone();
-        let handle = tokio::spawn(process_events(index_clone, fw_clone, rx));
+        let symbol_index = crate::symbol_index::SymbolIndex::new();
+        let handle = tokio::spawn(process_events(index_clone, symbol_index, fw_clone, rx));
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         handle.abort();
 
         assert_eq!(index.len().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_process_events_updates_symbol_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("hello.rs");
+        std::fs::write(&file_path, "fn greeting() {}").unwrap();
+
+        let index = FileIndex::new();
+        let symbol_index = crate::symbol_index::SymbolIndex::new();
+        let (fw, rx) = FileWatcher::new(index.clone());
+
+        {
+            let guard = fw.lock().await;
+            guard
+                .tx
+                .send(WatchEvent::Created(file_path.clone()))
+                .await
+                .unwrap();
+        }
+
+        let handle = tokio::spawn(process_events(
+            index.clone(),
+            symbol_index.clone(),
+            fw.clone(),
+            rx,
+        ));
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        handle.abort();
+
+        let symbols = symbol_index.list_file_symbols(&file_path).await;
+        assert_eq!(symbols.len(), 1);
+        assert_eq!(symbols[0].name, "greeting");
+    }
+
+    #[tokio::test]
+    async fn test_process_events_removes_symbols_on_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("hello.rs");
+        std::fs::write(&file_path, "fn greeting() {}").unwrap();
+
+        let index = FileIndex::new();
+        let symbol_index = crate::symbol_index::SymbolIndex::new();
+        index.update_file(&file_path).await.unwrap();
+        {
+            let si = symbol_index.clone();
+            let p = file_path.clone();
+            tokio::task::spawn_blocking(move || si.reparse_file(&p).unwrap())
+                .await
+                .unwrap();
+        }
+        assert_eq!(symbol_index.list_file_symbols(&file_path).await.len(), 1);
+
+        let (fw, rx) = FileWatcher::new(index.clone());
+        {
+            let guard = fw.lock().await;
+            guard
+                .tx
+                .send(WatchEvent::Removed(file_path.clone()))
+                .await
+                .unwrap();
+        }
+
+        let handle = tokio::spawn(process_events(
+            index.clone(),
+            symbol_index.clone(),
+            fw.clone(),
+            rx,
+        ));
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        handle.abort();
+
+        assert!(symbol_index.list_file_symbols(&file_path).await.is_empty());
     }
 }

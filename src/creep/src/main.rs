@@ -74,7 +74,12 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Spawn event processor task.
-    tokio::spawn(process_events(index.clone(), watcher.clone(), event_rx));
+    tokio::spawn(process_events(
+        index.clone(),
+        symbol_index.clone(),
+        watcher.clone(),
+        event_rx,
+    ));
 
     // Set up health reporter.
     let (health_reporter, health_service) = tonic_health::server::health_reporter();
