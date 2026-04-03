@@ -1,5 +1,6 @@
 mod config;
 mod index;
+mod parser;
 mod proto {
     tonic::include_proto!("creep.v1");
 }
