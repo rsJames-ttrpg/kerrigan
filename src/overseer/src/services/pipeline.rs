@@ -183,7 +183,7 @@ impl PipelineService {
         Ok(new_run)
     }
 
-    fn build_context_overrides(&self, parent_run: &JobRun, _next_stage: &str) -> serde_json::Value {
+    fn build_context_overrides(&self, parent_run: &JobRun, next_stage: &str) -> serde_json::Value {
         let mut overrides = serde_json::json!({});
 
         if let Some(ref parent_overrides) = parent_run.config_overrides {
@@ -214,6 +214,22 @@ impl PipelineService {
             if let Some(branch) = refs.get("branch") {
                 overrides["branch"] = branch.clone();
             }
+        }
+
+        // Rewrite task for review stage — the parent's task is an implement prompt,
+        // but the review drone needs a review-specific prompt.
+        if next_stage == "review" {
+            let pr_url = overrides
+                .get("pr_url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("(no PR URL available)");
+            let original_task = overrides
+                .get("task")
+                .and_then(|v| v.as_str())
+                .unwrap_or("(unknown)");
+            overrides["task"] = serde_json::Value::String(format!(
+                "Review the PR at {pr_url}. Original task: {original_task}"
+            ));
         }
 
         overrides
@@ -304,6 +320,7 @@ mod tests {
 
         let overrides = serde_json::json!({
             "repo_url": "https://github.com/test/repo.git",
+            "task": "Implement the widget feature",
             "secrets": {"github_pat": "ghp_test"}
         });
         let run = db
@@ -335,6 +352,19 @@ mod tests {
         assert_eq!(
             next_overrides.get("pr_url").and_then(|v| v.as_str()),
             Some("https://github.com/test/repo/pull/1")
+        );
+        // Task should be rewritten for review stage, not forwarded verbatim
+        let task = next_overrides
+            .get("task")
+            .and_then(|v| v.as_str())
+            .expect("task should exist");
+        assert!(
+            task.contains("Review the PR at https://github.com/test/repo/pull/1"),
+            "review task should reference PR URL, got: {task}"
+        );
+        assert!(
+            task.contains("Implement the widget feature"),
+            "review task should include original task for context, got: {task}"
         );
     }
 
