@@ -67,6 +67,7 @@ The foundational service. Rust binary (edition 2024). Layered monolith: HTTP (ax
 - **Pipeline** — hardcoded dev loop: spec → plan → implement → review. Auto-advances non-gated stages (implement→review). Gated stages (spec→plan, plan→implement) wait for `kerrigan approve`.
 - **Decisions** — append-only audit log of agent decisions with context and reasoning
 - **Artifacts** — metadata in DB, blobs via object_store (local filesystem, S3, etc.)
+- **Credentials** — repo credential storage with URL pattern matching; auto-injected into drone jobs by Queen at claim time. Seeded from `overseer.toml` `[[credentials]]` at startup.
 
 Seeded job definitions on startup: `default`, `spec-from-problem`, `plan-from-spec`, `implement-from-plan`, `review-pr`, `evolve-from-analysis`.
 
@@ -80,7 +81,7 @@ Hatchery process manager. Actor-based (tokio tasks + mpsc channels). Registers w
 - **Build:** `buck2 build root//src/queen:queen`
 - **Test:** `cd src/queen && cargo test`
 - **Notifications** — pluggable `Notifier` trait. Backends: `log` (default, tracing), `webhook` (POSTs JSON to any HTTP endpoint with `{{placeholder}}` template rendering). Configure in `[notifications]` section of `hatchery.toml`. First target: Signal via signal-cli-rest-api.
-- **Job claiming** — Queens poll `GET /api/jobs/runs/pending` for unassigned runs and claim them via `PUT /api/hatcheries/{id}/jobs/{run_id}`. Jobs are never eagerly assigned at submit time.
+- **Job claiming** — Queens poll `GET /api/jobs/runs/pending` for unassigned runs and claim them via `PUT /api/hatcheries/{id}/jobs/{run_id}`. Jobs are never eagerly assigned at submit time. Credentials are auto-injected from Overseer at claim time.
 - **Evolution actor** — background actor that monitors completed runs and triggers evolution analysis. Disabled by default (`[evolution] enabled = false`). Configure thresholds in `[evolution]` section of `hatchery.toml`.
 
 ### Evolution Chamber (`src/evolution/`)
@@ -113,7 +114,7 @@ Shared Overseer HTTP client library. Stateless typed wrapper over Overseer's RES
 - **Test:** `cd src/nydus && cargo test`
 
 ### Kerrigan CLI (`src/kerrigan/`)
-Operator console for the dev loop. Submit problems, check status, approve pipeline gates, submit auth codes.
+Operator console for the dev loop. Submit problems, check status, approve pipeline gates, submit auth codes, manage repo credentials.
 
 - **Build:** `buck2 build root//src/kerrigan:kerrigan`
 - **Install:** `buck2 run root//src/kerrigan:install` (copies to `~/.local/bin/`)

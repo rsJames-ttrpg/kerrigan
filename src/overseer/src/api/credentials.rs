@@ -78,7 +78,9 @@ async fn match_credentials(
         .credentials
         .match_credentials(&params.repo_url)
         .await?;
-    // Match endpoint returns full secrets (for Queen consumption)
+    // SECURITY: Returns full secrets — intended for internal Queen consumption only.
+    // This endpoint must not be exposed to untrusted clients. Requires auth before
+    // any non-localhost deployment.
     let result: Vec<Value> = matches
         .iter()
         .map(|c| {
