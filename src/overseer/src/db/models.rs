@@ -241,12 +241,17 @@ pub struct Hatchery {
 #[serde(rename_all = "snake_case")]
 pub enum CredentialType {
     GithubPat,
+    /// Preserves unknown credential types from the database so they survive
+    /// round-tripping and can be grouped correctly in match queries.
+    #[serde(untagged)]
+    Other(String),
 }
 
 impl fmt::Display for CredentialType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::GithubPat => write!(f, "github_pat"),
+            Self::Other(s) => write!(f, "{s}"),
         }
     }
 }
@@ -256,17 +261,18 @@ impl FromStr for CredentialType {
     fn from_str(s: &str) -> std::result::Result<Self, String> {
         match s {
             "github_pat" => Ok(Self::GithubPat),
-            other => Err(format!("unsupported credential type: {other}")),
+            other => Ok(Self::Other(other.to_string())),
         }
     }
 }
 
 impl CredentialType {
     /// Map this credential type to the secrets key injected into job config.
-    /// Only `github_pat` is implemented; others panic.
+    /// Only `github_pat` is implemented; others are unsupported.
     pub fn secrets_key(&self) -> &'static str {
         match self {
             Self::GithubPat => "github_pat",
+            Self::Other(_) => unimplemented!("unsupported credential type"),
         }
     }
 }

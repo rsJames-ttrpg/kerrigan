@@ -1110,14 +1110,13 @@ impl HatcheryStore for PostgresDatabase {
 }
 
 fn row_to_credential(row: &sqlx::postgres::PgRow) -> Credential {
-    use crate::db::models::CredentialType;
     Credential {
         id: row.get("id"),
         pattern: row.get("pattern"),
         credential_type: row
             .get::<String, _>("credential_type")
             .parse()
-            .unwrap_or(CredentialType::GithubPat),
+            .expect("CredentialType::from_str is infallible"),
         secret: row.get("secret"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),

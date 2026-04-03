@@ -107,7 +107,7 @@ mod tests {
     fn test_pattern_matches_exact() {
         let url = normalize_repo_url("git@github.com:rsJames-ttrpg/kerrigan.git");
         let pattern = normalize_repo_url("github.com/rsJames-ttrpg/kerrigan");
-        assert_eq!(pattern_matches(&url, &pattern), Some(38));
+        assert_eq!(pattern_matches(&url, &pattern), Some(pattern.len()));
     }
 
     #[test]

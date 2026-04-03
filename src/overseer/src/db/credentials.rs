@@ -4,7 +4,7 @@ use sea_query_binder::SqlxBinder;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
-use super::models::{Credential, CredentialType};
+use super::models::Credential;
 use super::tables::Credentials;
 use crate::error::{OverseerError, Result};
 
@@ -15,7 +15,7 @@ pub(crate) fn row_to_credential(row: &sqlx::sqlite::SqliteRow) -> Credential {
         credential_type: row
             .get::<String, _>("credential_type")
             .parse()
-            .unwrap_or(CredentialType::GithubPat),
+            .expect("CredentialType::from_str is infallible"),
         secret: row.get("secret"),
         created_at: row.get::<NaiveDateTime, _>("created_at").and_utc(),
         updated_at: row.get::<NaiveDateTime, _>("updated_at").and_utc(),
