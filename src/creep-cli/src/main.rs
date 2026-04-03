@@ -49,6 +49,20 @@ enum Commands {
         /// Absolute path to the workspace directory
         path: String,
     },
+    /// Search for symbols by name, or list symbols in a file
+    Symbols {
+        /// Symbol name to search for (substring match, case-insensitive)
+        query: Option<String>,
+        /// List all symbols in this file instead of searching by name
+        #[arg(long)]
+        file: Option<String>,
+        /// Filter by symbol kind (function, struct, enum, trait, impl, const, static, type_alias, module, macro)
+        #[arg(long)]
+        kind: Option<String>,
+        /// Filter by workspace path
+        #[arg(long)]
+        workspace: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -67,6 +81,25 @@ async fn main() -> Result<()> {
         Commands::Metadata { path } => cmd_metadata(&mut client, &path, cli.json).await,
         Commands::Register { path } => cmd_register(&mut client, &path, cli.json).await,
         Commands::Unregister { path } => cmd_unregister(&mut client, &path, cli.json).await,
+        Commands::Symbols {
+            query,
+            file,
+            kind,
+            workspace,
+        } => {
+            if let Some(file_path) = file {
+                cmd_list_file_symbols(&mut client, &file_path, cli.json).await
+            } else {
+                cmd_search_symbols(
+                    &mut client,
+                    query.as_deref().unwrap_or(""),
+                    kind,
+                    workspace,
+                    cli.json,
+                )
+                .await
+            }
+        }
     }
 }
 
@@ -182,6 +215,85 @@ async fn cmd_unregister(
         }))?;
     } else {
         println!("Unregistered workspace {path}");
+    }
+    Ok(())
+}
+
+async fn cmd_search_symbols(
+    client: &mut FileIndexClient<tonic::transport::Channel>,
+    query: &str,
+    kind: Option<String>,
+    workspace: Option<String>,
+    json: bool,
+) -> Result<()> {
+    let response = client
+        .search_symbols(proto::SearchSymbolsRequest {
+            query: query.to_string(),
+            kind,
+            workspace,
+        })
+        .await
+        .context("search_symbols RPC failed")?;
+
+    let symbols = response.into_inner().symbols;
+    if json {
+        print_json(&symbols)?;
+    } else {
+        for s in &symbols {
+            let parent_str = match s.parent.as_deref() {
+                Some(p) if !p.is_empty() => format!(" ({p})"),
+                _ => String::new(),
+            };
+            let display_name = s.signature.as_deref().unwrap_or(&s.name);
+            println!(
+                "{:<10} {}{:<40} {}:{}",
+                s.kind,
+                display_name,
+                parent_str,
+                s.file,
+                s.line + 1,
+            );
+        }
+        if symbols.is_empty() {
+            eprintln!("no symbols found matching '{query}'");
+        }
+    }
+    Ok(())
+}
+
+async fn cmd_list_file_symbols(
+    client: &mut FileIndexClient<tonic::transport::Channel>,
+    path: &str,
+    json: bool,
+) -> Result<()> {
+    let response = client
+        .list_file_symbols(proto::ListFileSymbolsRequest {
+            path: path.to_string(),
+        })
+        .await
+        .context("list_file_symbols RPC failed")?;
+
+    let symbols = response.into_inner().symbols;
+    if json {
+        print_json(&symbols)?;
+    } else {
+        for s in &symbols {
+            let parent_str = match s.parent.as_deref() {
+                Some(p) if !p.is_empty() => format!(" ({p})"),
+                _ => String::new(),
+            };
+            let display_name = s.signature.as_deref().unwrap_or(&s.name);
+            println!(
+                "  {:>4}  {:<10} {}{}",
+                s.line + 1,
+                s.kind,
+                display_name,
+                parent_str,
+            );
+        }
+        if symbols.is_empty() {
+            eprintln!("no symbols found in '{path}'");
+        }
     }
     Ok(())
 }
