@@ -84,6 +84,64 @@ pub async fn run(
                 }
             }
 
+            // Inject credentials from Overseer for this repo_url
+            if let Some(repo_url) = config.get("repo_url").and_then(|v| v.as_str()) {
+                match client.match_credentials(repo_url).await {
+                    Ok(matched_creds) => {
+                        for mc in matched_creds {
+                            let secrets_key = match mc.credential_type.as_str() {
+                                "github_pat" => "github_pat",
+                                other => {
+                                    tracing::warn!(
+                                        credential_type = %other,
+                                        "unsupported credential type, skipping"
+                                    );
+                                    continue;
+                                }
+                            };
+                            // Only inject if not already set by operator override
+                            let secrets = config
+                                .as_object_mut()
+                                .unwrap()
+                                .entry("secrets")
+                                .or_insert_with(|| serde_json::json!({}));
+                            if secrets.get(secrets_key).is_none() {
+                                secrets[secrets_key] = serde_json::Value::String(mc.secret.clone());
+                                tracing::info!(
+                                    job_run_id = %run.id,
+                                    credential_type = %mc.credential_type,
+                                    pattern = %mc.pattern,
+                                    "injected credential from Overseer"
+                                );
+                            } else {
+                                tracing::debug!(
+                                    job_run_id = %run.id,
+                                    credential_type = %mc.credential_type,
+                                    "credential already set by operator, skipping injection"
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            job_run_id = %run.id,
+                            error = %e,
+                            "failed to fetch credentials — failing job run"
+                        );
+                        let _ = client
+                            .update_run(
+                                &run.id,
+                                Some("failed"),
+                                None,
+                                Some(&format!("credential injection failed: {e}")),
+                            )
+                            .await;
+                        known_runs.insert(run.id);
+                        continue;
+                    }
+                }
+            }
+
             let drone_type = config
                 .get("drone_type")
                 .and_then(|v| v.as_str())

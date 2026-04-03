@@ -1,5 +1,6 @@
 mod artifacts;
 mod auth;
+mod credentials;
 mod decisions;
 mod hatchery;
 mod jobs;
@@ -19,5 +20,6 @@ pub fn router(state: Arc<AppState>) -> Router {
         .nest("/api/artifacts", artifacts::router())
         .nest("/api/hatcheries", hatchery::router())
         .nest("/api/jobs/runs", auth::router())
+        .nest("/api/credentials", credentials::router())
         .with_state(state)
 }

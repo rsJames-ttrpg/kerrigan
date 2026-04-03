@@ -1,4 +1,5 @@
 pub mod artifacts;
+pub mod credentials;
 pub mod decisions;
 pub mod hatcheries;
 pub mod jobs;
@@ -13,7 +14,8 @@ pub use postgres::PostgresDatabase;
 pub use sqlite::SqliteDatabase;
 #[allow(unused_imports)]
 pub use trait_def::{
-    ArtifactFilter, ArtifactStore, Database, DecisionStore, HatcheryStore, JobStore, MemoryStore,
+    ArtifactFilter, ArtifactStore, CredentialStore, Database, DecisionStore, HatcheryStore,
+    JobStore, MemoryStore,
 };
 
 #[allow(unused_imports)]
@@ -213,6 +215,39 @@ pub(crate) async fn trait_conformance_suite(db: Arc<dyn Database>) {
         .await
         .expect("get after delete");
     assert!(gone.is_none());
+
+    // Credentials
+    let cred = db
+        .create_credential("github.com/test-org/*", "github_pat", "ghp_test")
+        .await
+        .expect("create credential");
+    assert_eq!(cred.pattern, "github.com/test-org/*");
+
+    let fetched_cred = db.get_credential(&cred.id).await.expect("get credential");
+    assert!(fetched_cred.is_some());
+
+    let creds = db.list_credentials().await.expect("list credentials");
+    assert!(!creds.is_empty());
+
+    let matched = db
+        .match_credentials("https://github.com/test-org/repo.git")
+        .await
+        .expect("match credentials");
+    assert_eq!(matched.len(), 1);
+    assert_eq!(matched[0].secret, "ghp_test");
+
+    let upserted = db
+        .upsert_credential("github.com/test-org/*", "github_pat", "ghp_updated")
+        .await
+        .expect("upsert credential");
+    assert_eq!(upserted.id, cred.id);
+    assert_eq!(upserted.secret, "ghp_updated");
+
+    db.delete_credential(&cred.id)
+        .await
+        .expect("delete credential");
+    let gone_cred = db.get_credential(&cred.id).await.expect("get after delete");
+    assert!(gone_cred.is_none());
 }
 
 #[cfg(test)]
@@ -232,6 +267,7 @@ mod tests {
 
         let expected = [
             "artifacts",
+            "credentials",
             "decisions",
             "job_definitions",
             "job_runs",

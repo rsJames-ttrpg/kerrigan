@@ -1854,6 +1854,7 @@ dependencies = [
  "base64",
  "chrono",
  "libsqlite3-sys",
+ "nydus",
  "object_store",
  "pgvector",
  "regex-lite",

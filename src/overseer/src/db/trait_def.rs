@@ -179,7 +179,41 @@ pub trait HatcheryStore: Send + Sync {
     ) -> Result<Vec<JobRun>>;
 }
 
+#[async_trait]
+pub trait CredentialStore: Send + Sync {
+    async fn create_credential(
+        &self,
+        pattern: &str,
+        credential_type: &str,
+        secret: &str,
+    ) -> Result<Credential>;
+
+    async fn get_credential(&self, id: &str) -> Result<Option<Credential>>;
+
+    async fn delete_credential(&self, id: &str) -> Result<()>;
+
+    async fn list_credentials(&self) -> Result<Vec<Credential>>;
+
+    /// Upsert: insert or update secret if (pattern, credential_type) already exists.
+    async fn upsert_credential(
+        &self,
+        pattern: &str,
+        credential_type: &str,
+        secret: &str,
+    ) -> Result<Credential>;
+
+    /// Return all credentials matching the given repo URL, one per credential_type
+    /// (best/most-specific match per type).
+    async fn match_credentials(&self, repo_url: &str) -> Result<Vec<Credential>>;
+}
+
 /// Convenience supertrait combining all domain stores.
-/// Blanket-implemented for any type that implements all five.
-pub trait Database: MemoryStore + JobStore + DecisionStore + ArtifactStore + HatcheryStore {}
-impl<T: MemoryStore + JobStore + DecisionStore + ArtifactStore + HatcheryStore> Database for T {}
+/// Blanket-implemented for any type that implements all six.
+pub trait Database:
+    MemoryStore + JobStore + DecisionStore + ArtifactStore + HatcheryStore + CredentialStore
+{
+}
+impl<T: MemoryStore + JobStore + DecisionStore + ArtifactStore + HatcheryStore + CredentialStore>
+    Database for T
+{
+}

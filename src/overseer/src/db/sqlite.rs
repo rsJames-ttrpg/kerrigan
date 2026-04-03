@@ -358,3 +358,40 @@ impl HatcheryStore for SqliteDatabase {
         super::hatcheries::list_hatchery_job_runs(&self.pool, hatchery_id, status).await
     }
 }
+
+#[async_trait]
+impl super::trait_def::CredentialStore for SqliteDatabase {
+    async fn create_credential(
+        &self,
+        pattern: &str,
+        credential_type: &str,
+        secret: &str,
+    ) -> Result<Credential> {
+        super::credentials::create_credential(&self.pool, pattern, credential_type, secret).await
+    }
+
+    async fn get_credential(&self, id: &str) -> Result<Option<Credential>> {
+        super::credentials::get_credential(&self.pool, id).await
+    }
+
+    async fn delete_credential(&self, id: &str) -> Result<()> {
+        super::credentials::delete_credential(&self.pool, id).await
+    }
+
+    async fn list_credentials(&self) -> Result<Vec<Credential>> {
+        super::credentials::list_credentials(&self.pool).await
+    }
+
+    async fn upsert_credential(
+        &self,
+        pattern: &str,
+        credential_type: &str,
+        secret: &str,
+    ) -> Result<Credential> {
+        super::credentials::upsert_credential(&self.pool, pattern, credential_type, secret).await
+    }
+
+    async fn match_credentials(&self, repo_url: &str) -> Result<Vec<Credential>> {
+        super::credentials::match_credentials(&self.pool, repo_url).await
+    }
+}

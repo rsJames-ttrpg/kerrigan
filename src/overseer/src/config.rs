@@ -11,6 +11,8 @@ pub struct Config {
     pub embedding: EmbeddingConfig,
     #[serde(default)]
     pub logging: LoggingConfig,
+    #[serde(default)]
+    pub credentials: Vec<CredentialSeed>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,6 +151,13 @@ impl Default for LoggingConfig {
 
 fn default_log_level() -> String {
     "info".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CredentialSeed {
+    pub pattern: String,
+    pub credential_type: String,
+    pub secret_env: String,
 }
 
 impl Config {
@@ -306,5 +315,32 @@ dimensions = 384
         let config = Config::load(f.path()).expect("should parse");
         let result = config.embedding.validate();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_credentials_config() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        write!(
+            f,
+            r#"
+[[credentials]]
+pattern = "github.com/org/*"
+credential_type = "github_pat"
+secret_env = "MY_PAT"
+"#
+        )
+        .unwrap();
+        let config = Config::load(f.path()).expect("should parse");
+        assert_eq!(config.credentials.len(), 1);
+        assert_eq!(config.credentials[0].pattern, "github.com/org/*");
+        assert_eq!(config.credentials[0].credential_type, "github_pat");
+        assert_eq!(config.credentials[0].secret_env, "MY_PAT");
+    }
+
+    #[test]
+    fn test_no_credentials_defaults_empty() {
+        let config = Config::load(std::path::Path::new("nonexistent.toml"))
+            .expect("should fall back to defaults");
+        assert!(config.credentials.is_empty());
     }
 }

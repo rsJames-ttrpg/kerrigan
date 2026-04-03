@@ -1109,6 +1109,134 @@ impl HatcheryStore for PostgresDatabase {
     }
 }
 
+fn row_to_credential(row: &sqlx::postgres::PgRow) -> Credential {
+    Credential {
+        id: row.get("id"),
+        pattern: row.get("pattern"),
+        credential_type: row
+            .get::<String, _>("credential_type")
+            .parse()
+            .expect("CredentialType::from_str is infallible"),
+        secret: row.get("secret"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    }
+}
+
+#[async_trait]
+impl super::trait_def::CredentialStore for PostgresDatabase {
+    async fn create_credential(
+        &self,
+        pattern: &str,
+        credential_type: &str,
+        secret: &str,
+    ) -> Result<Credential> {
+        let id = Uuid::new_v4().to_string();
+        let (sql, values) = Query::insert()
+            .into_table(Credentials::Table)
+            .columns([
+                Credentials::Id,
+                Credentials::Pattern,
+                Credentials::CredentialType,
+                Credentials::Secret,
+            ])
+            .values_panic([
+                id.clone().into(),
+                pattern.into(),
+                credential_type.into(),
+                secret.into(),
+            ])
+            .build_sqlx(PostgresQueryBuilder);
+
+        sqlx::query_with(&sql, values)
+            .execute(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        self.get_credential(&id)
+            .await?
+            .ok_or_else(|| OverseerError::Internal("credential not found after insert".into()))
+    }
+
+    async fn get_credential(&self, id: &str) -> Result<Option<Credential>> {
+        let (sql, values) = Query::select()
+            .column(sea_query::Asterisk)
+            .from(Credentials::Table)
+            .and_where(Expr::col(Credentials::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+
+        let row = sqlx::query_with(&sql, values)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row.as_ref().map(row_to_credential))
+    }
+
+    async fn delete_credential(&self, id: &str) -> Result<()> {
+        let (sql, values) = Query::delete()
+            .from_table(Credentials::Table)
+            .and_where(Expr::col(Credentials::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+
+        sqlx::query_with(&sql, values)
+            .execute(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(())
+    }
+
+    async fn list_credentials(&self) -> Result<Vec<Credential>> {
+        let (sql, values) = Query::select()
+            .column(sea_query::Asterisk)
+            .from(Credentials::Table)
+            .order_by(Credentials::CreatedAt, Order::Desc)
+            .build_sqlx(PostgresQueryBuilder);
+
+        let rows = sqlx::query_with(&sql, values)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(rows.iter().map(row_to_credential).collect())
+    }
+
+    async fn upsert_credential(
+        &self,
+        pattern: &str,
+        credential_type: &str,
+        secret: &str,
+    ) -> Result<Credential> {
+        let id = Uuid::new_v4().to_string();
+
+        // Atomic upsert: INSERT or UPDATE on (pattern, credential_type) conflict
+        let sql = "\
+            INSERT INTO credentials (id, pattern, credential_type, secret) \
+            VALUES ($1, $2, $3, $4) \
+            ON CONFLICT (pattern, credential_type) DO UPDATE SET \
+                secret = EXCLUDED.secret, \
+                updated_at = now() \
+            RETURNING *";
+
+        let row = sqlx::query(sql)
+            .bind(&id)
+            .bind(pattern)
+            .bind(credential_type)
+            .bind(secret)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+
+        Ok(row_to_credential(&row))
+    }
+
+    async fn match_credentials(&self, repo_url: &str) -> Result<Vec<Credential>> {
+        let all = self.list_credentials().await?;
+        Ok(super::credentials::best_matches_for_url(repo_url, all))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

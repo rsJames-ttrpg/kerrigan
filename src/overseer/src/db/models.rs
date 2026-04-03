@@ -237,6 +237,57 @@ pub struct Hatchery {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialType {
+    GithubPat,
+    /// Preserves unknown credential types from the database so they survive
+    /// round-tripping and can be grouped correctly in match queries.
+    #[serde(untagged)]
+    Other(String),
+}
+
+impl fmt::Display for CredentialType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GithubPat => write!(f, "github_pat"),
+            Self::Other(s) => write!(f, "{s}"),
+        }
+    }
+}
+
+impl FromStr for CredentialType {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        match s {
+            "github_pat" => Ok(Self::GithubPat),
+            other => Ok(Self::Other(other.to_string())),
+        }
+    }
+}
+
+impl CredentialType {
+    /// Map this credential type to the secrets key injected into job config.
+    /// Returns `None` for unknown/unsupported types.
+    pub fn secrets_key(&self) -> Option<&'static str> {
+        match self {
+            Self::GithubPat => Some("github_pat"),
+            Self::Other(_) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Credential {
+    pub id: String,
+    pub pattern: String,
+    pub credential_type: CredentialType,
+    #[serde(skip_serializing)]
+    pub secret: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

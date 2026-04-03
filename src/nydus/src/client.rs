@@ -3,7 +3,9 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::error::Error;
-use crate::types::{Artifact, Hatchery, JobDefinition, JobRun, Task};
+use crate::types::{
+    Artifact, Credential, Hatchery, JobDefinition, JobRun, MatchedCredential, Task,
+};
 
 #[derive(Debug, Clone)]
 pub struct NydusClient {
@@ -455,6 +457,62 @@ impl NydusClient {
         }
         let body: AuthResp = Self::check_response(resp).await?.json().await?;
         Ok(Some(body.code))
+    }
+
+    // --- Credentials ---
+
+    pub async fn create_credential(
+        &self,
+        pattern: &str,
+        credential_type: &str,
+        secret: &str,
+    ) -> Result<Credential, Error> {
+        #[derive(Serialize)]
+        struct Body<'a> {
+            pattern: &'a str,
+            credential_type: &'a str,
+            secret: &'a str,
+        }
+        let resp = self
+            .client
+            .post(format!("{}/api/credentials", self.base_url))
+            .json(&Body {
+                pattern,
+                credential_type,
+                secret,
+            })
+            .send()
+            .await?;
+        Ok(Self::check_response(resp).await?.json().await?)
+    }
+
+    pub async fn list_credentials(&self) -> Result<Vec<Credential>, Error> {
+        let resp = self
+            .client
+            .get(format!("{}/api/credentials", self.base_url))
+            .send()
+            .await?;
+        Ok(Self::check_response(resp).await?.json().await?)
+    }
+
+    pub async fn delete_credential(&self, id: &str) -> Result<(), Error> {
+        let resp = self
+            .client
+            .delete(format!("{}/api/credentials/{id}", self.base_url))
+            .send()
+            .await?;
+        Self::check_response(resp).await?;
+        Ok(())
+    }
+
+    pub async fn match_credentials(&self, repo_url: &str) -> Result<Vec<MatchedCredential>, Error> {
+        let resp = self
+            .client
+            .get(format!("{}/api/credentials/match", self.base_url))
+            .query(&[("repo_url", repo_url)])
+            .send()
+            .await?;
+        Ok(Self::check_response(resp).await?.json().await?)
     }
 }
 
