@@ -10,19 +10,19 @@ Scope: Rust language only. 10 symbol kinds. Two new gRPC RPCs. CLI subcommand. S
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                 Creep (sidecar)                      │
+│                 Creep (sidecar)                     │
 │                                                     │
-│  ┌──────────────┐  ┌────────────┐  ┌─────────────┐ │
-│  │  gRPC Server │  │   File     │  │   Parser    │ │
-│  │  (tonic)     │  │  Watcher   │  │ (tree-sitter│ │
-│  │              │  │  (notify)  │  │  + queries) │ │
-│  │  FileIndex   │  └─────┬──────┘  └──────┬──────┘ │
-│  │  Service     │        │                │        │
-│  │  + Symbol    │  ┌─────▼──────┐  ┌──────▼──────┐ │
-│  │    RPCs      │  │  FileIndex │  │ SymbolIndex │ │
-│  │              │  │ (HashMap)  │  │ (by_file +  │ │
-│  │  Health      │  │            │  │  by_name)   │ │
-│  │  Service     │  └────────────┘  └─────────────┘ │
+│  ┌──────────────┐  ┌────────────┐  ┌─────────────┐  │
+│  │  gRPC Server │  │   File     │  │   Parser    │  │
+│  │  (tonic)     │  │  Watcher   │  │ (tree-sitter│  │
+│  │              │  │  (notify)  │  │  + queries) │  │
+│  │  FileIndex   │  └─────┬──────┘  └──────┬──────┘  │
+│  │  Service     │        │                │         │
+│  │  + Symbol    │  ┌─────▼──────┐  ┌──────▼──────┐  │
+│  │    RPCs      │  │  FileIndex │  │ SymbolIndex │  │
+│  │              │  │ (HashMap)  │  │ (by_file +  │  │
+│  │  Health      │  │            │  │  by_name)   │  │
+│  │  Service     │  └────────────┘  └─────────────┘  │
 │  └──────────────┘                                   │
 └─────────────────────────────────────────────────────┘
 ```
