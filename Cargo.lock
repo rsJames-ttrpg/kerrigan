@@ -502,6 +502,7 @@ dependencies = [
  "glob-match",
  "ignore",
  "notify",
+ "notify-debouncer-mini",
  "prost",
  "serde",
  "tempfile",
@@ -1733,6 +1734,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
 dependencies = [
  "bitflags 2.11.0",
+]
+
+[[package]]
+name = "notify-debouncer-mini"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17849edfaabd9a5fef1c606d99cfc615a8e99f7ac4366406d86c7942a3184cf2"
+dependencies = [
+ "log",
+ "notify",
+ "notify-types",
 ]
 
 [[package]]
