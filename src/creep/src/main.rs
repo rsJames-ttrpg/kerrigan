@@ -41,8 +41,9 @@ async fn main() -> anyhow::Result<()> {
     let addr: SocketAddr = format!("0.0.0.0:{}", config.creep.grpc_port).parse()?;
     tracing::info!("creep starting on {addr}");
 
-    // Create FileIndex.
+    // Create FileIndex and SymbolIndex.
     let index = FileIndex::new();
+    let symbol_index = symbol_index::SymbolIndex::new();
 
     // Create FileWatcher.
     let (watcher, event_rx) = FileWatcher::new(index.clone());
@@ -61,6 +62,15 @@ async fn main() -> anyhow::Result<()> {
             Ok(n) => tracing::info!("indexed {n} files in {}", ws.display()),
             Err(e) => tracing::warn!("scan failed for {}: {e}", ws.display()),
         }
+        {
+            let si = symbol_index.clone();
+            let ws_clone = ws.clone();
+            match tokio::task::spawn_blocking(move || si.scan_workspace(&ws_clone)).await {
+                Ok(Ok(n)) => tracing::info!("parsed {n} symbols in {}", ws.display()),
+                Ok(Err(e)) => tracing::warn!("symbol scan failed for {}: {e}", ws.display()),
+                Err(e) => tracing::warn!("symbol scan task panicked for {}: {e}", ws.display()),
+            }
+        }
     }
 
     // Spawn event processor task.
@@ -73,7 +83,7 @@ async fn main() -> anyhow::Result<()> {
         .await;
 
     // Create FileIndexServiceImpl.
-    let file_index_svc = FileIndexServiceImpl::new(index, watcher);
+    let file_index_svc = FileIndexServiceImpl::new(index, symbol_index, watcher);
 
     // Start tonic gRPC server with graceful shutdown on Ctrl+C.
     tracing::info!("gRPC server listening on {addr}");
