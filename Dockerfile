@@ -29,14 +29,16 @@ RUN curl -fsSL "https://github.com/facebook/buck2/releases/download/2026-01-19/b
 RUN useradd -m -s /bin/bash kerrigan
 
 # Create directory structure
-RUN mkdir -p /opt/kerrigan/bin /opt/kerrigan/drones /opt/kerrigan/config /data/artifacts \
+RUN mkdir -p /opt/kerrigan/bin /opt/kerrigan/drones /opt/kerrigan/config /opt/kerrigan/plugins /data/artifacts \
     && chown -R kerrigan:kerrigan /data
 
 # Copy pre-built binaries from staging dir (populated by deploy/dev/build.sh)
 COPY deploy/dev/.stage/bin/overseer   /opt/kerrigan/bin/overseer
 COPY deploy/dev/.stage/bin/queen      /opt/kerrigan/bin/queen
 COPY deploy/dev/.stage/bin/creep      /opt/kerrigan/bin/creep
+COPY deploy/dev/.stage/bin/creep-cli  /opt/kerrigan/bin/creep-cli
 COPY deploy/dev/.stage/drones/claude-drone /opt/kerrigan/drones/claude-drone
+COPY deploy/dev/.stage/plugins/       /opt/kerrigan/plugins/
 
 # Copy container-specific configs
 COPY deploy/dev/overseer.toml   /opt/kerrigan/config/overseer.toml

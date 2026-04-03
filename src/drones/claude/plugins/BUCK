@@ -1,0 +1,12 @@
+filegroup(
+    name = "creep-discovery",
+    srcs = glob(["creep-discovery/**"]),
+    visibility = ["PUBLIC"],
+)
+
+sh_binary(
+    name = "install",
+    main = "install.sh",
+    resources = [":creep-discovery"],
+    visibility = ["PUBLIC"],
+)

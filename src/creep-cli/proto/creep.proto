@@ -1,0 +1,50 @@
+// Canonical source: src/creep/proto/creep.proto — keep in sync manually.
+syntax = "proto3";
+package creep.v1;
+
+service FileIndex {
+  rpc SearchFiles(SearchFilesRequest) returns (SearchFilesResponse);
+  rpc GetFileMetadata(GetFileMetadataRequest) returns (GetFileMetadataResponse);
+  rpc RegisterWorkspace(RegisterWorkspaceRequest) returns (RegisterWorkspaceResponse);
+  rpc UnregisterWorkspace(UnregisterWorkspaceRequest) returns (UnregisterWorkspaceResponse);
+}
+
+message SearchFilesRequest {
+  string pattern = 1;
+  optional string workspace = 2;
+  optional string file_type = 3;
+}
+
+message SearchFilesResponse {
+  repeated FileMetadata files = 1;
+}
+
+message GetFileMetadataRequest {
+  string path = 1;
+}
+
+message GetFileMetadataResponse {
+  optional FileMetadata file = 1;
+}
+
+message FileMetadata {
+  string path = 1;
+  uint64 size = 2;
+  int64 modified_at = 3;
+  string file_type = 4;
+  string content_hash = 5;
+}
+
+message RegisterWorkspaceRequest {
+  string path = 1;
+}
+
+message RegisterWorkspaceResponse {
+  uint64 files_indexed = 1;
+}
+
+message UnregisterWorkspaceRequest {
+  string path = 1;
+}
+
+message UnregisterWorkspaceResponse {}

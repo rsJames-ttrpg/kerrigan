@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+export PATH="/opt/kerrigan/bin:$PATH"
+
 # Ensure data directories exist (host path mounts may be empty)
 mkdir -p /data/artifacts 2>/dev/null || true
 
@@ -28,6 +30,16 @@ if ! curl -sf http://localhost:3100/api/jobs/definitions > /dev/null 2>&1; then
   echo "ERROR: overseer did not become ready after 30s"
   kill "$OVERSEER_PID" 2>/dev/null || true
   exit 1
+fi
+
+echo "=== starting creep ==="
+/opt/kerrigan/bin/creep &
+CREEP_PID=$!
+sleep 1
+if ! kill -0 "$CREEP_PID" 2>/dev/null; then
+  echo "WARNING: creep exited immediately — file indexing will be unavailable"
+else
+  echo "creep started (pid $CREEP_PID)"
 fi
 
 echo "=== starting queen ==="

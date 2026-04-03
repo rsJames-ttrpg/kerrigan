@@ -1,0 +1,35 @@
+CREEP_CLI_SRCS = glob(["src/**/*.rs", "proto/**/*.proto", "proto_gen/**/*.rs", "build.rs"])
+
+CREEP_CLI_DEPS = [
+    "//third-party:anyhow",
+    "//third-party:clap",
+    "//third-party:prost",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:tokio",
+    "//third-party:tonic",
+]
+
+rust_binary(
+    name = "creep-cli",
+    srcs = CREEP_CLI_SRCS,
+    crate_root = "src/main.rs",
+    deps = CREEP_CLI_DEPS,
+    env = {
+        "CARGO_MANIFEST_DIR": ".",
+        "OUT_DIR": "proto_gen",
+    },
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "creep-cli-test",
+    srcs = CREEP_CLI_SRCS,
+    crate_root = "src/main.rs",
+    deps = CREEP_CLI_DEPS,
+    env = {
+        "CARGO_MANIFEST_DIR": ".",
+        "OUT_DIR": "proto_gen",
+    },
+    visibility = ["PUBLIC"],
+)

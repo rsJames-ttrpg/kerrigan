@@ -209,6 +209,44 @@ pub async fn clone_repo(
     Ok(())
 }
 
+/// Copy the creep-discovery plugin into the drone's Claude plugins directory.
+/// Source: /opt/kerrigan/plugins/creep-discovery/ (container filesystem).
+/// Destination: {home}/.claude/plugins/creep-discovery/ (preserving skill subdirectory structure).
+pub async fn install_plugins(home: &Path) -> Result<()> {
+    let src = Path::new("/opt/kerrigan/plugins/creep-discovery");
+    if !src.exists() {
+        tracing::debug!(
+            "creep-discovery plugin not found at {}, skipping",
+            src.display()
+        );
+        return Ok(());
+    }
+
+    let dest = home.join(".claude/plugins/creep-discovery/skills/creep-discovery");
+    fs::create_dir_all(&dest)
+        .await
+        .context("failed to create plugins directory")?;
+
+    // Copy package.json
+    fs::copy(
+        src.join("package.json"),
+        home.join(".claude/plugins/creep-discovery/package.json"),
+    )
+    .await
+    .context("failed to copy package.json")?;
+
+    // Copy SKILL.md
+    fs::copy(
+        src.join("skills/creep-discovery/SKILL.md"),
+        dest.join("SKILL.md"),
+    )
+    .await
+    .context("failed to copy SKILL.md")?;
+
+    tracing::info!("installed creep-discovery plugin");
+    Ok(())
+}
+
 /// Remove the drone home directory. Errors are swallowed (best-effort cleanup).
 pub async fn cleanup(home: &Path) {
     if let Err(e) = fs::remove_dir_all(home).await {
