@@ -25,9 +25,13 @@ pub async fn fetch_artifacts(
     artifact_type: &str,
     since: &chrono::DateTime<chrono::Utc>,
 ) -> Result<Vec<FetchedArtifact>> {
-    let since_str = since.to_rfc3339();
+    let since_param = if *since == chrono::DateTime::<chrono::Utc>::MIN_UTC {
+        None
+    } else {
+        Some(since.to_rfc3339())
+    };
     let artifacts = client
-        .list_artifacts(None, Some(artifact_type), Some(&since_str))
+        .list_artifacts(None, Some(artifact_type), since_param.as_deref())
         .await
         .map_err(|e| anyhow::anyhow!("failed to list artifacts: {e}"))?;
 
