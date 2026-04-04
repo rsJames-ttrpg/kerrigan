@@ -15,7 +15,7 @@ You MUST follow this git workflow:
 1. Create a new branch from the current HEAD with a descriptive name
 2. Make your changes, committing frequently with clear messages
 3. Push the branch to origin
-4. Create a pull request with a clear title, description, and test plan
+4. Create a pull request to main with a clear title, description, and test plan
 
 Do NOT merge the PR. The operator will review and merge.
 
