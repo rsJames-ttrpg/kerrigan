@@ -19,7 +19,7 @@ Add LSP server management to Creep. Creep spawns and manages language server pro
 
 ```
 ┌──────────────────────────────────────────────────┐
-│                    Creep                          │
+│                    Creep                         │
 │                                                  │
 │  ┌──────────────┐  ┌──────────────────────────┐  │
 │  │ File Index   │  │ LSP Manager              │  │
