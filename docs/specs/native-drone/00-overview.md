@@ -25,24 +25,24 @@ Replace the CLI wrapper with a native Rust agent runtime that talks directly to 
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Queen (process manager)                │
-│  Spawns drone binary, communicates via JSON-line stdio   │
+│                    Queen (process manager)              │
+│  Spawns drone binary, communicates via JSON-line stdio  │
 └──────────────┬──────────────────────────┬───────────────┘
                │ stdin (Job, AuthResponse) │ stdout (Event, Result)
                ▼                          ▲
 ┌─────────────────────────────────────────────────────────┐
-│                 Native Drone (src/drones/native/)        │
-│                                                          │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐ │
-│  │  Pipeline    │  │ Orchestrator │  │ Git Workflow   │ │
-│  │  State       │  │ (sub-agents, │  │ (enforced      │ │
-│  │  Machine     │  │  task queue) │  │  branching,    │ │
-│  │             │  │              │  │  commits, PR)  │ │
-│  └──────┬──────┘  └──────┬───────┘  └───────┬────────┘ │
+│                 Native Drone (src/drones/native/)       │
+│                                                         │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐  │
+│  │  Pipeline    │  │ Orchestrator │  │ Git Workflow  │  │
+│  │  State       │  │ (sub-agents, │  │ (enforced     │  │
+│  │  Machine     │  │  task queue) │  │  branching,   │  │
+│  │             │  │              │  │  commits, PR)  │  │
+│  └──────┬──────┘  └──────┬───────┘  └───────┬────────┘  │
 │         │                │                   │          │
-│  ┌──────▼───────────────▼───────────────────▼────────┐ │
-│  │              Runtime (src/runtime/)                  │ │
-│  │                                                      │ │
+│  ┌──────▼───────────────▼───────────────────▼─────────┐ │
+│  │              Runtime (src/runtime/)                │ │
+│  │                                                    │ │
 │  │  ┌───────────┐ ┌────────────┐ ┌──────────────────┐ │ │
 │  │  │ API Client│ │ Tool       │ │ Conversation     │ │ │
 │  │  │ Anthropic │ │ Registry   │ │ Loop + Compaction│ │ │
@@ -50,11 +50,11 @@ Replace the CLI wrapper with a native Rust agent runtime that talks directly to 
 │  │  │ Ollama    │ │ MCP        │ │                  │ │ │
 │  │  │           │ │ External   │ │                  │ │ │
 │  │  └───────────┘ └────────────┘ └──────────────────┘ │ │
-│  │                                                      │ │
-│  │  ┌──────────────────────────────────────────────┐   │ │
-│  │  │ Event Stream → EventSink trait               │   │ │
-│  │  └──────────────────────────────────────────────┘   │ │
-│  └──────────────────────────────────────────────────────┘ │
+│  │                                                    │ │
+│  │  ┌──────────────────────────────────────────────┐  │ │
+│  │  │ Event Stream → EventSink trait               │  │ │
+│  │  └──────────────────────────────────────────────┘  │ │
+│  └────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────┘
 ```
 
