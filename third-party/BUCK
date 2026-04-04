@@ -3434,6 +3434,12 @@ http_archive(
     visibility = [],
 )
 
+alias(
+    name = "futures-util",
+    actual = ":futures-util-0.3",
+    visibility = ["PUBLIC"],
+)
+
 cargo.rust_library(
     name = "futures-util-0.3",
     srcs = [":futures-util-0.3.32.crate"],
@@ -11562,6 +11568,12 @@ http_archive(
     strip_prefix = "tokio-rustls-0.26.4",
     urls = ["https://static.crates.io/crates/tokio-rustls/0.26.4/download"],
     visibility = [],
+)
+
+alias(
+    name = "tokio-stream",
+    actual = ":tokio-stream-0.1",
+    visibility = ["PUBLIC"],
 )
 
 cargo.rust_library(
