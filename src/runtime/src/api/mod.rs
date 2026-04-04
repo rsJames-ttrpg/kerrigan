@@ -1,6 +1,7 @@
 pub mod anthropic;
 pub mod error;
 pub mod openai_compat;
+pub mod retry;
 pub mod sse;
 pub mod types;
 
@@ -40,4 +41,44 @@ pub enum ProviderConfig {
         api_key: Option<String>,
         model: String,
     },
+}
+
+/// Create an ApiClient from a ProviderConfig.
+pub fn create_client(config: &ProviderConfig) -> Box<dyn ApiClient> {
+    match config {
+        ProviderConfig::Anthropic {
+            api_key,
+            model,
+            base_url,
+        } => Box::new(anthropic::AnthropicClient::new(
+            api_key.clone(),
+            model.clone(),
+            base_url.clone(),
+        )),
+        ProviderConfig::OpenAiCompat {
+            base_url,
+            api_key,
+            model,
+        } => Box::new(openai_compat::OpenAiCompatClient::new(
+            base_url.clone(),
+            api_key.clone(),
+            model.clone(),
+        )),
+    }
+}
+
+pub struct DefaultApiClientFactory {
+    config: ProviderConfig,
+}
+
+impl DefaultApiClientFactory {
+    pub fn new(config: ProviderConfig) -> Self {
+        Self { config }
+    }
+}
+
+impl ApiClientFactory for DefaultApiClientFactory {
+    fn create(&self) -> Box<dyn ApiClient> {
+        create_client(&self.config)
+    }
 }
