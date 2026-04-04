@@ -77,6 +77,13 @@ pub struct GitRefs {
     pub branch: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pr_url: Option<String>,
+    /// Whether this job type requires a PR for success. Defaults to true.
+    #[serde(default = "default_true")]
+    pub pr_required: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Fatal error reported by a Drone.
@@ -141,6 +148,7 @@ mod tests {
             git_refs: GitRefs {
                 branch: Some("feat/fix-bug".to_string()),
                 pr_url: Some("https://github.com/example/repo/pull/1".to_string()),
+                pr_required: true,
             },
             session_jsonl_gz: None,
         };
@@ -156,6 +164,56 @@ mod tests {
                     o.git_refs.pr_url.as_deref(),
                     Some("https://github.com/example/repo/pull/1")
                 );
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_git_refs_pr_required_defaults_true() {
+        // Simulate deserializing a GitRefs from an older drone that doesn't send pr_required
+        let json = r#"{"branch":"feat/x","pr_url":"https://github.com/org/repo/pull/1"}"#;
+        let refs: GitRefs = serde_json::from_str(json).unwrap();
+        assert!(
+            refs.pr_required,
+            "pr_required should default to true for backwards compat"
+        );
+    }
+
+    #[test]
+    fn test_git_refs_pr_required_false_roundtrip() {
+        let refs = GitRefs {
+            branch: Some("evolve/analysis".to_string()),
+            pr_url: None,
+            pr_required: false,
+        };
+        let json = serde_json::to_string(&refs).unwrap();
+        let decoded: GitRefs = serde_json::from_str(&json).unwrap();
+        assert!(!decoded.pr_required);
+        assert!(decoded.pr_url.is_none());
+    }
+
+    #[test]
+    fn test_drone_result_no_pr_not_required() {
+        let output = DroneOutput {
+            exit_code: 0,
+            conversation: json!({}),
+            artifacts: vec![],
+            git_refs: GitRefs {
+                branch: None,
+                pr_url: None,
+                pr_required: false,
+            },
+            session_jsonl_gz: None,
+        };
+        let msg = DroneMessage::Result(output);
+        let json = serde_json::to_string(&msg).unwrap();
+        let decoded: DroneMessage = serde_json::from_str(&json).unwrap();
+        match decoded {
+            DroneMessage::Result(o) => {
+                assert_eq!(o.exit_code, 0);
+                assert!(!o.git_refs.pr_required);
+                assert!(o.git_refs.pr_url.is_none());
             }
             other => panic!("unexpected variant: {other:?}"),
         }

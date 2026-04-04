@@ -172,6 +172,14 @@ impl JobStore for SqliteDatabase {
         super::jobs::list_job_definitions(&self.pool).await
     }
 
+    async fn update_job_definition_config(
+        &self,
+        id: &str,
+        config: serde_json::Value,
+    ) -> Result<()> {
+        super::jobs::update_job_definition_config(&self.pool, id, config).await
+    }
+
     async fn start_job_run(
         &self,
         definition_id: &str,

@@ -441,6 +441,26 @@ impl JobStore for PostgresDatabase {
         Ok(rows.iter().map(row_to_job_definition).collect())
     }
 
+    async fn update_job_definition_config(
+        &self,
+        id: &str,
+        config: serde_json::Value,
+    ) -> Result<()> {
+        let config_json =
+            serde_json::to_string(&config).map_err(|e| OverseerError::Internal(e.to_string()))?;
+        let (sql, values) = Query::update()
+            .table(JobDefinitions::Table)
+            .value(JobDefinitions::Config, config_json)
+            .value(JobDefinitions::UpdatedAt, Expr::cust("now()"))
+            .and_where(Expr::col(JobDefinitions::Id).eq(id))
+            .build_sqlx(PostgresQueryBuilder);
+        sqlx::query_with(&sql, values)
+            .execute(&self.pool)
+            .await
+            .map_err(OverseerError::Storage)?;
+        Ok(())
+    }
+
     async fn start_job_run(
         &self,
         definition_id: &str,

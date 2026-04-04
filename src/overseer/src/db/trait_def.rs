@@ -53,6 +53,9 @@ pub trait JobStore: Send + Sync {
 
     async fn list_job_definitions(&self) -> Result<Vec<JobDefinition>>;
 
+    async fn update_job_definition_config(&self, id: &str, config: serde_json::Value)
+    -> Result<()>;
+
     async fn start_job_run(
         &self,
         definition_id: &str,

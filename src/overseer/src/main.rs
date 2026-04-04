@@ -129,6 +129,15 @@ async fn main() -> anyhow::Result<()> {
                 .create_job_definition(name, description, def_config)
                 .await?;
             tracing::info!("seeded job definition: {name}");
+        } else if let Some(def) = existing.iter().find(|d| d.name == name) {
+            // Update existing definition config to pick up new fields (e.g. stage)
+            if def.config != def_config {
+                state
+                    .jobs
+                    .update_job_definition_config(&def.id, def_config)
+                    .await?;
+                tracing::info!("updated job definition config: {name}");
+            }
         }
     }
 

@@ -167,6 +167,26 @@ pub async fn list_job_definitions(pool: &SqlitePool) -> Result<Vec<JobDefinition
     Ok(rows.iter().map(row_to_job_definition).collect())
 }
 
+pub async fn update_job_definition_config(
+    pool: &SqlitePool,
+    id: &str,
+    config: serde_json::Value,
+) -> Result<()> {
+    let config_json =
+        serde_json::to_string(&config).map_err(|e| OverseerError::Internal(e.to_string()))?;
+    let (sql, values) = Query::update()
+        .table(JobDefinitions::Table)
+        .value(JobDefinitions::Config, config_json)
+        .value(JobDefinitions::UpdatedAt, Expr::cust("datetime('now')"))
+        .and_where(Expr::col(JobDefinitions::Id).eq(id))
+        .build_sqlx(SqliteQueryBuilder);
+    sqlx::query_with(&sql, values)
+        .execute(pool)
+        .await
+        .map_err(OverseerError::Storage)?;
+    Ok(())
+}
+
 pub async fn start_job_run(
     pool: &SqlitePool,
     definition_id: &str,

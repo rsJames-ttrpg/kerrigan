@@ -61,6 +61,31 @@ SRC=`dirname "$PKG"`
 rm -rf "$DEST"
 mkdir -p "$DEST"
 cp -rL "$SRC/." "$DEST/"
+
+# Register in installed_plugins.json
+REGISTRY="${HOME}/.claude/plugins/installed_plugins.json"
+if [ -f "$REGISTRY" ] && command -v python3 >/dev/null 2>&1; then
+    python3 -c "
+import json, sys
+from datetime import datetime, timezone
+with open('$REGISTRY') as f:
+    data = json.load(f)
+now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+key = 'NAME_PLACEHOLDER@local'
+ver = '0.1.0'
+pkg = '$DEST/package.json'
+try:
+    with open(pkg) as pf:
+        ver = json.load(pf).get('version', ver)
+except: pass
+data.setdefault('plugins', {})[key] = [{'scope': 'user', 'installPath': '$DEST', 'version': ver, 'installedAt': now, 'lastUpdated': now}]
+with open('$REGISTRY', 'w') as f:
+    json.dump(data, f, indent=2)
+print('Registered NAME_PLACEHOLDER in installed_plugins.json')
+"
+else
+    echo "warning: could not register plugin (missing python3 or installed_plugins.json)"
+fi
 echo "Installed NAME_PLACEHOLDER plugin to $DEST"
 INSTALL_EOF
 chmod +x $OUT""".replace("NAME_PLACEHOLDER", plugin_name).replace("DEST_PLACEHOLDER", dest_expr),

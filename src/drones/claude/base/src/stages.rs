@@ -162,8 +162,7 @@ alongside the git commit.
 }
 
 fn generate_evolve(_config: &Value) -> String {
-    format!(
-        r#"# Evolution Chamber Analysis
+    r#"# Evolution Chamber Analysis
 
 You are reviewing an Evolution Chamber analysis report. Your task is to create GitHub issues for actionable recommendations.
 
@@ -182,9 +181,15 @@ You are reviewing an Evolution Chamber analysis report. Your task is to create G
 
 Create the issues using `gh issue create`. Report what you created.
 
-{BASE_RULES}
+## Rules
+
+- Focus exclusively on the assigned task
+- Do not modify files outside the scope of the task
+- If you encounter a blocker, document it clearly in your output
+- Do not install system packages or modify system configuration
+- Do NOT create branches or pull requests — this stage only creates GitHub issues
 "#
-    )
+    .to_string()
 }
 
 #[cfg(test)]
@@ -261,9 +266,9 @@ mod tests {
     }
 
     #[test]
-    fn test_all_stages_include_do_not_merge() {
+    fn test_pr_stages_include_do_not_merge() {
         let config = json!({"spec_path": "x", "plan_path": "x", "pr_url": "x"});
-        for stage in ["spec", "plan", "implement", "review", "evolve"] {
+        for stage in ["spec", "plan", "implement", "review"] {
             let content = generate_claude_md(stage, &config).unwrap();
             assert!(
                 content.contains("Do NOT merge the PR"),
@@ -284,6 +289,32 @@ mod tests {
             content.contains("Do NOT create a new branch"),
             "review stage should explicitly say not to create a new branch"
         );
+    }
+
+    #[test]
+    fn test_evolve_stage_does_not_create_pr() {
+        let config = json!({});
+        let content = generate_claude_md("evolve", &config).unwrap();
+        assert!(
+            !content.contains("Create a pull request"),
+            "evolve stage should NOT instruct drone to create a PR"
+        );
+        assert!(
+            !content.contains("Create a new branch"),
+            "evolve stage should NOT instruct drone to create a branch"
+        );
+        assert!(
+            content.contains("Do NOT create branches or pull requests"),
+            "evolve stage should explicitly prohibit PRs"
+        );
+    }
+
+    #[test]
+    fn test_evolve_stage_creates_issues() {
+        let config = json!({});
+        let content = generate_claude_md("evolve", &config).unwrap();
+        assert!(content.contains("gh issue create"));
+        assert!(content.contains("evolution-chamber"));
     }
 
     #[test]

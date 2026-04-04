@@ -43,6 +43,10 @@ impl DroneRunner for ClaudeDrone {
                     .context("failed to write stage-specific CLAUDE.md")?;
                 tracing::info!(stage = %stage, "generated stage-specific CLAUDE.md");
             }
+            // Persist stage so execute() can adjust post-session behavior
+            tokio::fs::write(env.home.join(".stage"), stage)
+                .await
+                .context("failed to write .stage file")?;
         }
 
         // Configure Overseer MCP URL if provided in job config
@@ -237,7 +241,20 @@ impl DroneRunner for ClaudeDrone {
                         };
 
                         let task_text = task.chars().take(200).collect::<String>();
-                        let git_refs = ensure_pr(&env.workspace, &env.home, &task_text).await;
+                        let stage = fs::read_to_string(env.home.join(".stage"))
+                            .await
+                            .ok()
+                            .map(|s| s.trim().to_string());
+                        let is_evolve = stage.as_deref() == Some("evolve");
+                        let mut git_refs = if is_evolve {
+                            tracing::info!("evolve stage — skipping ensure_pr");
+                            collect_git_refs(&env.workspace, &env.home).await
+                        } else {
+                            ensure_pr(&env.workspace, &env.home, &task_text).await
+                        };
+                        if is_evolve {
+                            git_refs.pr_required = false;
+                        }
                         let session_jsonl_gz = collect_session_jsonl(&env.home, &conversation).await;
 
                         return Ok(DroneOutput {
@@ -446,7 +463,11 @@ async fn collect_git_refs(workspace: &Path, home: &Path) -> GitRefs {
         }
     };
 
-    GitRefs { branch, pr_url }
+    GitRefs {
+        branch,
+        pr_url,
+        pr_required: true,
+    }
 }
 
 /// Safety net: ensure uncommitted changes are pushed and a PR exists.
@@ -557,6 +578,7 @@ async fn ensure_pr(workspace: &Path, home: &Path, task: &str) -> GitRefs {
             GitRefs {
                 branch: Some(branch),
                 pr_url: if url.is_empty() { None } else { Some(url) },
+                pr_required: true,
             }
         }
         Ok(output) => {
@@ -565,6 +587,7 @@ async fn ensure_pr(workspace: &Path, home: &Path, task: &str) -> GitRefs {
             GitRefs {
                 branch: Some(branch),
                 pr_url: None,
+                pr_required: true,
             }
         }
         Err(e) => {
@@ -572,6 +595,7 @@ async fn ensure_pr(workspace: &Path, home: &Path, task: &str) -> GitRefs {
             GitRefs {
                 branch: Some(branch),
                 pr_url: None,
+                pr_required: true,
             }
         }
     }

@@ -422,14 +422,17 @@ async fn drain_protocol_messages(
                             }
 
                             // Update job run status — require PR URL for success
-                            let (status, error) =
-                                if output.exit_code == 0 && output.git_refs.pr_url.is_none() {
-                                    ("failed", Some("drone completed but no PR was created"))
-                                } else if output.exit_code == 0 {
-                                    ("completed", None)
-                                } else {
-                                    ("failed", None)
-                                };
+                            // unless the drone signals that no PR is expected (e.g. evolve stage)
+                            let (status, error) = if output.exit_code == 0
+                                && output.git_refs.pr_required
+                                && output.git_refs.pr_url.is_none()
+                            {
+                                ("failed", Some("drone completed but no PR was created"))
+                            } else if output.exit_code == 0 {
+                                ("completed", None)
+                            } else {
+                                ("failed", None)
+                            };
                             let result_value = serde_json::to_value(&output).ok();
                             if let Err(e) = client
                                 .update_run(id, Some(status), result_value, error)
@@ -537,6 +540,7 @@ async fn check_drones(
 
                             let result_value = serde_json::to_value(&output).ok();
                             let (run_status, error) = if output.exit_code == 0
+                                && output.git_refs.pr_required
                                 && output.git_refs.pr_url.is_none()
                             {
                                 (

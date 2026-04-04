@@ -32,6 +32,14 @@ impl JobService {
         self.db.list_job_definitions().await
     }
 
+    pub async fn update_job_definition_config(
+        &self,
+        id: &str,
+        config: serde_json::Value,
+    ) -> Result<()> {
+        self.db.update_job_definition_config(id, config).await
+    }
+
     pub async fn start_job_run(
         &self,
         definition_id: &str,
@@ -252,5 +260,41 @@ mod tests {
 
         assert_eq!(run.status, crate::db::models::JobRunStatus::Pending);
         assert_eq!(run.config_overrides, Some(overrides));
+    }
+
+    #[tokio::test]
+    async fn test_update_job_definition_config() {
+        let sqlite_db = SqliteDatabase::open_in_memory_named("svc_jobs_test_update_config")
+            .await
+            .expect("db opens");
+        let svc = JobService::new(Arc::new(sqlite_db));
+
+        // Create definition without stage (simulates old seed)
+        let def = svc
+            .create_job_definition(
+                "implement-from-plan",
+                "Implement code",
+                serde_json::json!({"drone_type": "claude-drone"}),
+            )
+            .await
+            .expect("create def");
+        assert!(def.config.get("stage").is_none());
+
+        // Update config to add stage field (simulates seed fixup)
+        let new_config = serde_json::json!({"drone_type": "claude-drone", "stage": "implement"});
+        svc.update_job_definition_config(&def.id, new_config.clone())
+            .await
+            .expect("update config");
+
+        let updated = svc
+            .get_job_definition(&def.id)
+            .await
+            .expect("get")
+            .expect("exists");
+        assert_eq!(updated.config, new_config);
+        assert_eq!(
+            updated.config.get("stage").and_then(|v| v.as_str()),
+            Some("implement")
+        );
     }
 }
