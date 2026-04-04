@@ -61,6 +61,158 @@ fn resolve_stage(job: &JobSpec) -> Stage {
 
 Unknown or absent stage values default to Freeform. Any new job definition works immediately without drone changes.
 
+## Environment Health Check
+
+Before any stage runs, the drone performs a mandatory health check that verifies the dev environment is functional. This runs after setup (clone/fetch, toolchain provisioning) but before the agent loop starts. Failures are reported to Queen and the job fails fast — no silent "the agent tried its best without cargo" situations.
+
+### Health Check Sequence
+
+```rust
+pub struct HealthCheck {
+    pub name: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub expected_exit_code: i32,         // usually 0
+    pub timeout_secs: u32,               // default 60
+    pub required: bool,                  // false = warn only, true = fail job
+}
+
+pub struct HealthReport {
+    pub checks: Vec<HealthCheckResult>,
+    pub passed: bool,                    // all required checks passed
+}
+
+pub struct HealthCheckResult {
+    pub name: String,
+    pub passed: bool,
+    pub output: String,                  // stdout/stderr snippet for diagnostics
+    pub duration_ms: u64,
+}
+```
+
+### Default Checks
+
+These run for all stages unless explicitly disabled:
+
+| Check | Command | Required | Purpose |
+|-------|---------|----------|---------|
+| `cargo` | `cargo --version` | yes | Rust toolchain available |
+| `rustc` | `rustc --version` | yes | Compiler accessible |
+| `git` | `git --version` | yes | Git available |
+| `gh` | `gh --version` | yes (if PR stage) | GitHub CLI for PR operations |
+| `build` | `cargo check` | yes (implement, review) | Project compiles before agent starts |
+| `tests` | `cargo test` | yes (implement) | Tests pass before agent modifies code |
+| `creep` | `creep-cli --version` | no | File indexing available (warn if missing) |
+
+The `build` and `tests` checks are critical for the implement stage: if the repo doesn't compile or tests don't pass at the start, the agent needs to know immediately rather than discovering it mid-way through a plan.
+
+### Stage-specific Check Sets
+
+```rust
+fn checks_for_stage(stage: &Stage, config: &ResolvedConfig) -> Vec<HealthCheck> {
+    let mut checks = vec![
+        toolchain_check("cargo"),
+        toolchain_check("rustc"),
+        toolchain_check("git"),
+    ];
+
+    match stage {
+        Stage::Implement => {
+            checks.push(HealthCheck {
+                name: "build".into(),
+                command: "cargo".into(),
+                args: vec!["check".into()],
+                required: true,
+                timeout_secs: 300,
+                ..Default::default()
+            });
+            checks.push(HealthCheck {
+                name: "tests".into(),
+                command: "cargo".into(),
+                args: vec!["test".into()],
+                required: true,
+                timeout_secs: 600,
+                ..Default::default()
+            });
+            checks.push(toolchain_check("gh"));
+        }
+        Stage::Review => {
+            checks.push(HealthCheck {
+                name: "build".into(),
+                command: "cargo".into(),
+                args: vec!["check".into()],
+                required: true,
+                timeout_secs: 300,
+                ..Default::default()
+            });
+            checks.push(toolchain_check("gh"));
+        }
+        Stage::Freeform => {
+            // Freeform gets toolchain checks only — no build/test gate
+            // since we don't know what the task involves
+        }
+        _ => {}
+    }
+
+    // Optional checks (warn only)
+    checks.push(HealthCheck {
+        name: "creep".into(),
+        command: "creep-cli".into(),
+        args: vec!["--version".into()],
+        required: false,
+        ..Default::default()
+    });
+
+    checks
+}
+```
+
+### Custom Checks
+
+Configurable in `drone.toml`:
+
+```toml
+[[health_checks]]
+name = "buck2"
+command = "buck2"
+args = ["--version"]
+required = true
+timeout_secs = 30
+
+[[health_checks]]
+name = "docker"
+command = "docker"
+args = ["info"]
+required = false
+timeout_secs = 10
+```
+
+Custom checks run after the default checks.
+
+### Failure Behavior
+
+- **Required check fails**: job fails immediately with a `HealthCheckFailed` error. The health report is sent to Queen as a `DroneEvent`, including which checks failed and their output. No agent loop runs.
+- **Optional check fails**: warning emitted via `DroneEvent`. The agent loop proceeds, but the warning is injected into the system prompt so the agent knows about degraded capabilities.
+- **Test failure on implement**: the health report is injected into the system prompt as context. The agent knows tests were already failing before it started, and the test failures are listed. This prevents the agent from chasing pre-existing test failures instead of doing its assigned task.
+
+### Toolchain Provisioning
+
+The native drone needs the hermetic toolchain available in its environment. Two approaches depending on deployment:
+
+**Container deployment** (primary): the dev container image includes the hermetic toolchain. The Dockerfile copies the toolchain from the Buck2 build cache or installs it directly. Health checks verify it's working.
+
+**Bare metal / RPi**: the drone's setup phase symlinks or adds to PATH the hermetic toolchain wrappers from `~/.local/bin/` (same ones `buckstrap.sh` installs). The health check verifies these resolve correctly.
+
+In both cases, `drone.toml` can specify additional PATH entries:
+
+```toml
+[environment]
+extra_path = ["/home/kerrigan/.local/bin", "/opt/toolchains/bin"]
+env = { "CARGO_HOME" = "/var/cache/kerrigan/cargo" }
+```
+
+These are set before the health check runs, so the checks validate the actual environment the agent will use.
+
 ### Stage Definitions
 
 **Spec**

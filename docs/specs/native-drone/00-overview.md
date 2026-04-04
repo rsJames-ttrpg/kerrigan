@@ -68,6 +68,7 @@ Replace the CLI wrapper with a native Rust agent runtime that talks directly to 
 6. **Checkpoint, don't pray** — context compaction creates Overseer artifacts with full state snapshots. Fresh context references prior work by artifact ID.
 7. **Single reporting channel** — drone reports status/results to Queen via stdio only. Queen handles fan-out to Overseer. The drone may have direct MCP connections (e.g., Overseer) for tool use during execution, but all lifecycle events flow through Queen.
 8. **Freeform fallback** — unknown job types get a capable agent with full tool access. Structured stages are progressive specialization, not a requirement.
+9. **Fail fast on broken environments** — mandatory health checks before the agent loop starts. Toolchain, build, and tests must pass (for code stages) or the job fails immediately. No more silent degradation from missing tools.
 
 ## Sub-Specs
 
