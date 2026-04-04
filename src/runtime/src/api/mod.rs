@@ -1,4 +1,5 @@
 pub mod error;
+pub mod sse;
 pub mod types;
 
 use std::pin::Pin;
