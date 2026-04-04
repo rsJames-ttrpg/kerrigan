@@ -22,7 +22,7 @@ impl ApiClient for RetryingClient {
         for attempt in 0..=self.max_retries {
             match self.inner.stream(request.clone()).await {
                 Ok(stream) => return Ok(stream),
-                Err(ApiError::RateLimit { retry_after }) => {
+                Err(ApiError::RateLimit { retry_after }) if attempt < self.max_retries => {
                     let delay = retry_after.unwrap_or(Duration::from_secs(2u64.pow(attempt)));
                     tracing::warn!(attempt, ?delay, "rate limited, retrying");
                     tokio::time::sleep(delay).await;
@@ -231,6 +231,34 @@ mod tests {
         let result = handle.await.unwrap();
         assert!(result.is_ok());
         assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_no_sleep_on_final_attempt() {
+        tokio::time::pause();
+
+        let call_count = Arc::new(AtomicU32::new(0));
+        let mock = MockClient {
+            errors: vec![
+                ApiError::RateLimit { retry_after: None },
+                ApiError::RateLimit { retry_after: None },
+                ApiError::RateLimit { retry_after: None },
+            ],
+            call_count: call_count.clone(),
+        };
+
+        let client = RetryingClient::new(Box::new(mock), 2);
+        let handle = tokio::spawn(async move { client.stream(test_request()).await });
+
+        // Advance enough for the retries (2^0=1s, 2^1=2s) but the 3rd attempt
+        // should not sleep — it should return immediately
+        for _ in 0..3 {
+            tokio::time::advance(Duration::from_secs(5)).await;
+        }
+
+        let result = handle.await.unwrap();
+        assert!(matches!(result, Err(ApiError::RateLimit { .. })));
+        assert_eq!(call_count.load(Ordering::SeqCst), 3); // initial + 2 retries
     }
 
     #[tokio::test]
