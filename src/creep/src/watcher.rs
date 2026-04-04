@@ -80,9 +80,7 @@ impl FileWatcher {
                 let events = match res {
                     Ok(events) => events,
                     Err(errs) => {
-                        for e in errs {
-                            tracing::error!("creep: notify watcher error: {e}");
-                        }
+                        tracing::error!("creep: notify watcher error: {e}");
                         return;
                     }
                 };
