@@ -1,0 +1,50 @@
+{
+  "generated_at": "2026-04-04T16:19:36.660605182Z",
+  "scope": "Global",
+  "period_start": "-262143-01-01T00:00:00Z",
+  "period_end": "2026-04-04T16:19:36.660605182Z",
+  "runs_analyzed": 10,
+  "issues_created": [
+    {
+      "number": 35,
+      "title": "High-cost drone runs: stage not classified, no cost guardrails",
+      "url": "https://github.com/rsJames-ttrpg/kerrigan/issues/35",
+      "recommendations_grouped": [
+        "High-cost run: $13.31 (unknown)",
+        "High-cost run: $9.03 (unknown)",
+        "High-cost run: $5.56 (unknown)"
+      ]
+    },
+    {
+      "number": 36,
+      "title": "Skill tool has 100% error rate across all drone runs",
+      "url": "https://github.com/rsJames-ttrpg/kerrigan/issues/36",
+      "recommendations_grouped": [
+        "High error rate for tool `Skill`: 100%"
+      ]
+    },
+    {
+      "number": 37,
+      "title": "Drones excessively retry tools on same targets, wasting context and cost",
+      "url": "https://github.com/rsJames-ttrpg/kerrigan/issues/37",
+      "recommendations_grouped": [
+        "`Read` retried 7 times on same target",
+        "`Read` retried 10 times on same target",
+        "`Read` retried 4 times on same target",
+        "`Read` retried 3 times on same target",
+        "`Bash` retried 6 times on same target",
+        "`Bash` retried 5 times on same target",
+        "`Bash` retried 4 times on same target (x4)",
+        "`Bash` retried 3 times on same target (x3)",
+        "`Edit` retried 3 times on same target (x3)"
+      ]
+    }
+  ],
+  "skipped": [
+    {
+      "title": "`Bash` dominates tool usage at 58%",
+      "severity": "Low",
+      "reason": "Low severity, 58% Bash usage is expected for implement-stage drones that run builds and tests"
+    }
+  ]
+}
