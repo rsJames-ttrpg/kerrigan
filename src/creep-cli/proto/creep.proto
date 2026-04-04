@@ -1,4 +1,3 @@
-// Canonical source: src/creep/proto/creep.proto — keep in sync manually.
 syntax = "proto3";
 package creep.v1;
 
@@ -7,6 +6,8 @@ service FileIndex {
   rpc GetFileMetadata(GetFileMetadataRequest) returns (GetFileMetadataResponse);
   rpc RegisterWorkspace(RegisterWorkspaceRequest) returns (RegisterWorkspaceResponse);
   rpc UnregisterWorkspace(UnregisterWorkspaceRequest) returns (UnregisterWorkspaceResponse);
+  rpc SearchSymbols(SearchSymbolsRequest) returns (SearchSymbolsResponse);
+  rpc ListFileSymbols(ListFileSymbolsRequest) returns (ListFileSymbolsResponse);
 }
 
 message SearchFilesRequest {
@@ -48,3 +49,31 @@ message UnregisterWorkspaceRequest {
 }
 
 message UnregisterWorkspaceResponse {}
+
+message SymbolInfo {
+  string name = 1;
+  string kind = 2;
+  string file = 3;
+  uint32 line = 4;
+  uint32 end_line = 5;
+  optional string parent = 6;
+  optional string signature = 7;
+}
+
+message SearchSymbolsRequest {
+  string query = 1;
+  optional string kind = 2;
+  optional string workspace = 3;
+}
+
+message SearchSymbolsResponse {
+  repeated SymbolInfo symbols = 1;
+}
+
+message ListFileSymbolsRequest {
+  string path = 1;
+}
+
+message ListFileSymbolsResponse {
+  repeated SymbolInfo symbols = 1;
+}

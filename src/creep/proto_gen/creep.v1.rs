@@ -53,6 +53,47 @@ pub struct UnregisterWorkspaceRequest {
 }
 #[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct UnregisterWorkspaceResponse {}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SymbolInfo {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub kind: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub file: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "4")]
+    pub line: u32,
+    #[prost(uint32, tag = "5")]
+    pub end_line: u32,
+    #[prost(string, optional, tag = "6")]
+    pub parent: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "7")]
+    pub signature: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SearchSymbolsRequest {
+    #[prost(string, tag = "1")]
+    pub query: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "2")]
+    pub kind: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "3")]
+    pub workspace: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SearchSymbolsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub symbols: ::prost::alloc::vec::Vec<SymbolInfo>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListFileSymbolsRequest {
+    #[prost(string, tag = "1")]
+    pub path: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListFileSymbolsResponse {
+    #[prost(message, repeated, tag = "1")]
+    pub symbols: ::prost::alloc::vec::Vec<SymbolInfo>,
+}
 /// Generated client implementations.
 pub mod file_index_client {
     #![allow(
@@ -205,6 +246,36 @@ pub mod file_index_client {
                 .insert(GrpcMethod::new("creep.v1.FileIndex", "UnregisterWorkspace"));
             self.inner.unary(req, path, codec).await
         }
+        pub async fn search_symbols(
+            &mut self,
+            request: impl tonic::IntoRequest<super::SearchSymbolsRequest>,
+        ) -> std::result::Result<tonic::Response<super::SearchSymbolsResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/creep.v1.FileIndex/SearchSymbols");
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("creep.v1.FileIndex", "SearchSymbols"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn list_file_symbols(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ListFileSymbolsRequest>,
+        ) -> std::result::Result<tonic::Response<super::ListFileSymbolsResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/creep.v1.FileIndex/ListFileSymbols");
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("creep.v1.FileIndex", "ListFileSymbols"));
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -236,6 +307,14 @@ pub mod file_index_server {
             &self,
             request: tonic::Request<super::UnregisterWorkspaceRequest>,
         ) -> std::result::Result<tonic::Response<super::UnregisterWorkspaceResponse>, tonic::Status>;
+        async fn search_symbols(
+            &self,
+            request: tonic::Request<super::SearchSymbolsRequest>,
+        ) -> std::result::Result<tonic::Response<super::SearchSymbolsResponse>, tonic::Status>;
+        async fn list_file_symbols(
+            &self,
+            request: tonic::Request<super::ListFileSymbolsRequest>,
+        ) -> std::result::Result<tonic::Response<super::ListFileSymbolsResponse>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct FileIndexServer<T> {
@@ -458,6 +537,88 @@ pub mod file_index_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = UnregisterWorkspaceSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/creep.v1.FileIndex/SearchSymbols" => {
+                    #[allow(non_camel_case_types)]
+                    struct SearchSymbolsSvc<T: FileIndex>(pub Arc<T>);
+                    impl<T: FileIndex> tonic::server::UnaryService<super::SearchSymbolsRequest>
+                        for SearchSymbolsSvc<T>
+                    {
+                        type Response = super::SearchSymbolsResponse;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::SearchSymbolsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as FileIndex>::search_symbols(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = SearchSymbolsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/creep.v1.FileIndex/ListFileSymbols" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListFileSymbolsSvc<T: FileIndex>(pub Arc<T>);
+                    impl<T: FileIndex> tonic::server::UnaryService<super::ListFileSymbolsRequest>
+                        for ListFileSymbolsSvc<T>
+                    {
+                        type Response = super::ListFileSymbolsResponse;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListFileSymbolsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as FileIndex>::list_file_symbols(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListFileSymbolsSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

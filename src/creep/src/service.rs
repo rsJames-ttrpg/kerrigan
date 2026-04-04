@@ -5,26 +5,37 @@ use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 
 use crate::index::FileIndex;
+use crate::symbol_index::SymbolIndex;
 use crate::watcher::FileWatcher;
 
 // Import the generated proto types.  `proto` is declared in main.rs.
 use crate::proto::file_index_server::FileIndex as FileIndexTrait;
 use crate::proto::{
     FileMetadata as ProtoFileMetadata, GetFileMetadataRequest, GetFileMetadataResponse,
-    RegisterWorkspaceRequest, RegisterWorkspaceResponse, SearchFilesRequest, SearchFilesResponse,
-    UnregisterWorkspaceRequest, UnregisterWorkspaceResponse,
+    ListFileSymbolsRequest, ListFileSymbolsResponse, RegisterWorkspaceRequest,
+    RegisterWorkspaceResponse, SearchFilesRequest, SearchFilesResponse, SearchSymbolsRequest,
+    SearchSymbolsResponse, SymbolInfo, UnregisterWorkspaceRequest, UnregisterWorkspaceResponse,
 };
 
 /// gRPC service implementation for the `creep.v1.FileIndex` service.
 #[derive(Clone)]
 pub struct FileIndexServiceImpl {
     pub index: FileIndex,
+    pub symbol_index: SymbolIndex,
     pub watcher: Arc<Mutex<FileWatcher>>,
 }
 
 impl FileIndexServiceImpl {
-    pub fn new(index: FileIndex, watcher: Arc<Mutex<FileWatcher>>) -> Self {
-        Self { index, watcher }
+    pub fn new(
+        index: FileIndex,
+        symbol_index: SymbolIndex,
+        watcher: Arc<Mutex<FileWatcher>>,
+    ) -> Self {
+        Self {
+            index,
+            symbol_index,
+            watcher,
+        }
     }
 }
 
@@ -36,6 +47,18 @@ fn to_proto_metadata(m: crate::index::FileMetadata) -> ProtoFileMetadata {
         modified_at: m.modified_at,
         file_type: m.file_type,
         content_hash: m.content_hash,
+    }
+}
+
+fn to_proto_symbol(sym: &crate::parser::Symbol, file: &std::path::Path) -> SymbolInfo {
+    SymbolInfo {
+        name: sym.name.clone(),
+        kind: sym.kind.as_str().to_string(),
+        file: file.to_string_lossy().into_owned(),
+        line: sym.line,
+        end_line: sym.end_line,
+        parent: sym.parent.clone(),
+        signature: sym.signature.clone(),
     }
 }
 
@@ -111,6 +134,15 @@ impl FileIndexTrait for FileIndexServiceImpl {
             }
         };
 
+        // Scan symbols in the new workspace (blocking — tree-sitter is sync).
+        let si = self.symbol_index.clone();
+        let ws = path.clone();
+        match tokio::task::spawn_blocking(move || si.scan_workspace(&ws)).await {
+            Ok(Ok(n)) => tracing::info!("parsed {n} symbols in {}", path.display()),
+            Ok(Err(e)) => tracing::warn!("symbol scan failed for {}: {e}", path.display()),
+            Err(e) => tracing::warn!("symbol scan task panicked for {}: {e}", path.display()),
+        }
+
         tracing::info!(
             "registered workspace {} ({files_indexed} files)",
             path.display()
@@ -135,6 +167,48 @@ impl FileIndexTrait for FileIndexServiceImpl {
         tracing::info!("unregistered workspace {}", path.display());
         Ok(Response::new(UnregisterWorkspaceResponse {}))
     }
+
+    async fn search_symbols(
+        &self,
+        request: Request<SearchSymbolsRequest>,
+    ) -> Result<Response<SearchSymbolsResponse>, Status> {
+        let req = request.into_inner();
+        let kind = req
+            .kind
+            .as_deref()
+            .and_then(|s| s.parse::<crate::parser::SymbolKind>().ok());
+        let workspace = req.workspace.as_deref().map(std::path::PathBuf::from);
+
+        let results = self
+            .symbol_index
+            .search(&req.query, kind.as_ref(), workspace.as_deref())
+            .await;
+
+        let symbols = results
+            .iter()
+            .map(|(sym, path)| to_proto_symbol(sym, path))
+            .collect();
+
+        Ok(Response::new(SearchSymbolsResponse { symbols }))
+    }
+
+    async fn list_file_symbols(
+        &self,
+        request: Request<ListFileSymbolsRequest>,
+    ) -> Result<Response<ListFileSymbolsResponse>, Status> {
+        let req = request.into_inner();
+        let path = std::path::PathBuf::from(&req.path);
+
+        let symbols = self
+            .symbol_index
+            .list_file_symbols(&path)
+            .await
+            .iter()
+            .map(|sym| to_proto_symbol(sym, &path))
+            .collect();
+
+        Ok(Response::new(ListFileSymbolsResponse { symbols }))
+    }
 }
 
 #[cfg(test)]
@@ -147,8 +221,9 @@ mod tests {
 
     fn make_service() -> FileIndexServiceImpl {
         let index = FileIndex::new();
+        let symbol_index = crate::symbol_index::SymbolIndex::new();
         let (watcher, _rx) = FileWatcher::new(index.clone());
-        FileIndexServiceImpl::new(index, watcher)
+        FileIndexServiceImpl::new(index, symbol_index, watcher)
     }
 
     #[tokio::test]

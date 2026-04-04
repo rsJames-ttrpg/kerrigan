@@ -13,11 +13,15 @@ Use `creep-cli` to search the pre-indexed file tree. The drone attempts to regis
 - Checking whether a file exists and its type before reading it
 - Getting a quick overview of what files exist in a directory pattern
 - Comparing content hashes to detect changes
+- Finding function/struct/trait definitions by name (faster and more precise than Grep)
+- Getting a structural overview of a file (all functions, structs, traits defined in it)
+- Understanding what's implemented on a type (search for impl blocks)
 
 ## When NOT to Use
 
 - Searching file *contents* (use Grep for that)
 - Reading file contents (use Read for that)
+- Finding call sites or references (use Grep — symbol search finds definitions only)
 - If `creep-cli` fails with a connection error, fall back to Glob/Grep — Creep may not be running
 
 ## Commands
@@ -40,6 +44,20 @@ creep-cli metadata /absolute/path/to/file.rs
 ```
 
 Output: path, size, modified timestamp, file type, BLAKE3 content hash.
+
+### Search for symbols by name
+
+```bash
+creep-cli symbols "process"                         # find symbols containing "process"
+creep-cli symbols "Config" --kind struct             # find structs named "Config"
+creep-cli symbols --file /path/to/file.rs            # list all symbols in a file
+creep-cli symbols --file /path/to/file.rs --json     # JSON output for parsing
+creep-cli symbols "handler" --workspace /path/repo   # search within workspace
+```
+
+Symbol kinds: function, struct, enum, trait, impl, const, static, type_alias, module, macro.
+
+Output includes: name, kind, file path, line number, enclosing scope (parent), and signature (for functions).
 
 ### Register / unregister workspaces
 

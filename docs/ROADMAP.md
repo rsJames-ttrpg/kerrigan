@@ -174,7 +174,11 @@ Everything else runs autonomously as drone work.
 ### Phase 5: Scale and Polish
 
 **11. Creep v2** — tree-sitter AST parsing, symbol index
-**12. Creep v3** — LSP management (warm language servers across sessions)
+    - 11a: Symbol Index — find definitions by name, list symbols in a file (tree-sitter, Rust-first)
+    - 11b: Context Extraction — "what function am I in? what's in scope?" (reparse on demand, near-zero memory)
+    - 11c: Relationship Graph — callers, callees, import/dependent graphs (name-based, not type-resolved)
+    - 11d: Additional Languages — add TS and Python grammars
+**12. Creep v3** — LSP Proxy — full IDE intelligence via warm LSP servers (opt-in, heavy on resources)
 **13. Additional drone types** — Gemini CLI, local Pi inference for triage
 **14. Dashboard** — operator visibility (jobs, drones, hatchery status)
 **15. Deployment** — k8s manifests for Overseer, container/systemd for Hatchery

@@ -22,16 +22,6 @@ jobs:
         with:
           fetch-depth: 2
 
-      # - name: Cache materializer state
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: |
-      #       buck-out/v2/cache/
-      #       buck-out/v2/tmp/
-      #     key: buck-out-state-${{ runner.os }}-${{ github.sha }}
-      #     restore-keys: |
-      #       buck-out-state-${{ runner.os }}-
-
       - name: Install Buck2
         run: |
           curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_RELEASE}/buck2-x86_64-unknown-linux-gnu.zst" \
