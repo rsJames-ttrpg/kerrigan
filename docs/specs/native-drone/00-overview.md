@@ -80,6 +80,37 @@ Replace the CLI wrapper with a native Rust agent runtime that talks directly to 
 | [05-drone-config-and-prompts](05-drone-config-and-prompts.md) | drone.toml, config hierarchy, prompt construction |
 | [06-drone-queen-integration](06-drone-queen-integration.md) | Event bridge, extended protocol, health/liveness |
 
+## Reference Implementation
+
+The [Claw Code](https://github.com/rsJames-ttrpg/claudecode) project is a Rust reimplementation of Claude Code with 8 crates (`claw-cli`, `runtime`, `tools`, `api`, `commands`, `plugins`, `lsp`, `compat-harness`). Key patterns to adopt directly:
+
+| Area | Claw approach | How we use it |
+|------|--------------|---------------|
+| **Conversation loop** | `ConversationRuntime<C: ApiClient, T: ToolExecutor>` — generic over API client and tool executor traits. Synchronous core, async only at API/MCP boundaries. | Adopt the trait-based generics. Our `ConversationLoop` follows the same pattern. |
+| **SSE streaming** | Custom `SseParser` with frame-level parsing, maps provider-specific events to shared `AssistantEvent` enum. | Use as reference for our `StreamEvent` translation layer in both Anthropic and OpenAI clients. |
+| **Tool dispatch** | Flat `execute_tool(name, input)` match dispatch. Each tool deserializes input, calls handler, serializes output. No trait-per-tool. | Same pattern for built-in tools. We add the `Tool` trait for external/MCP tools but built-ins can use direct dispatch. |
+| **Session model** | `Session { messages: Vec<ConversationMessage> }` with `ContentBlock` enum (Text, ToolUse, ToolResult). Custom JSON serialization. | Adopt the content block model. Use serde rather than custom JSON. |
+| **Compaction** | `compact_session()` — strip old messages, preserve recent N, generate summary, inject as system message. | Base for our Summarize strategy. Checkpoint strategy extends this with artifact storage. |
+| **Permission policy** | `PermissionPolicy { active_mode, tool_requirements }` with per-tool override map. `PermissionPrompter` trait for interactive consent. | Adopt the policy model. Drop the prompter (drones are non-interactive). |
+| **System prompt** | `SystemPromptBuilder` with sections: identity, environment, instructions, project context (CLAUDE.md discovery), git status, LSP diagnostics. Priority-based. | Adopt the sectioned builder. Replace LSP diagnostics with task state. Add priority-based compaction. |
+| **MCP client** | Full JSON-RPC 2.0 over stdio. `McpServerManager` for lifecycle, tool discovery via `tools/list`, namespaced tool names `mcp__{server}__{tool}`. | Adopt the protocol implementation and namespacing. Add HTTP transport. |
+| **Sandbox** | Linux namespace-based: filesystem isolation (workspace-only), network isolation, PID namespace. Container detection for fallback. | Adopt the namespace approach for bash tool sandboxing. |
+| **Hooks** | `HookRunner` — pre/post tool use shell commands. JSON payload on stdin, exit code 2 = deny. | Consider for future extensibility but not in initial scope. |
+| **Plugin tools** | External commands with JSON stdin/stdout protocol. `PluginToolManifest` for schema. | Directly informs our external binary tool design. Same protocol. |
+
+The Claw codebase is the primary reference for implementation details. When building each subsystem, consult the corresponding Claw crate for patterns, edge cases, and tested approaches.
+
+**Key files to reference:**
+- `rust/crates/runtime/src/conversation.rs` — agent loop implementation
+- `rust/crates/runtime/src/compact.rs` — compaction logic
+- `rust/crates/runtime/src/prompt.rs` — system prompt builder
+- `rust/crates/runtime/src/permissions.rs` — permission model
+- `rust/crates/runtime/src/mcp_stdio.rs` — MCP JSON-RPC client
+- `rust/crates/runtime/src/sandbox.rs` — Linux namespace sandboxing
+- `rust/crates/api/src/` — SSE parsing, provider abstraction
+- `rust/crates/tools/src/lib.rs` — tool registry and dispatch
+- `rust/crates/plugins/src/lib.rs` — external tool protocol
+
 ## Migration Path
 
 The new drone lives at `src/drones/native/` alongside the existing `src/drones/claude/base/`. Both implement `DroneRunner`. Queen's supervisor spawns whichever binary the job definition specifies. This allows:
