@@ -1,0 +1,24 @@
+RUNTIME_SRCS = glob(["src/**/*.rs"])
+
+RUNTIME_DEPS = [
+    "//third-party:tokio",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:async-trait",
+    "//third-party:anyhow",
+    "//third-party:tracing",
+]
+
+rust_library(
+    name = "runtime",
+    srcs = RUNTIME_SRCS,
+    deps = RUNTIME_DEPS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "runtime-test",
+    srcs = RUNTIME_SRCS,
+    deps = RUNTIME_DEPS,
+    visibility = ["PUBLIC"],
+)
