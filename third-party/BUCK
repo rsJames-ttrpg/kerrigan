@@ -1015,6 +1015,12 @@ http_archive(
     visibility = [],
 )
 
+alias(
+    name = "bytes",
+    actual = ":bytes-1",
+    visibility = ["PUBLIC"],
+)
+
 cargo.rust_library(
     name = "bytes-1",
     srcs = [":bytes-1.11.1.crate"],
