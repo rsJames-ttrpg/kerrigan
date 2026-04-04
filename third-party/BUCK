@@ -6270,6 +6270,53 @@ http_archive(
     visibility = [],
 )
 
+alias(
+    name = "notify-debouncer-mini",
+    actual = ":notify-debouncer-mini-0.7",
+    visibility = ["PUBLIC"],
+)
+
+cargo.rust_library(
+    name = "notify-debouncer-mini-0.7",
+    srcs = [":notify-debouncer-mini-0.7.0.crate"],
+    crate = "notify_debouncer_mini",
+    crate_root = "notify-debouncer-mini-0.7.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "notify_debouncer_mini",
+        "CARGO_CRATE_NAME": "notify_debouncer_mini",
+        "CARGO_MANIFEST_DIR": "notify-debouncer-mini-0.7.0.crate",
+        "CARGO_PKG_AUTHORS": "Aron Heinecke <Ox0p54r36@t-online.de>",
+        "CARGO_PKG_DESCRIPTION": "notify mini debouncer for events",
+        "CARGO_PKG_NAME": "notify-debouncer-mini",
+        "CARGO_PKG_REPOSITORY": "https://github.com/notify-rs/notify.git",
+        "CARGO_PKG_VERSION": "0.7.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "7",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "default",
+        "macos_fsevent",
+    ],
+    visibility = [],
+    deps = [
+        ":log-0.4",
+        ":notify-8",
+        ":notify-types-2",
+        ":tempfile-3",
+    ],
+)
+
+http_archive(
+    name = "notify-debouncer-mini-0.7.0.crate",
+    sha256 = "17849edfaabd9a5fef1c606d99cfc615a8e99f7ac4366406d86c7942a3184cf2",
+    strip_prefix = "notify-debouncer-mini-0.7.0",
+    urls = ["https://static.crates.io/crates/notify-debouncer-mini/0.7.0/download"],
+    visibility = [],
+)
+
 cargo.rust_library(
     name = "notify-types-2",
     srcs = [":notify-types-2.1.0.crate"],
@@ -6299,48 +6346,6 @@ http_archive(
     sha256 = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a",
     strip_prefix = "notify-types-2.1.0",
     urls = ["https://static.crates.io/crates/notify-types/2.1.0/download"],
-    visibility = [],
-)
-
-alias(
-    name = "notify-debouncer-mini",
-    actual = ":notify-debouncer-mini-0.7",
-    visibility = ["PUBLIC"],
-)
-
-cargo.rust_library(
-    name = "notify-debouncer-mini-0.7",
-    srcs = [":notify-debouncer-mini-0.7.0.crate"],
-    crate = "notify_debouncer_mini",
-    crate_root = "notify-debouncer-mini-0.7.0.crate/src/lib.rs",
-    edition = "2021",
-    env = {
-        "CARGO_BIN_NAME": "notify_debouncer_mini",
-        "CARGO_CRATE_NAME": "notify_debouncer_mini",
-        "CARGO_MANIFEST_DIR": "notify-debouncer-mini-0.7.0.crate",
-        "CARGO_PKG_AUTHORS": "",
-        "CARGO_PKG_DESCRIPTION": "notify mini debouncer",
-        "CARGO_PKG_NAME": "notify-debouncer-mini",
-        "CARGO_PKG_REPOSITORY": "https://github.com/notify-rs/notify.git",
-        "CARGO_PKG_VERSION": "0.7.0",
-        "CARGO_PKG_VERSION_MAJOR": "0",
-        "CARGO_PKG_VERSION_MINOR": "7",
-        "CARGO_PKG_VERSION_PATCH": "0",
-        "CARGO_PKG_VERSION_PRE": "",
-    },
-    visibility = [],
-    deps = [
-        ":log-0.4",
-        ":notify-8",
-        ":notify-types-2",
-    ],
-)
-
-http_archive(
-    name = "notify-debouncer-mini-0.7.0.crate",
-    sha256 = "17849edfaabd9a5fef1c606d99cfc615a8e99f7ac4366406d86c7942a3184cf2",
-    strip_prefix = "notify-debouncer-mini-0.7.0",
-    urls = ["https://static.crates.io/crates/notify-debouncer-mini/0.7.0/download"],
     visibility = [],
 )
 
