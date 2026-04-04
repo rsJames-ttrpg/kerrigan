@@ -1,8 +1,10 @@
 KERRIGAN_SRCS = glob(["src/**/*.rs"])
 
 KERRIGAN_DEPS = [
+    "//src/evolution:evolution",
     "//src/nydus:nydus",
     "//third-party:anyhow",
+    "//third-party:chrono",
     "//third-party:clap",
     "//third-party:clap_complete",
     "//third-party:flate2",

@@ -104,6 +104,21 @@ enum Command {
         #[command(subcommand)]
         action: CredsAction,
     },
+    /// Run evolution analysis on demand
+    Evolve {
+        /// Only analyze artifacts after this time (RFC 3339)
+        #[arg(long)]
+        since: Option<String>,
+        /// Minimum sessions required for analysis
+        #[arg(long, default_value = "5")]
+        min_sessions: usize,
+        /// Also submit an evolve-from-analysis job
+        #[arg(long)]
+        submit: bool,
+        /// Output raw JSON instead of formatted report
+        #[arg(long)]
+        json: bool,
+    },
     /// Generate shell completions
     Completions {
         /// Shell to generate for
@@ -223,6 +238,12 @@ async fn async_main() -> Result<()> {
             CredsAction::List => cmd_creds_list(&client).await,
             CredsAction::Rm { id } => cmd_creds_rm(&client, &id).await,
         },
+        Command::Evolve {
+            since,
+            min_sessions,
+            submit,
+            json,
+        } => cmd_evolve(&client, since.as_deref(), min_sessions, submit, json).await,
         Command::Completions { shell } => {
             clap_complete::generate(
                 shell,
@@ -489,5 +510,92 @@ async fn cmd_creds_rm(client: &NydusClient, id: &str) -> Result<()> {
         }
         n => anyhow::bail!("ambiguous prefix '{id}' matches {n} credentials"),
     }
+    Ok(())
+}
+
+async fn cmd_evolve(
+    client: &NydusClient,
+    since: Option<&str>,
+    min_sessions: usize,
+    submit: bool,
+    json: bool,
+) -> Result<()> {
+    use chrono::{DateTime, Utc};
+    use evolution::EvolutionChamber;
+    use evolution::report::AnalysisScope;
+
+    let since: DateTime<Utc> = match since {
+        Some(s) => s
+            .parse()
+            .map_err(|e| anyhow::anyhow!("invalid --since timestamp: {e}"))?,
+        None => DateTime::<Utc>::MIN_UTC,
+    };
+
+    eprintln!("Running evolution analysis...");
+    let chamber = EvolutionChamber::new(client.clone());
+    let report = chamber
+        .analyze(AnalysisScope::Global, since, min_sessions)
+        .await?;
+
+    let report = match report {
+        Some(r) => r,
+        None => {
+            eprintln!(
+                "Insufficient data for analysis (need at least {} conversation artifacts).",
+                min_sessions,
+            );
+            return Ok(());
+        }
+    };
+
+    // Display
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        display::print_evolution_report(&report);
+    }
+
+    // Store artifact
+    let report_json = serde_json::to_string_pretty(&report)?;
+    let artifact_name = format!(
+        "evolution-report-{}",
+        chrono::Utc::now().format("%Y%m%d-%H%M%S"),
+    );
+    let artifact = client
+        .store_artifact(
+            &artifact_name,
+            "application/json",
+            report_json.as_bytes(),
+            None,
+            Some("evolution-report"),
+        )
+        .await?;
+    eprintln!("\nReport stored: {}", display::short_id(&artifact.id));
+
+    // Optionally submit evolve job
+    if submit {
+        let definitions = client.list_definitions().await?;
+        let def = definitions
+            .iter()
+            .find(|d| d.name == "evolve-from-analysis")
+            .ok_or_else(|| anyhow::anyhow!("job definition 'evolve-from-analysis' not found"))?;
+
+        let task = format!(
+            "Analyze the following Evolution Chamber report and create GitHub issues \
+             for each high/medium severity recommendation.\n\n\
+             Label issues with `evolution-chamber`.\n\n```json\n{}\n```",
+            report_json,
+        );
+        let config_overrides = serde_json::json!({ "task": task, "stage": "evolve" });
+        let run = client
+            .start_run(&def.id, "operator", None, Some(config_overrides))
+            .await?;
+        eprintln!(
+            "Submitted evolve job: {} -- watch with: kerrigan watch {}",
+            display::short_id(&run.id),
+            display::short_id(&run.id),
+        );
+    }
+
     Ok(())
 }

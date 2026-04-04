@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 nydus = { path = "../nydus" }
+evolution = { path = "../evolution" }
+chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

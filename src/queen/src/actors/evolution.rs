@@ -172,7 +172,8 @@ async fn resolve_definition_id(client: &NydusClient, name: &str) -> Option<Strin
 }
 
 /// Fetch the most recent evolution-report artifact to recover the last analysis timestamp.
-/// Falls back to `Utc::now()` if no previous report exists.
+/// Falls back to the minimum DateTime if no previous report exists, so the first analysis
+/// catches all historical artifacts.
 async fn recover_last_analysis_time(client: &NydusClient) -> DateTime<Utc> {
     match client.list_artifacts(None, Some(ARTIFACT_TYPE), None).await {
         Ok(artifacts) => {
@@ -189,12 +190,12 @@ async fn recover_last_analysis_time(client: &NydusClient) -> DateTime<Utc> {
                 latest.1
             } else {
                 tracing::info!("no previous evolution reports found, starting fresh");
-                Utc::now()
+                DateTime::<Utc>::MIN_UTC
             }
         }
         Err(e) => {
             tracing::warn!(error = %e, "failed to fetch evolution report history, starting fresh");
-            Utc::now()
+            DateTime::<Utc>::MIN_UTC
         }
     }
 }
