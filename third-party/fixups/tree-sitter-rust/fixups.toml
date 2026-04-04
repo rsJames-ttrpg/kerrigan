@@ -1,2 +1,2 @@
 [buildscript]
-run = true
+run = { rustc_link_lib = true, rustc_link_search = true }

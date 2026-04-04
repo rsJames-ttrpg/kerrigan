@@ -12487,6 +12487,8 @@ buildscript_run(
         "default",
         "std",
     ],
+    rustc_link_lib = True,
+    rustc_link_search = True,
     version = "0.26.8",
 )
 
@@ -12560,6 +12562,8 @@ buildscript_run(
         "CARGO_PKG_VERSION_PATCH": "7",
         "CARGO_PKG_VERSION_PRE": "",
     },
+    rustc_link_lib = True,
+    rustc_link_search = True,
     version = "0.1.7",
 )
 
@@ -12640,6 +12644,8 @@ buildscript_run(
         "CARGO_PKG_VERSION_PATCH": "2",
         "CARGO_PKG_VERSION_PRE": "",
     },
+    rustc_link_lib = True,
+    rustc_link_search = True,
     version = "0.24.2",
 )
 
