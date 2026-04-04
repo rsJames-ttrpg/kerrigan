@@ -20,7 +20,9 @@ impl SseParser {
 
     /// Feed bytes into the parser, returning any complete events.
     pub fn feed(&mut self, chunk: &str) -> Vec<SseEvent> {
-        self.buffer.push_str(chunk);
+        // Normalize \r\n and bare \r to \n for consistent parsing
+        let normalized = chunk.replace("\r\n", "\n").replace('\r', "\n");
+        self.buffer.push_str(&normalized);
         let mut events = Vec::new();
         while let Some(event) = self.try_parse_event() {
             events.push(event);
@@ -115,6 +117,23 @@ mod tests {
         let events = parser.feed("data:\n\n");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].data, "");
+    }
+
+    #[test]
+    fn test_crlf_line_endings() {
+        let mut parser = SseParser::new();
+        let events = parser.feed("event: message\r\ndata: hello\r\n\r\n");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type.as_deref(), Some("message"));
+        assert_eq!(events[0].data, "hello");
+    }
+
+    #[test]
+    fn test_bare_cr_line_endings() {
+        let mut parser = SseParser::new();
+        let events = parser.feed("data: world\r\r");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].data, "world");
     }
 
     #[test]
