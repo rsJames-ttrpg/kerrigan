@@ -183,6 +183,7 @@ Everything else runs autonomously as drone work.
 **14. Dashboard** — operator visibility (jobs, drones, hatchery status)
 **15. Deployment** — k8s manifests for Overseer, container/systemd for Hatchery
 **16. Evolution Chamber v2** — automated improvement implementation (not just problem specs)
+**17. Multi-repo evolution** — derive target repos from completed job runs instead of single configured `repo_url`; evolution recommendations target the appropriate repo per finding
 
 ## Critical Path to Dogfooding
 

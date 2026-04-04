@@ -174,6 +174,8 @@ pub struct EvolutionConfig {
     pub time_interval: String,
     #[serde(default = "default_evolution_definition")]
     pub drone_definition: String,
+    /// Target repo for evolution drone issue creation.
+    pub repo_url: Option<String>,
 }
 
 impl Default for EvolutionConfig {
@@ -184,6 +186,7 @@ impl Default for EvolutionConfig {
             run_interval: default_run_interval(),
             time_interval: default_time_interval(),
             drone_definition: default_evolution_definition(),
+            repo_url: None,
         }
     }
 }

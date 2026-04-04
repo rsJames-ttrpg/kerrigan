@@ -26,3 +26,4 @@ min_sessions = 5
 run_interval = 3
 time_interval = "1h"
 # drone_definition = "evolve-from-analysis"  # job definition to submit with report
+repo_url = "https://github.com/rsJames-ttrpg/kerrigan.git"

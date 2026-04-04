@@ -135,7 +135,11 @@ pub async fn run(client: NydusClient, config: EvolutionConfig, token: Cancellati
                      Label issues with `evolution-chamber`.\n\n```json\n{}\n```",
                     report_json
                 );
-                let config_overrides = serde_json::json!({ "task": task, "stage": "evolve" });
+                let mut overrides = serde_json::json!({ "task": task, "stage": "evolve" });
+                if let Some(ref repo_url) = config.repo_url {
+                    overrides["repo_url"] = serde_json::Value::String(repo_url.clone());
+                }
+                let config_overrides = overrides;
                 if let Err(e) = client
                     .start_run(
                         &definition_id,
