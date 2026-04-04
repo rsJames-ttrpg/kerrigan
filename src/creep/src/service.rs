@@ -134,6 +134,15 @@ impl FileIndexTrait for FileIndexServiceImpl {
             }
         };
 
+        // Scan symbols in the new workspace (blocking — tree-sitter is sync).
+        let si = self.symbol_index.clone();
+        let ws = path.clone();
+        match tokio::task::spawn_blocking(move || si.scan_workspace(&ws)).await {
+            Ok(Ok(n)) => tracing::info!("parsed {n} symbols in {}", path.display()),
+            Ok(Err(e)) => tracing::warn!("symbol scan failed for {}: {e}", path.display()),
+            Err(e) => tracing::warn!("symbol scan task panicked for {}: {e}", path.display()),
+        }
+
         tracing::info!(
             "registered workspace {} ({files_indexed} files)",
             path.display()
@@ -167,7 +176,7 @@ impl FileIndexTrait for FileIndexServiceImpl {
         let kind = req
             .kind
             .as_deref()
-            .and_then(crate::parser::SymbolKind::from_str);
+            .and_then(|s| s.parse::<crate::parser::SymbolKind>().ok());
         let workspace = req.workspace.as_deref().map(std::path::PathBuf::from);
 
         let results = self

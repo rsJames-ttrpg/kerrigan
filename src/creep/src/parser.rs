@@ -28,20 +28,24 @@ impl SymbolKind {
             Self::Macro => "macro",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for SymbolKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "function" => Some(Self::Function),
-            "struct" => Some(Self::Struct),
-            "enum" => Some(Self::Enum),
-            "trait" => Some(Self::Trait),
-            "impl" => Some(Self::Impl),
-            "const" => Some(Self::Const),
-            "static" => Some(Self::Static),
-            "type_alias" => Some(Self::TypeAlias),
-            "module" => Some(Self::Module),
-            "macro" => Some(Self::Macro),
-            _ => None,
+            "function" => Ok(Self::Function),
+            "struct" => Ok(Self::Struct),
+            "enum" => Ok(Self::Enum),
+            "trait" => Ok(Self::Trait),
+            "impl" => Ok(Self::Impl),
+            "const" => Ok(Self::Const),
+            "static" => Ok(Self::Static),
+            "type_alias" => Ok(Self::TypeAlias),
+            "module" => Ok(Self::Module),
+            "macro" => Ok(Self::Macro),
+            _ => Err(format!("unknown symbol kind: {s}")),
         }
     }
 }

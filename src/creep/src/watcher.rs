@@ -165,9 +165,14 @@ pub async fn process_events(
                     }
                     let si = symbol_index.clone();
                     let p2 = p.clone();
-                    if let Err(e) = tokio::task::spawn_blocking(move || si.reparse_file(&p2)).await
-                    {
-                        tracing::warn!("symbol reparse failed for {}: {e}", p.display());
+                    match tokio::task::spawn_blocking(move || si.reparse_file(&p2)).await {
+                        Ok(Err(e)) => {
+                            tracing::warn!("symbol reparse failed for {}: {e}", p.display())
+                        }
+                        Err(e) => {
+                            tracing::warn!("symbol reparse task panicked for {}: {e}", p.display())
+                        }
+                        _ => {}
                     }
                 }
             }
