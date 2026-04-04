@@ -10,7 +10,12 @@ use proto::file_index_client::FileIndexClient;
 #[command(name = "creep-cli", about = "CLI client for Creep file index")]
 struct Cli {
     /// Creep server address
-    #[arg(long, default_value = "http://localhost:9090", global = true)]
+    #[arg(
+        long,
+        default_value = "http://localhost:9090",
+        global = true,
+        env = "CREEP_ADDR"
+    )]
     addr: String,
 
     /// Output as JSON

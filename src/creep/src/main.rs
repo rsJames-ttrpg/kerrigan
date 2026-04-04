@@ -38,7 +38,11 @@ async fn main() -> anyhow::Result<()> {
         toml::from_str("")?
     };
 
-    let addr: SocketAddr = format!("0.0.0.0:{}", config.creep.grpc_port).parse()?;
+    let port = std::env::var("CREEP_PORT")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok())
+        .unwrap_or(config.creep.grpc_port);
+    let addr: SocketAddr = format!("0.0.0.0:{port}").parse()?;
     tracing::info!("creep starting on {addr}");
 
     // Create FileIndex and SymbolIndex.

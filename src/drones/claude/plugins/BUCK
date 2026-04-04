@@ -1,3 +1,5 @@
+load("//rules:install.bzl", "install_plugin")
+
 filegroup(
     name = "creep-discovery",
     srcs = glob(["creep-discovery/**"]) + [
@@ -7,9 +9,7 @@ filegroup(
     visibility = ["PUBLIC"],
 )
 
-sh_binary(
+install_plugin(
     name = "install",
-    main = "install.sh",
-    resources = [":creep-discovery"],
-    visibility = ["PUBLIC"],
+    plugin = ":creep-discovery",
 )

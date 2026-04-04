@@ -1,3 +1,5 @@
+load("//rules:install.bzl", "install_binary")
+
 KERRIGAN_SRCS = glob(["src/**/*.rs"])
 
 KERRIGAN_DEPS = [
@@ -22,9 +24,7 @@ rust_binary(
     visibility = ["PUBLIC"],
 )
 
-sh_binary(
+install_binary(
     name = "install",
-    main = "install.sh",
-    resources = [":kerrigan"],
-    visibility = ["PUBLIC"],
+    binary = ":kerrigan",
 )

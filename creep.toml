@@ -1,0 +1,5 @@
+[creep]
+grpc_port = 9091
+workspaces = ["/home/jackm/repos/kerrigan"]
+symbol_index = true
+languages = ["rust"]

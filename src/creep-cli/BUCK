@@ -1,3 +1,5 @@
+load("//rules:install.bzl", "install_binary")
+
 CREEP_CLI_SRCS = glob(["src/**/*.rs", "proto/**/*.proto", "proto_gen/**/*.rs", "build.rs"])
 
 CREEP_CLI_DEPS = [
@@ -20,6 +22,11 @@ rust_binary(
         "OUT_DIR": "proto_gen",
     },
     visibility = ["PUBLIC"],
+)
+
+install_binary(
+    name = "install",
+    binary = ":creep-cli",
 )
 
 rust_test(
