@@ -111,6 +111,10 @@ The Claw codebase is the primary reference for implementation details. When buil
 - `rust/crates/tools/src/lib.rs` — tool registry and dispatch
 - `rust/crates/plugins/src/lib.rs` — external tool protocol
 
+## Related Specs
+
+- [Creep LSP Integration](../2026-04-04-creep-lsp-integration-design.md) — moves LSP server management (diagnostics, go-to-definition, find-references) into Creep as a persistent sidecar service. Drones consume it via creep-cli tools and system prompt enrichment.
+
 ## Migration Path
 
 The new drone lives at `src/drones/native/` alongside the existing `src/drones/claude/base/`. Both implement `DroneRunner`. Queen's supervisor spawns whichever binary the job definition specifies. This allows:
