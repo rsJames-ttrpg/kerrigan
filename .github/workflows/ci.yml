@@ -22,16 +22,15 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Cache materializer state
-        uses: actions/cache@v4
-        with:
-          path: |
-            buck-out/v2/cache/
-            buck-out/v2/tmp/
-            buck-out/v2/materializer_state
-          key: buck-out-state-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            buck-out-state-${{ runner.os }}-
+      # - name: Cache materializer state
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: |
+      #       buck-out/v2/cache/
+      #       buck-out/v2/tmp/
+      #     key: buck-out-state-${{ runner.os }}-${{ github.sha }}
+      #     restore-keys: |
+      #       buck-out-state-${{ runner.os }}-
 
       - name: Install Buck2
         run: |
