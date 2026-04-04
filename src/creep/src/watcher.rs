@@ -79,8 +79,8 @@ impl FileWatcher {
             move |res: notify_debouncer_mini::DebounceEventResult| {
                 let events = match res {
                     Ok(events) => events,
-                    Err(errs) => {
-                        tracing::error!("creep: notify watcher error: {e}");
+                    Err(err) => {
+                        tracing::error!("creep: notify watcher error: {err}");
                         return;
                     }
                 };
