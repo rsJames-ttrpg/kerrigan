@@ -87,6 +87,7 @@ impl FileWatcher {
                     }
                 };
                 for event in events {
+                    // known race condition and limit of debounce
                     let watch_event = if event.path.exists() {
                         WatchEvent::Modified(event.path)
                     } else {
@@ -96,7 +97,7 @@ impl FileWatcher {
                         // Rate-limit overflow warnings to avoid log spam.
                         static LAST_WARN: std::sync::Mutex<Option<Instant>> =
                             std::sync::Mutex::new(None);
-                        let mut last = LAST_WARN.lock().unwrap();
+                        let mut last = LAST_WARN.lock().unwrap_or_else(|e| e.into_inner());
                         if last.is_none_or(|t| t.elapsed() > Duration::from_secs(10)) {
                             tracing::warn!("creep: watcher event dropped: {e}");
                             *last = Some(Instant::now());
