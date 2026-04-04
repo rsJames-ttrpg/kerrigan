@@ -517,7 +517,7 @@ pub fn print_evolution_report(report: &evolution::report::AnalysisReport) {
             println!(
                 "  Error rate: {} {:.0}% ({}/{})",
                 tool,
-                rate * 100.0,
+                *rate * 100.0,
                 errors,
                 total
             );
