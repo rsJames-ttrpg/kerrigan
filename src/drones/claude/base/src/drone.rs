@@ -115,6 +115,14 @@ impl DroneRunner for ClaudeDrone {
         }
         let extra_env = environment::read_env_vars(&env.home).await?;
 
+        // Prepend $HOME/.local/bin to PATH so hermetic toolchain wrappers
+        // (installed by the SessionStart hook) are discoverable.
+        let local_bin = env.home.join(".local/bin");
+        let path = match std::env::var("PATH") {
+            Ok(existing) => format!("{}:{existing}", local_bin.display()),
+            Err(_) => local_bin.display().to_string(),
+        };
+
         let mut cmd = Command::new(&claude_bin);
         cmd.arg("--print")
             .arg("--output-format")
@@ -125,6 +133,7 @@ impl DroneRunner for ClaudeDrone {
             .arg("--append-system-prompt-file")
             .arg(&claude_md_path)
             .env("HOME", &env.home)
+            .env("PATH", &path)
             .current_dir(&env.workspace)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
