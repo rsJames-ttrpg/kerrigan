@@ -1,11 +1,10 @@
 use std::collections::HashMap;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
-use super::error::ApiError;
+use super::error::{ApiError, parse_error_response};
 use super::sse::SseParser;
 use super::types::*;
 use super::{ApiClient, EventStream};
@@ -155,6 +154,8 @@ struct AnthropicSseEvent {
     delta: Option<serde_json::Value>,
     #[serde(default)]
     usage: Option<AnthropicUsage>,
+    #[serde(default)]
+    error: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -296,9 +297,9 @@ impl AnthropicEventTranslator {
                 // ping, error, or unknown event types — ignore
                 if let Some("error") = event_type {
                     let error_msg = parsed
-                        .delta
+                        .error
                         .as_ref()
-                        .and_then(|d| d.get("message"))
+                        .and_then(|e| e.get("message"))
                         .and_then(|m| m.as_str())
                         .unwrap_or("unknown error")
                         .to_string();
@@ -311,30 +312,6 @@ impl AnthropicEventTranslator {
                 }
             }
         }
-    }
-}
-
-/// Parse an HTTP error response into an ApiError.
-pub(crate) fn parse_error_response(status: u16, body: &str) -> ApiError {
-    match status {
-        429 => {
-            // Try to extract retry-after from the response body
-            let retry_after = serde_json::from_str::<serde_json::Value>(body)
-                .ok()
-                .and_then(|v| v.get("error")?.get("retry_after")?.as_f64())
-                .map(|secs| Duration::from_secs_f64(secs));
-            ApiError::RateLimit { retry_after }
-        }
-        401 => ApiError::AuthFailed,
-        404 => ApiError::ModelNotFound,
-        status if status >= 500 => ApiError::ServerError {
-            status,
-            body: body.to_string(),
-        },
-        _ => ApiError::ServerError {
-            status,
-            body: body.to_string(),
-        },
     }
 }
 
@@ -504,6 +481,35 @@ mod tests {
             other => panic!("expected Usage, got {other:?}"),
         }
         assert!(matches!(&events[1], StreamEvent::MessageStop));
+    }
+
+    #[test]
+    fn test_error_event_parsing() {
+        let mut translator = AnthropicEventTranslator::new();
+        let data = r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#;
+        let events = translator.translate(Some("error"), data);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::Error(ApiError::ServerError { status, body }) => {
+                assert_eq!(*status, 0);
+                assert_eq!(body, "Overloaded");
+            }
+            other => panic!("expected ServerError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_error_event_unknown_format() {
+        let mut translator = AnthropicEventTranslator::new();
+        let data = r#"{"type":"error"}"#;
+        let events = translator.translate(Some("error"), data);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            StreamEvent::Error(ApiError::ServerError { body, .. }) => {
+                assert_eq!(body, "unknown error");
+            }
+            other => panic!("expected ServerError, got {other:?}"),
+        }
     }
 
     #[test]
