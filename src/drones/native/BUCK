@@ -1,0 +1,30 @@
+NATIVE_DRONE_SRCS = glob(["src/**/*.rs"])
+
+NATIVE_DRONE_DEPS = [
+    "//src/runtime:runtime",
+    "//src/drone-sdk:drone-sdk",
+    "//third-party:tokio",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:async-trait",
+    "//third-party:anyhow",
+    "//third-party:tracing",
+    "//third-party:tracing-subscriber",
+    "//third-party:toml",
+]
+
+rust_binary(
+    name = "native-drone",
+    srcs = NATIVE_DRONE_SRCS,
+    crate_root = "src/main.rs",
+    deps = NATIVE_DRONE_DEPS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "native-drone-test",
+    srcs = NATIVE_DRONE_SRCS,
+    crate_root = "src/main.rs",
+    deps = NATIVE_DRONE_DEPS,
+    visibility = ["PUBLIC"],
+)
