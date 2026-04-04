@@ -298,11 +298,52 @@ impl LspClient {
 }
 
 fn parse_locations(value: serde_json::Value) -> anyhow::Result<Vec<SymbolLocation>> {
-    // Handle three LSP response shapes:
-    // 1. Single Location: { uri, range }
-    // 2. Array of Location: [{ uri, range }, ...]
-    // 3. Array of LocationLink: [{ targetUri, targetRange, ... }, ...]
-    todo!("parse LSP location response variants")
+    // Null = no results
+    if value.is_null() {
+        return Ok(vec![]);
+    }
+
+    // Single Location: { uri, range }
+    if value.is_object() && value.get("uri").is_some() {
+        return Ok(vec![parse_single_location(&value)?]);
+    }
+
+    // Array of Location or LocationLink
+    if let Some(arr) = value.as_array() {
+        let mut locations = Vec::new();
+        for item in arr {
+            if item.get("targetUri").is_some() {
+                // LocationLink: { targetUri, targetRange }
+                let uri = item["targetUri"].as_str().unwrap_or_default();
+                let range = &item["targetRange"];
+                locations.push(SymbolLocation {
+                    file: PathBuf::from(uri.strip_prefix("file://").unwrap_or(uri)),
+                    start_line: range["start"]["line"].as_u64().unwrap_or(0) as u32,
+                    start_column: range["start"]["character"].as_u64().unwrap_or(0) as u32,
+                    end_line: range["end"]["line"].as_u64().unwrap_or(0) as u32,
+                    end_column: range["end"]["character"].as_u64().unwrap_or(0) as u32,
+                });
+            } else {
+                // Standard Location: { uri, range }
+                locations.push(parse_single_location(item)?);
+            }
+        }
+        return Ok(locations);
+    }
+
+    Ok(vec![])
+}
+
+fn parse_single_location(value: &serde_json::Value) -> anyhow::Result<SymbolLocation> {
+    let uri = value["uri"].as_str().unwrap_or_default();
+    let range = &value["range"];
+    Ok(SymbolLocation {
+        file: PathBuf::from(uri.strip_prefix("file://").unwrap_or(uri)),
+        start_line: range["start"]["line"].as_u64().unwrap_or(0) as u32,
+        start_column: range["start"]["character"].as_u64().unwrap_or(0) as u32,
+        end_line: range["end"]["line"].as_u64().unwrap_or(0) as u32,
+        end_column: range["end"]["character"].as_u64().unwrap_or(0) as u32,
+    })
 }
 ```
 

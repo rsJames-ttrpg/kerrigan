@@ -112,6 +112,14 @@ git commit -m "add session model with token estimation"
 
 - [ ] **Step 1: Define ConversationLoop and LoopConfig**
 
+**Important: Two Role enums exist.** `api::types::Role` has `{ User, Assistant }` (wire format). `conversation::session::Role` has `{ System, User, Assistant, Tool }` (internal). The `build_request()` method in step 2 MUST translate:
+- `Session::Role::System` messages → `ApiRequest.system` blocks (NOT in messages array)
+- `Session::Role::User` → `api::types::Message { role: api::Role::User, content: [...] }`
+- `Session::Role::Assistant` → `api::types::Message { role: api::Role::Assistant, content: [...] }`
+- `Session::Role::Tool` → `api::types::Message { role: api::Role::User, content: [ToolResult { ... }] }` (Anthropic puts tool results in user messages)
+
+Also, `session::ContentBlock` uses field name `output` in `ToolResult`, while `api::types::ContentBlock` uses `content`. The `build_request` method translates between them.
+
 ```rust
 use std::sync::Arc;
 use crate::api::{ApiClient, ApiClientFactory, ApiRequest, StreamEvent};
@@ -135,6 +143,7 @@ pub enum CompactionStrategy {
 pub struct TurnResult {
     pub iterations: u32,
     pub compacted: bool,
+    pub usage: crate::api::TokenUsage,
 }
 
 pub struct ConversationLoop {

@@ -63,26 +63,27 @@ git commit -m "extend drone protocol with rich DroneEvent types"
 
 - [ ] **Step 1: Implement DroneEventBridge**
 
+**Architecture note:** `QueenChannel` is sync (`send(&mut self, &DroneMessage)`) and requires `&mut self`. The `EventSink` trait is `Send + Sync` (used from multiple async contexts). Solution: the bridge holds an `mpsc::UnboundedSender<DroneMessage>`, and a separate forwarding task drains the receiver into the real `QueenChannel`.
+
 ```rust
 use std::path::PathBuf;
-use std::sync::Arc;
-use drone_sdk::protocol::{DroneEvent, DroneMessage};
+use drone_sdk::protocol::{DroneEvent, DroneMessage, Progress};
 use runtime::conversation::session::Session;
 use runtime::event::{CheckpointContext, EventSink, RuntimeEvent};
 
 pub struct DroneEventBridge {
-    channel: drone_sdk::runner::QueenChannel,
+    sender: tokio::sync::mpsc::UnboundedSender<DroneMessage>,
     workspace: PathBuf,
     run_id: String,
 }
 
 impl DroneEventBridge {
     pub fn new(
-        channel: drone_sdk::runner::QueenChannel,
+        sender: tokio::sync::mpsc::UnboundedSender<DroneMessage>,
         workspace: PathBuf,
         run_id: String,
     ) -> Self {
-        Self { channel, workspace, run_id }
+        Self { sender, workspace, run_id }
     }
 }
 
@@ -96,10 +97,10 @@ impl EventSink for DroneEventBridge {
                 })
             }
             RuntimeEvent::ToolUseStart { name, .. } => {
-                DroneMessage::Progress {
+                DroneMessage::Progress(Progress {
                     status: "tool_use".into(),
-                    detail: name,
-                }
+                    detail: Some(name),
+                })
             }
             RuntimeEvent::ToolUseEnd { name, duration_ms, .. } => {
                 DroneMessage::Event(DroneEvent::ToolUse {
@@ -117,16 +118,16 @@ impl EventSink for DroneEventBridge {
                 })
             }
             RuntimeEvent::Heartbeat => {
-                DroneMessage::Progress {
+                DroneMessage::Progress(Progress {
                     status: "heartbeat".into(),
-                    detail: "alive".into(),
-                }
+                    detail: Some("alive".into()),
+                })
             }
             RuntimeEvent::CompactionTriggered { reason, .. } => {
-                DroneMessage::Progress {
+                DroneMessage::Progress(Progress {
                     status: "compacting".into(),
-                    detail: reason,
-                }
+                    detail: Some(reason),
+                })
             }
             RuntimeEvent::CheckpointCreated { artifact_id } => {
                 DroneMessage::Event(DroneEvent::Checkpoint {
@@ -136,25 +137,25 @@ impl EventSink for DroneEventBridge {
                 })
             }
             RuntimeEvent::Error(e) => {
-                DroneMessage::Progress {
+                DroneMessage::Progress(Progress {
                     status: "error".into(),
-                    detail: e,
-                }
+                    detail: Some(e),
+                })
             }
             _ => return,
         };
-        // Send via channel (fire-and-forget for non-blocking)
-        let _ = self.channel.try_send(msg);
+        let _ = self.sender.send(msg); // non-blocking, fire-and-forget
     }
 
     async fn on_checkpoint(&self, session: &Session) -> CheckpointContext {
-        // Serialize session to JSON
         let snapshot = serde_json::to_vec(session).unwrap_or_default();
 
-        // Store as artifact via Queen (send progress, Queen handles storage)
-        self.channel.progress("checkpoint_store", &format!("{} bytes", snapshot.len())).await;
+        // Signal checkpoint via the channel
+        let _ = self.sender.send(DroneMessage::Progress(Progress {
+            status: "checkpoint_store".into(),
+            detail: Some(format!("{} bytes", snapshot.len())),
+        }));
 
-        // Capture git state
         let git_state = capture_git_state(&self.workspace).await;
 
         CheckpointContext {
@@ -167,6 +168,21 @@ impl EventSink for DroneEventBridge {
         }
     }
 }
+
+// In execute(), wire up the bridge and forwarding task:
+//
+// let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+// let bridge = Arc::new(DroneEventBridge::new(tx, env.workspace.clone(), job.job_run_id.clone()));
+//
+// // Forward messages to QueenChannel on a blocking thread (channel is sync)
+// let forward_handle = tokio::task::spawn_blocking(move || {
+//     while let Some(msg) = rx.blocking_recv() {
+//         if let Err(e) = channel.send(&msg) {
+//             tracing::warn!("failed to send to queen: {e}");
+//             break;
+//         }
+//     }
+// });
 
 struct GitState {
     branch: String,
@@ -194,9 +210,7 @@ async fn capture_git_state(workspace: &std::path::Path) -> GitState {
 }
 ```
 
-Note: the exact `QueenChannel` API (methods like `try_send`, `progress`) must match what drone-sdk provides. Read `src/drone-sdk/src/harness.rs` to confirm the actual method signatures and adjust accordingly.
-
-Tests: verify event mapping produces correct DroneMessage variants.
+Tests: verify event mapping produces correct DroneMessage variants. Verify `Progress` uses the wrapped struct form `DroneMessage::Progress(Progress { ... })`, not inline fields.
 
 - [ ] **Step 2: Run tests, commit**
 
@@ -238,18 +252,35 @@ Each sub-step calls into existing modules (config.rs, cache.rs, etc.). Read the 
 
 - [ ] **Step 2: Implement execute phase**
 
+**Note:** `DroneEnvironment` has `home: PathBuf` and `workspace: PathBuf` (not `home_dir`/`workspace_dir`). `DroneOutput.conversation` is `serde_json::Value` (not `Option<String>`). Store resolved config and task as separate state (e.g., in a `DroneState` struct created during setup and passed around, or stored in a `OnceCell` on `NativeDrone`).
+
 ```rust
 async fn execute(&self, env: &DroneEnvironment, channel: &mut QueenChannel) -> anyhow::Result<DroneOutput> {
-    let config = &env.resolved_config;
+    // The resolved config and task should be stored during setup
+    // (e.g., in a Mutex<Option<DroneState>> on NativeDrone, or loaded from files in env.home)
+    let config = load_resolved_config(&env.home)?;
     let stage = &config.stage_config;
 
-    // 1. Create event bridge
-    let event_bridge = Arc::new(DroneEventBridge::new(channel.clone(), env.workspace_dir.clone(), env.run_id.clone()));
+    // 1. Create event bridge via mpsc channel
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let event_bridge = Arc::new(DroneEventBridge::new(tx, env.workspace.clone(), "run-id".into()));
+
+    // Spawn forwarding task (QueenChannel is sync, needs blocking thread)
+    // NOTE: channel is &mut, so we need to move it into the blocking task.
+    // This means all Queen communication goes through the bridge after this point.
+    let forward_handle = tokio::task::spawn_blocking(move || {
+        while let Some(msg) = rx.blocking_recv() {
+            if let Err(e) = channel.send(&msg) {
+                tracing::warn!("failed to send to queen: {e}");
+                break;
+            }
+        }
+    });
 
     // 2. Run health checks
     let health_checks = health::checks_for_stage(&stage.stage);
     let report = health::run_health_checks(&health_checks).await;
-    if !report.all_required_passed(&health_checks) {
+    if !report.all_required_passed() {
         return Err(anyhow::anyhow!("health checks failed: {}", report.summary()));
     }
 
@@ -258,7 +289,7 @@ async fn execute(&self, env: &DroneEnvironment, channel: &mut QueenChannel) -> a
     // Register MCP tools, external tools from config
 
     // 4. Build prompt
-    let workspace_context = read_claude_md(&env.workspace_dir);
+    let workspace_context = read_claude_md(&env.workspace);
     let prompt = PromptBuilder::for_stage(&stage.stage, stage, &registry, &workspace_context, None, None);
 
     // 5. Create API client
@@ -274,11 +305,11 @@ async fn execute(&self, env: &DroneEnvironment, channel: &mut QueenChannel) -> a
     );
 
     // 7. Run the agent loop with the task
-    let task = env.task_description.clone();
+    let task = read_task_description(&env.home);
     let result = conversation.run_turn(&task).await?;
 
     // 8. Check exit conditions
-    let conditions = exit_conditions::check_exit_conditions(&stage.exit_conditions, &env.workspace_dir).await;
+    let conditions = exit_conditions::check_exit_conditions(&stage.exit_conditions, &env.workspace).await;
     let all_met = conditions.iter().all(|c| c.met);
 
     // 9. Handle git finalization
@@ -287,9 +318,13 @@ async fn execute(&self, env: &DroneEnvironment, channel: &mut QueenChannel) -> a
     }
 
     // 10. Build DroneOutput
+    // Drop the bridge sender to signal the forwarding task to exit
+    drop(event_bridge);
+    let _ = forward_handle.await;
+
     Ok(DroneOutput {
         exit_code: if all_met { 0 } else { 1 },
-        conversation: Some(serde_json::to_string(&conversation.session())?),
+        conversation: serde_json::to_value(&conversation.session())?,
         artifacts: vec![], // checkpoint artifact IDs
         git_refs: GitRefs {
             branch: stage.git.branch_name.clone(),

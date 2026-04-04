@@ -668,6 +668,11 @@ impl ApiClient for RetryingClient {
                     tokio::time::sleep(Duration::from_secs(10)).await;
                     last_error = Some(ApiError::ServerError { status, body });
                 }
+                Err(ApiError::StreamInterrupted) if attempt < self.max_retries => {
+                    tracing::warn!(attempt, "stream interrupted, retrying full request");
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    last_error = Some(ApiError::StreamInterrupted);
+                }
                 Err(e) => return Err(e), // Auth, model errors — fail immediately
             }
         }

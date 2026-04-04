@@ -188,9 +188,11 @@ Create `src/drones/native/src/drone.rs`:
 ```rust
 use async_trait::async_trait;
 use drone_sdk::{
-    protocol::{DroneOutput, GitRefs},
-    runner::{DroneEnvironment, DroneRunner, JobSpec, QueenChannel},
+    harness::QueenChannel,
+    protocol::{DroneEnvironment, DroneOutput, GitRefs, JobSpec},
+    runner::DroneRunner,
 };
+use serde_json::json;
 
 pub struct NativeDrone;
 
@@ -201,8 +203,8 @@ impl DroneRunner for NativeDrone {
         let home = std::path::PathBuf::from(format!("/tmp/drone-{}", job.job_run_id));
         tokio::fs::create_dir_all(&home).await?;
         Ok(DroneEnvironment {
-            home_dir: home.clone(),
-            workspace_dir: home.join("workspace"),
+            home: home.clone(),
+            workspace: home.join("workspace"),
         })
     }
 
@@ -211,11 +213,11 @@ impl DroneRunner for NativeDrone {
         env: &DroneEnvironment,
         channel: &mut QueenChannel,
     ) -> anyhow::Result<DroneOutput> {
-        channel.progress("started", "native drone placeholder").await;
+        channel.progress("started", "native drone placeholder")?;
         tracing::info!("Native drone execute — placeholder");
         Ok(DroneOutput {
             exit_code: 0,
-            conversation: None,
+            conversation: json!({}),
             artifacts: vec![],
             git_refs: GitRefs {
                 branch: None,
@@ -227,12 +229,19 @@ impl DroneRunner for NativeDrone {
     }
 
     async fn teardown(&self, env: &DroneEnvironment) {
-        let _ = tokio::fs::remove_dir_all(&env.home_dir).await;
+        let _ = tokio::fs::remove_dir_all(&env.home).await;
     }
 }
 ```
 
-Note: the exact field names and types above must match what `drone-sdk` defines. Read `src/drone-sdk/src/runner.rs` and `src/drone-sdk/src/protocol.rs` to confirm the exact signatures before implementing. Adjust field names as needed.
+**drone-sdk type reference** (from `src/drone-sdk/src/protocol.rs`):
+- `DroneEnvironment { home: PathBuf, workspace: PathBuf }`
+- `DroneOutput { exit_code: i32, conversation: serde_json::Value, artifacts: Vec<String>, git_refs: GitRefs, session_jsonl_gz: Option<String> }`
+- `DroneMessage::Progress(Progress { status: String, detail: Option<String> })`
+- `DroneMessage::Error(DroneError { message: String })`
+- `QueenChannel.progress(&mut self, &str, &str) -> Result<()>` (sync, not async)
+- `QueenChannel.send(&mut self, &DroneMessage) -> Result<()>` (sync, not async)
+- `JobSpec.config` is `serde_json::Value`, not `HashMap<String, String>`
 
 - [ ] **Step 3: Create BUCK file**
 

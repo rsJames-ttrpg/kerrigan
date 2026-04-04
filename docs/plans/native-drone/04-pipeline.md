@@ -86,10 +86,12 @@ pub enum GitOperationKind {
 
 - [ ] **Step 2: Implement stage resolution and default configs**
 
+Note: `JobSpec.config` is `serde_json::Value`, not `HashMap`. Access fields via `.as_str()`:
+
 ```rust
 impl Stage {
-    pub fn resolve(config: &std::collections::HashMap<String, String>) -> Self {
-        match config.get("stage").map(|s| s.as_str()) {
+    pub fn resolve(config: &serde_json::Value) -> Self {
+        match config.get("stage").and_then(|v| v.as_str()) {
             Some("spec") => Stage::Spec,
             Some("plan") => Stage::Plan,
             Some("implement") => Stage::Implement,
@@ -101,18 +103,140 @@ impl Stage {
 
     pub fn default_config(&self) -> StageConfig {
         match self {
-            Stage::Spec => StageConfig { /* read-only, no bash, no git writes */ },
-            Stage::Plan => StageConfig { /* read-only, no bash */ },
-            Stage::Implement => StageConfig { /* all tools, full git, orchestrator */ },
-            Stage::Review => StageConfig { /* file ops + git diff/commit, conditionally write */ },
-            Stage::Evolve => StageConfig { /* git issue creation only */ },
-            Stage::Freeform => StageConfig { /* all tools, standard git */ },
+            Stage::Spec => StageConfig {
+                stage: Stage::Spec,
+                system_prompt: String::new(), // set by PromptBuilder later
+                allowed_tools: vec!["read_file", "glob_search", "grep_search", "write_file", "edit_file"]
+                    .into_iter().map(String::from).collect(),
+                denied_tools: vec!["bash", "git", "test", "agent"]
+                    .into_iter().map(String::from).collect(),
+                entry_requirements: vec![],
+                exit_conditions: vec![
+                    ExitCondition::FileCreated { glob: "docs/specs/*.md".into() },
+                    ExitCondition::ArtifactStored { kind: "spec".into() },
+                ],
+                git: StageGitConfig {
+                    branch_name: None,
+                    allowed_operations: Some(vec![GitOperationKind::Status, GitOperationKind::Diff, GitOperationKind::Log]),
+                    commit_on_checkpoint: false,
+                    commit_on_task_complete: false,
+                    pr_on_stage_complete: false,
+                    protected_paths: vec![],
+                },
+                max_turns: 25,
+            },
+            Stage::Plan => StageConfig {
+                stage: Stage::Plan,
+                system_prompt: String::new(),
+                allowed_tools: vec!["read_file", "glob_search", "grep_search", "write_file", "edit_file"]
+                    .into_iter().map(String::from).collect(),
+                denied_tools: vec!["bash", "git", "test", "agent"]
+                    .into_iter().map(String::from).collect(),
+                entry_requirements: vec![
+                    Requirement::ArtifactExists { kind: "spec".into() },
+                ],
+                exit_conditions: vec![
+                    ExitCondition::FileCreated { glob: "docs/plans/*.md".into() },
+                    ExitCondition::ArtifactStored { kind: "plan".into() },
+                ],
+                git: StageGitConfig {
+                    branch_name: None,
+                    allowed_operations: Some(vec![GitOperationKind::Status, GitOperationKind::Diff, GitOperationKind::Log]),
+                    commit_on_checkpoint: false,
+                    commit_on_task_complete: false,
+                    pr_on_stage_complete: false,
+                    protected_paths: vec![],
+                },
+                max_turns: 25,
+            },
+            Stage::Implement => StageConfig {
+                stage: Stage::Implement,
+                system_prompt: String::new(),
+                allowed_tools: vec![], // empty = all allowed
+                denied_tools: vec![],
+                entry_requirements: vec![
+                    Requirement::ArtifactExists { kind: "plan".into() },
+                ],
+                exit_conditions: vec![
+                    ExitCondition::TestsPassing,
+                    ExitCondition::PrCreated,
+                ],
+                git: StageGitConfig {
+                    branch_name: None, // set from job config at resolution time
+                    allowed_operations: None, // all operations
+                    commit_on_checkpoint: true,
+                    commit_on_task_complete: true,
+                    pr_on_stage_complete: true,
+                    protected_paths: vec!["CLAUDE.md".into()],
+                },
+                max_turns: 100,
+            },
+            Stage::Review => StageConfig {
+                stage: Stage::Review,
+                system_prompt: String::new(),
+                allowed_tools: vec!["read_file", "glob_search", "grep_search", "git", "bash"]
+                    .into_iter().map(String::from).collect(),
+                denied_tools: vec!["write_file", "edit_file"] // unless review_mode=fix in job config
+                    .into_iter().map(String::from).collect(),
+                entry_requirements: vec![],
+                exit_conditions: vec![
+                    ExitCondition::ArtifactStored { kind: "review".into() },
+                ],
+                git: StageGitConfig {
+                    branch_name: None, // existing PR branch, set at resolution
+                    allowed_operations: Some(vec![
+                        GitOperationKind::Status, GitOperationKind::Diff, GitOperationKind::Log,
+                        GitOperationKind::Commit, GitOperationKind::Push,
+                    ]),
+                    commit_on_checkpoint: false,
+                    commit_on_task_complete: false,
+                    pr_on_stage_complete: false,
+                    protected_paths: vec![],
+                },
+                max_turns: 25,
+            },
+            Stage::Evolve => StageConfig {
+                stage: Stage::Evolve,
+                system_prompt: String::new(),
+                allowed_tools: vec!["read_file", "glob_search", "grep_search", "bash"]
+                    .into_iter().map(String::from).collect(),
+                denied_tools: vec!["write_file", "edit_file", "git", "test", "agent"]
+                    .into_iter().map(String::from).collect(),
+                entry_requirements: vec![],
+                exit_conditions: vec![],
+                git: StageGitConfig {
+                    branch_name: None,
+                    allowed_operations: Some(vec![]), // no git ops
+                    commit_on_checkpoint: false,
+                    commit_on_task_complete: false,
+                    pr_on_stage_complete: false,
+                    protected_paths: vec![],
+                },
+                max_turns: 25,
+            },
+            Stage::Freeform => StageConfig {
+                stage: Stage::Freeform,
+                system_prompt: String::new(), // from job config system_prompt field, or default
+                allowed_tools: vec![],
+                denied_tools: vec![],
+                entry_requirements: vec![],
+                exit_conditions: vec![],
+                git: StageGitConfig {
+                    branch_name: None, // set from config at resolution time
+                    allowed_operations: None,
+                    commit_on_checkpoint: true,
+                    commit_on_task_complete: false,
+                    pr_on_stage_complete: false,
+                    protected_paths: vec![],
+                },
+                max_turns: 50,
+            },
         }
     }
 }
 ```
 
-Fill in each stage's default config per the spec definitions. Tests: resolve from config map, default configs have expected tool restrictions.
+Tests: resolve from `serde_json::Value` config, default configs have expected tool restrictions per stage, implement stage allows all tools, spec stage denies bash/git.
 
 - [ ] **Step 3: Run tests, commit**
 
@@ -147,6 +271,7 @@ pub struct HealthCheck {
 pub struct HealthCheckResult {
     pub name: String,
     pub passed: bool,
+    pub required: bool,
     pub output: String,
     pub duration_ms: u64,
 }
@@ -158,9 +283,19 @@ pub struct HealthReport {
 
 impl HealthReport {
     pub fn all_required_passed(&self) -> bool {
-        // Needs the original check list to know which were required
-        // Or store required flag in result
-        true
+        self.checks.iter().all(|c| !c.required || c.passed)
+    }
+
+    pub fn summary(&self) -> String {
+        let failed: Vec<_> = self.checks.iter()
+            .filter(|c| !c.passed)
+            .map(|c| format!("{} ({})", c.name, if c.required { "required" } else { "optional" }))
+            .collect();
+        if failed.is_empty() {
+            "all checks passed".into()
+        } else {
+            format!("failed: {}", failed.join(", "))
+        }
     }
 }
 ```
@@ -193,6 +328,7 @@ pub async fn run_health_checks(checks: &[HealthCheck]) -> HealthReport {
         results.push(HealthCheckResult {
             name: check.name.clone(),
             passed,
+            required: check.required,
             output: output_str,
             duration_ms: start.elapsed().as_millis() as u64,
         });
@@ -376,8 +512,60 @@ impl GitWorkflow {
     }
 
     async fn run_git_command(&self, operation: &GitOperation) -> Result<String, GitWorkflowError> {
-        // Shell out to git/gh CLI, format result as markdown
-        todo!("implement per-operation git commands")
+        match operation {
+            GitOperation::Status => self.exec_git(&["status", "--porcelain"]).await,
+            GitOperation::Diff { staged } => {
+                if *staged { self.exec_git(&["diff", "--staged"]).await }
+                else { self.exec_git(&["diff"]).await }
+            }
+            GitOperation::Log { count } => {
+                self.exec_git(&["log", "--oneline", &format!("-{count}")]).await
+            }
+            GitOperation::CreateBranch { name, from } => {
+                let mut args = vec!["checkout", "-b", name.as_str()];
+                if let Some(base) = from { args.push(base.as_str()); }
+                self.exec_git(&args).await
+            }
+            GitOperation::Commit { message, paths } => {
+                for path in paths {
+                    self.exec_git(&["add", path.as_str()]).await?;
+                }
+                self.exec_git(&["commit", "-m", message.as_str()]).await
+            }
+            GitOperation::Push { force } => {
+                let mut args = vec!["push"];
+                if *force { args.push("--force"); }
+                self.exec_git(&args).await
+            }
+            GitOperation::CreatePr { title, body, base } => {
+                let mut args = vec!["pr", "create", "--title", title.as_str(), "--body", body.as_str()];
+                if let Some(b) = base { args.extend(["--base", b.as_str()]); }
+                self.exec_gh(&args).await
+            }
+            GitOperation::CheckoutFile { path, ref_ } => {
+                self.exec_git(&["checkout", ref_.as_str(), "--", path.as_str()]).await
+            }
+        }
+    }
+
+    async fn exec_git(&self, args: &[&str]) -> Result<String, GitWorkflowError> {
+        let output = tokio::process::Command::new("git")
+            .args(args).current_dir(&self.workspace).output().await
+            .map_err(|e| GitWorkflowError::CommandFailed(e.to_string()))?;
+        if !output.status.success() {
+            return Err(GitWorkflowError::CommandFailed(String::from_utf8_lossy(&output.stderr).to_string()));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    async fn exec_gh(&self, args: &[&str]) -> Result<String, GitWorkflowError> {
+        let output = tokio::process::Command::new("gh")
+            .args(args).current_dir(&self.workspace).output().await
+            .map_err(|e| GitWorkflowError::CommandFailed(e.to_string()))?;
+        if !output.status.success() {
+            return Err(GitWorkflowError::CommandFailed(String::from_utf8_lossy(&output.stderr).to_string()));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 }
 

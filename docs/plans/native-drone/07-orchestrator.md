@@ -321,11 +321,37 @@ impl Orchestrator {
         parent: &ConversationLoop,
         task: Task,
     ) -> tokio::task::JoinHandle<TaskResult> {
-        // Create sub-agent via runtime's agent spawning mechanism
-        // Focused prompt: "Implement task {id}: {description}"
-        // Scoped to task.files for context
-        // Git commits serialized through git_workflow
-        todo!("spawn sub-agent for task")
+        let event_sink = self.event_sink.clone();
+        let task_id = task.id.clone();
+
+        let prompt = format!(
+            "Implement task {}: {}\n\nRelevant files: {}",
+            task.id, task.description, task.files.join(", ")
+        );
+
+        // Spawn sub-agent using the runtime's agent spawning mechanism
+        let sub_agent_handle = parent.spawn_sub_agent(runtime::tools::AgentRequest {
+            task: prompt.clone(),
+            tools: None, // inherit parent tools
+            max_iterations: Some(25),
+            files: Some(task.files.clone()),
+        });
+
+        tokio::spawn(async move {
+            event_sink.emit(RuntimeEvent::TurnStart { task: prompt });
+
+            let (success, output) = match sub_agent_handle.await {
+                Ok(text) => (true, text),
+                Err(e) => (false, format!("task failed: {e}")),
+            };
+
+            TaskResult {
+                task_id,
+                success,
+                output,
+                commits: vec![],
+            }
+        })
     }
 }
 ```
