@@ -1,5 +1,6 @@
 pub mod anthropic;
 pub mod error;
+pub mod openai_compat;
 pub mod sse;
 pub mod types;
 
