@@ -92,6 +92,8 @@ pub struct QueenConfig {
     pub stall_threshold: u64,
     #[serde(default = "default_drone_dir")]
     pub drone_dir: String,
+    /// Default repo_url injected into jobs that don't specify one.
+    pub default_repo_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

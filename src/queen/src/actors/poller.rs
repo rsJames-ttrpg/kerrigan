@@ -14,6 +14,7 @@ pub async fn run(
     interval_secs: u64,
     hatchery_id: Arc<RwLock<Option<String>>>,
     overseer_url: String,
+    default_repo_url: Option<String>,
     spawn_tx: mpsc::Sender<SpawnRequest>,
     token: CancellationToken,
 ) {
@@ -150,6 +151,13 @@ pub async fn run(
                 .is_none()
             {
                 config["overseer_url"] = serde_json::Value::String(overseer_url.clone());
+            }
+
+            // Inject default_repo_url for jobs that don't specify one
+            if config.get("repo_url").and_then(|v| v.as_str()).is_none() {
+                if let Some(ref url) = default_repo_url {
+                    config["repo_url"] = serde_json::Value::String(url.clone());
+                }
             }
 
             let drone_type = config

@@ -4,6 +4,7 @@ overseer_url = "http://localhost:3100"
 drone_dir = "./drones"
 max_concurrency = 4
 drone_timeout = "2h"
+default_repo_url = "https://github.com/rsJames-ttrpg/kerrigan.git"
 
 [creep]
 enabled = true

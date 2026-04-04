@@ -90,6 +90,7 @@ async fn main() -> anyhow::Result<()> {
             poll_interval,
             poller_hatchery_id,
             config.queen.overseer_url.clone(),
+            config.queen.default_repo_url.clone(),
             spawn_tx,
             poller_token,
         )
