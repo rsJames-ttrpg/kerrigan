@@ -6,6 +6,7 @@ CREEP_DEPS = [
     "//third-party:glob-match",
     "//third-party:ignore",
     "//third-party:notify",
+    "//third-party:notify-debouncer-mini",
     "//third-party:prost",
     "//third-party:serde",
     "//third-party:tokio",
