@@ -1,5 +1,29 @@
 use std::time::Duration;
 
+/// Parse an HTTP error response into an ApiError.
+/// Shared by Anthropic and OpenAI-compatible providers.
+pub(crate) fn parse_error_response(status: u16, body: &str) -> ApiError {
+    match status {
+        429 => {
+            let retry_after = serde_json::from_str::<serde_json::Value>(body)
+                .ok()
+                .and_then(|v| v.get("error")?.get("retry_after")?.as_f64())
+                .map(|secs| Duration::from_secs_f64(secs));
+            ApiError::RateLimit { retry_after }
+        }
+        401 => ApiError::AuthFailed,
+        404 => ApiError::ModelNotFound,
+        status if status >= 500 => ApiError::ServerError {
+            status,
+            body: body.to_string(),
+        },
+        _ => ApiError::ServerError {
+            status,
+            body: body.to_string(),
+        },
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
     #[error("rate limited (retry after {retry_after:?})")]

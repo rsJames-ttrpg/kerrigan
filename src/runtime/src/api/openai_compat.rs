@@ -1,11 +1,10 @@
 use std::collections::HashMap;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
-use super::error::ApiError;
+use super::error::{ApiError, parse_error_response};
 use super::sse::SseParser;
 use super::types::*;
 use super::{ApiClient, EventStream};
@@ -389,29 +388,6 @@ impl OpenAiEventTranslator {
         }
 
         events
-    }
-}
-
-/// Parse an HTTP error response into an ApiError.
-pub(crate) fn parse_error_response(status: u16, body: &str) -> ApiError {
-    match status {
-        429 => {
-            let retry_after = serde_json::from_str::<serde_json::Value>(body)
-                .ok()
-                .and_then(|v| v.get("error")?.get("retry_after")?.as_f64())
-                .map(|secs| Duration::from_secs_f64(secs));
-            ApiError::RateLimit { retry_after }
-        }
-        401 => ApiError::AuthFailed,
-        404 => ApiError::ModelNotFound,
-        status if status >= 500 => ApiError::ServerError {
-            status,
-            body: body.to_string(),
-        },
-        _ => ApiError::ServerError {
-            status,
-            body: body.to_string(),
-        },
     }
 }
 
