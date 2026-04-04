@@ -13,6 +13,7 @@ pub async fn run(
     client: NydusClient,
     interval_secs: u64,
     hatchery_id: Arc<RwLock<Option<String>>>,
+    overseer_url: String,
     spawn_tx: mpsc::Sender<SpawnRequest>,
     token: CancellationToken,
 ) {
@@ -140,6 +141,15 @@ pub async fn run(
                         continue;
                     }
                 }
+            }
+
+            // Inject overseer_url so drones can connect back to Overseer via MCP
+            if config
+                .get("overseer_url")
+                .and_then(|v| v.as_str())
+                .is_none()
+            {
+                config["overseer_url"] = serde_json::Value::String(overseer_url.clone());
             }
 
             let drone_type = config
