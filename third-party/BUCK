@@ -3089,6 +3089,12 @@ http_archive(
     visibility = [],
 )
 
+alias(
+    name = "futures",
+    actual = ":futures-0.3",
+    visibility = ["PUBLIC"],
+)
+
 cargo.rust_library(
     name = "futures-0.3",
     srcs = [":futures-0.3.32.crate"],

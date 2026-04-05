@@ -137,8 +137,7 @@ mod tests {
 
     #[test]
     fn test_ready_tasks_after_completion() {
-        let mut scheduler =
-            TaskScheduler::new(vec![task("a", &[]), task("b", &["a"])]).unwrap();
+        let mut scheduler = TaskScheduler::new(vec![task("a", &[]), task("b", &["a"])]).unwrap();
 
         let ready = scheduler.ready_tasks();
         assert_eq!(ready.len(), 1);
@@ -155,12 +154,9 @@ mod tests {
 
     #[test]
     fn test_cycle_detection() {
-        let result =
-            TaskScheduler::new(vec![task("a", &["b"]), task("b", &["a"])]);
+        let result = TaskScheduler::new(vec![task("a", &["b"]), task("b", &["a"])]);
         assert!(result.is_err());
-        assert!(
-            result.unwrap_err().to_string().contains("cycle detected")
-        );
+        assert!(result.unwrap_err().to_string().contains("cycle detected"));
     }
 
     #[test]
@@ -187,8 +183,7 @@ mod tests {
 
     #[test]
     fn test_remaining() {
-        let mut scheduler =
-            TaskScheduler::new(vec![task("a", &[]), task("b", &["a"])]).unwrap();
+        let mut scheduler = TaskScheduler::new(vec![task("a", &[]), task("b", &["a"])]).unwrap();
         assert_eq!(scheduler.remaining(), 2);
         scheduler.start("a");
         scheduler.complete("a");
@@ -250,8 +245,7 @@ mod tests {
 
     #[test]
     fn test_in_progress_not_ready() {
-        let mut scheduler =
-            TaskScheduler::new(vec![task("a", &[]), task("b", &[])]).unwrap();
+        let mut scheduler = TaskScheduler::new(vec![task("a", &[]), task("b", &[])]).unwrap();
         scheduler.start("a");
         let ready = scheduler.ready_tasks();
         assert_eq!(ready.len(), 1);

@@ -35,9 +35,7 @@ impl SubAgentConfig {
         LoopConfig {
             max_iterations: self.max_iterations,
             max_context_tokens: self.max_context_tokens,
-            compaction_strategy: CompactionStrategy::Summarize {
-                preserve_recent: 4,
-            },
+            compaction_strategy: CompactionStrategy::Summarize { preserve_recent: 4 },
             max_tokens_per_response: self.max_tokens_per_response,
             temperature: self.temperature,
         }
@@ -297,9 +295,7 @@ mod tests {
         let original = LoopConfig {
             max_iterations: 25,
             max_context_tokens: 50_000,
-            compaction_strategy: CompactionStrategy::Summarize {
-                preserve_recent: 4,
-            },
+            compaction_strategy: CompactionStrategy::Summarize { preserve_recent: 4 },
             max_tokens_per_response: 8192,
             temperature: Some(0.7),
         };

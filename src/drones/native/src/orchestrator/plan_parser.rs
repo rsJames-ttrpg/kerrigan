@@ -96,8 +96,7 @@ mod tests {
 
     #[test]
     fn test_parse_with_dependencies() {
-        let md =
-            "- [ ] **task-1**: First\n  - Depends: none\n\n- [ ] **task-2**: Second\n  - Depends: task-1\n";
+        let md = "- [ ] **task-1**: First\n  - Depends: none\n\n- [ ] **task-2**: Second\n  - Depends: task-1\n";
         let tasks = parse_plan(md);
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[1].dependencies, vec!["task-1"]);
