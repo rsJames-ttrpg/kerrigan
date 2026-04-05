@@ -63,15 +63,20 @@ fn find_matching_file(base: &Path, dir: &Path, matcher: &globset::GlobMatcher) -
     };
     for entry in entries.flatten() {
         let path = entry.path();
+        if path.is_dir() {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with('.') || name == "target" || name == "node_modules" {
+                    continue;
+                }
+            }
+        }
         if let Ok(relative) = path.strip_prefix(base) {
             if matcher.is_match(relative) {
                 return true;
             }
         }
-        if path.is_dir() {
-            if find_matching_file(base, &path, matcher) {
-                return true;
-            }
+        if path.is_dir() && find_matching_file(base, &path, matcher) {
+            return true;
         }
     }
     false

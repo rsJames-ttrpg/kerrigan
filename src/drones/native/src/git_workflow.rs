@@ -6,6 +6,7 @@ use crate::pipeline::{GitOperationKind, StageGitConfig};
 
 pub struct GitWorkflow {
     config: StageGitConfig,
+    protected_matchers: Vec<globset::GlobMatcher>,
     workspace: PathBuf,
     serializer: GitSerializer,
 }
@@ -62,8 +63,14 @@ impl GitOperation {
 
 impl GitWorkflow {
     pub fn new(config: StageGitConfig, workspace: PathBuf) -> Self {
+        let protected_matchers = config
+            .protected_paths
+            .iter()
+            .filter_map(|p| globset::Glob::new(p).ok().map(|g| g.compile_matcher()))
+            .collect();
         Self {
             config,
+            protected_matchers,
             workspace,
             serializer: GitSerializer {
                 lock: Mutex::new(()),
@@ -73,6 +80,11 @@ impl GitWorkflow {
 
     /// Validate and execute a git operation against the stage policy.
     pub async fn execute(&self, operation: &GitOperation) -> Result<String, GitWorkflowError> {
+        // Check force push first — always denied regardless of allow-list
+        if matches!(operation, GitOperation::Push { force: true }) {
+            return Err(GitWorkflowError::ForcePushDenied);
+        }
+
         // Check operation is allowed
         if let Some(allowed) = &self.config.allowed_operations {
             let kind = operation.kind();
@@ -85,9 +97,6 @@ impl GitWorkflow {
 
         // Check specific policy rules
         match operation {
-            GitOperation::Push { force: true } => {
-                return Err(GitWorkflowError::ForcePushDenied);
-            }
             GitOperation::Commit { paths, .. } => {
                 for path in paths {
                     if self.is_protected(path) {
@@ -114,12 +123,7 @@ impl GitWorkflow {
     }
 
     fn is_protected(&self, path: &str) -> bool {
-        self.config.protected_paths.iter().any(|p| {
-            globset::Glob::new(p)
-                .ok()
-                .and_then(|g| g.compile_matcher().is_match(path).then_some(()))
-                .is_some()
-        })
+        self.protected_matchers.iter().any(|m| m.is_match(path))
     }
 
     async fn run_git_command(&self, operation: &GitOperation) -> Result<String, GitWorkflowError> {
