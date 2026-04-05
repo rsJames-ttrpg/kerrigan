@@ -11,7 +11,8 @@ pub fn update_hashes(doc_path: &Path) -> anyhow::Result<()> {
 
     let mut updated = content.clone();
 
-    // Replace each source hash in-place using the full "hash: <value>" pattern
+    // Replace each source hash in-place using the full "hash: <value>" pattern.
+    // YAML may quote empty strings as "" so we try the quoted form first.
     for source in &meta.sources {
         let new_hash = match staleness::hash_file(&source.path) {
             Ok(hash) => hash,
@@ -20,9 +21,15 @@ pub fn update_hashes(doc_path: &Path) -> anyhow::Result<()> {
             }
         };
         if new_hash != source.hash {
-            let old_pattern = format!("hash: {}", source.hash);
             let new_pattern = format!("hash: {new_hash}");
-            updated = updated.replacen(&old_pattern, &new_pattern, 1);
+            // Try quoted form first (e.g. hash: "old_value"), then unquoted
+            let quoted = format!("hash: \"{}\"", source.hash);
+            let unquoted = format!("hash: {}", source.hash);
+            if updated.contains(&quoted) {
+                updated = updated.replacen(&quoted, &new_pattern, 1);
+            } else {
+                updated = updated.replacen(&unquoted, &new_pattern, 1);
+            }
         }
     }
 
