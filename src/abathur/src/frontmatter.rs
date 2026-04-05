@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DocMeta {
     pub title: String,
     pub slug: String,
@@ -25,30 +25,6 @@ pub struct DocMeta {
 pub struct Source {
     pub path: PathBuf,
     pub hash: String,
-}
-
-/// Serializable view of DocMeta for writing back to YAML frontmatter.
-#[derive(Serialize)]
-pub struct DocMetaSerializable {
-    pub title: String,
-    pub slug: String,
-    pub description: String,
-    pub lastmod: NaiveDate,
-    pub tags: Vec<String>,
-    pub sources: Vec<Source>,
-    pub sections: Vec<String>,
-}
-
-pub fn to_serializable(meta: &DocMeta) -> DocMetaSerializable {
-    DocMetaSerializable {
-        title: meta.title.clone(),
-        slug: meta.slug.clone(),
-        description: meta.description.clone(),
-        lastmod: meta.lastmod,
-        tags: meta.tags.clone(),
-        sources: meta.sources.clone(),
-        sections: meta.sections.clone(),
-    }
 }
 
 /// Parse YAML frontmatter from a markdown document into DocMeta.

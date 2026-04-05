@@ -28,8 +28,11 @@ pub fn check(index: &Index) -> anyhow::Result<Vec<StaleDoc>> {
         for source in &meta.sources {
             let current_hash = match hash_file(&source.path) {
                 Ok(h) => h,
-                Err(_) => {
-                    // Missing file counts as changed
+                Err(e) => {
+                    eprintln!(
+                        "warning: cannot read source '{}': {e}",
+                        source.path.display(),
+                    );
                     changed.push(source.path.clone());
                     continue;
                 }

@@ -74,7 +74,7 @@ fn main() -> anyhow::Result<()> {
         Command::Check => cmd_check(&cli),
         Command::Generate { path, stale } => cmd_generate(&cli, path.as_deref(), *stale),
         Command::Hash { doc, all } => cmd_hash(&cli, doc.as_deref(), *all),
-        Command::Init => cmd_init(),
+        Command::Init => cmd_init(&cli),
         Command::Code => cmd_code(),
     }
 }
@@ -217,7 +217,7 @@ fn cmd_hash(cli: &Cli, doc: Option<&std::path::Path>, all: bool) -> anyhow::Resu
     Ok(())
 }
 
-fn cmd_init() -> anyhow::Result<()> {
+fn cmd_init(cli: &Cli) -> anyhow::Result<()> {
     let default = r#"[index]
 doc_paths = ["docs/abathur"]
 exclude = []
@@ -231,11 +231,11 @@ model = "claude-sonnet-4-6"
 api_key_env = "ANTHROPIC_API_KEY"
 "#;
 
-    if std::path::Path::new("abathur.toml").exists() {
-        anyhow::bail!("abathur.toml already exists");
+    if cli.config.exists() {
+        anyhow::bail!("{} already exists", cli.config.display());
     }
-    std::fs::write("abathur.toml", default)?;
-    println!("Created abathur.toml");
+    std::fs::write(&cli.config, default)?;
+    println!("Created {}", cli.config.display());
     Ok(())
 }
 

@@ -4,7 +4,7 @@ exclude = []
 
 [sources]
 roots = ["src/"]
-exclude = ["**/target/**", "**/proto_gen/**"]
+exclude = ["**/target/**", "**/proto_gen/**", "./prelude"]
 
 [generate]
 model = "claude-sonnet-4-6"

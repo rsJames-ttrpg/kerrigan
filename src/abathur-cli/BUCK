@@ -21,4 +21,5 @@ rust_binary(
 install_binary(
     name = "install",
     binary = ":abathur-cli",
+    binary_name = "abathur",
 )

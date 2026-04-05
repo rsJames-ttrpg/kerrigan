@@ -4,26 +4,37 @@ use crate::frontmatter;
 use crate::staleness;
 
 /// Read a doc file, recompute blake3 hashes for all sources, rewrite the file.
+/// Uses targeted replacements to preserve the original YAML formatting.
 pub fn update_hashes(doc_path: &Path) -> anyhow::Result<()> {
     let content = std::fs::read_to_string(doc_path)?;
-    let mut meta = frontmatter::parse(&content)?;
-    let body = frontmatter::strip_frontmatter(&content);
+    let meta = frontmatter::parse(&content)?;
 
-    for source in &mut meta.sources {
-        match staleness::hash_file(&source.path) {
-            Ok(hash) => source.hash = hash,
+    let mut updated = content.clone();
+
+    // Replace each source hash in-place
+    for source in &meta.sources {
+        let new_hash = match staleness::hash_file(&source.path) {
+            Ok(hash) => hash,
             Err(e) => {
                 anyhow::bail!("cannot hash source '{}': {e}", source.path.display());
             }
+        };
+        if new_hash != source.hash {
+            updated = updated.replacen(&source.hash, &new_hash, 1);
         }
     }
 
-    // Update lastmod to today
-    meta.lastmod = chrono::Local::now().date_naive();
+    // Update lastmod date in-place
+    let today = chrono::Local::now().date_naive().to_string();
+    let old_date = meta.lastmod.to_string();
+    if today != old_date {
+        // Replace only within frontmatter context (the lastmod line)
+        let old_lastmod = format!("lastmod: {old_date}");
+        let new_lastmod = format!("lastmod: {today}");
+        updated = updated.replacen(&old_lastmod, &new_lastmod, 1);
+    }
 
-    let yaml = serde_yaml::to_string(&frontmatter::to_serializable(&meta))?;
-    let output = format!("---\n{yaml}---\n\n{body}");
-    std::fs::write(doc_path, output)?;
+    std::fs::write(doc_path, updated)?;
 
     Ok(())
 }

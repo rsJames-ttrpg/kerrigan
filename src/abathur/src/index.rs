@@ -93,9 +93,21 @@ fn collect_docs(
 
         if path.extension().is_some_and(|e| e == "md") {
             let content = std::fs::read_to_string(&path)?;
-            if let Ok(mut meta) = frontmatter::parse(&content) {
-                meta.path = path;
-                docs.insert(meta.slug.clone(), meta);
+            match frontmatter::parse(&content) {
+                Ok(mut meta) => {
+                    meta.path = path.clone();
+                    if let Some(existing) = docs.insert(meta.slug.clone(), meta) {
+                        eprintln!(
+                            "warning: slug '{}' in {} collides with {}; keeping the latter",
+                            existing.slug,
+                            existing.path.display(),
+                            path.display(),
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("warning: skipping {}: {e}", path.display());
+                }
             }
         }
     }

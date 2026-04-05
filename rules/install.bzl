@@ -6,10 +6,12 @@ def install_binary(name, binary, binary_name = None, dest = None, visibility = [
     Usage in BUCK files:
         load("//rules:install.bzl", "install_binary")
         install_binary(name = "install", binary = ":my_binary")
+        install_binary(name = "install", binary = ":my-cli", binary_name = "my")
 
     Then: buck2 run //path/to:install
     """
-    binary_name = binary_name or binary.split(":")[-1]
+    target_name = binary.split(":")[-1]
+    binary_name = binary_name or target_name
     dest_expr = dest or "${HOME}/.local/bin"
 
     native.genrule(
@@ -20,13 +22,13 @@ def install_binary(name, binary, binary_name = None, dest = None, visibility = [
 set -euo pipefail
 DEST="${1:-DEST_PLACEHOLDER}"
 mkdir -p "$DEST"
-BIN=`find -L "$BUCK_PROJECT_ROOT" -name "NAME_PLACEHOLDER" -type f | head -1`
-[ -z "$BIN" ] && echo "error: NAME_PLACEHOLDER not found" >&2 && exit 1
+BIN=`find -L "$BUCK_PROJECT_ROOT" -name "TARGET_PLACEHOLDER" -type f | head -1`
+[ -z "$BIN" ] && echo "error: TARGET_PLACEHOLDER not found" >&2 && exit 1
 cp "$BIN" "$DEST/NAME_PLACEHOLDER"
 chmod +x "$DEST/NAME_PLACEHOLDER"
 echo "Installed NAME_PLACEHOLDER to $DEST/NAME_PLACEHOLDER"
 INSTALL_EOF
-chmod +x $OUT""".replace("NAME_PLACEHOLDER", binary_name).replace("DEST_PLACEHOLDER", dest_expr),
+chmod +x $OUT""".replace("TARGET_PLACEHOLDER", target_name).replace("NAME_PLACEHOLDER", binary_name).replace("DEST_PLACEHOLDER", dest_expr),
     )
 
     native.sh_binary(

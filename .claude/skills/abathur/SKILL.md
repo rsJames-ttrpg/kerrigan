@@ -12,6 +12,7 @@ Use this skill to generate, update, or check abathur documentation.
 The `abathur` CLI must be available. Build it with:
 ```bash
 buck2 build root//src/abathur-cli:abathur-cli
+buck2 run root//src/abathur-cli:install
 ```
 
 ## Workflow: Check for stale docs

@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::Duration;
 
 use crate::config::AbathurConfig;
 use crate::index::Index;
@@ -37,7 +38,9 @@ impl Generator {
             source_content = source_content,
         );
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(120))
+            .build()?;
         let response = client
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &api_key)
@@ -79,13 +82,19 @@ impl Generator {
                 .get(&stale_doc.slug)
                 .ok_or_else(|| anyhow::anyhow!("stale doc '{}' not in index", stale_doc.slug))?;
 
-            // Regenerate from first source file
-            if let Some(first_source) = meta.sources.first() {
-                let content = self.generate(&first_source.path).await?;
-                std::fs::write(&meta.path, &content)?;
-                crate::hash::update_hashes(&meta.path)?;
-                updated.push(stale_doc.slug.clone());
+            if meta.sources.is_empty() {
+                eprintln!(
+                    "warning: skipping stale doc '{}' — no sources to regenerate from",
+                    stale_doc.slug,
+                );
+                continue;
             }
+
+            // Regenerate from first source file (multi-source concatenation is future work)
+            let content = self.generate(&meta.sources[0].path).await?;
+            std::fs::write(&meta.path, &content)?;
+            crate::hash::update_hashes(&meta.path)?;
+            updated.push(stale_doc.slug.clone());
         }
 
         Ok(updated)
