@@ -6,11 +6,11 @@ lastmod: 2026-04-05
 tags: [drone-sdk, protocol, drones]
 sources:
   - path: src/drone-sdk/src/runner.rs
-    hash: ""
+    hash: 2d3a4c3e76f0aab83af90d9ed8c89910bc4671932b2ea03c35b508c69bd70ab9
   - path: src/drone-sdk/src/protocol.rs
-    hash: ""
+    hash: c7d4670a28145c0a8dff9b5bac179875d8d0ee1d50226e348d91c449ab01aff4
   - path: src/drone-sdk/src/harness.rs
-    hash: ""
+    hash: cf571664dbfd73908846064aea22f9d31df58bd948ce941a54b543f40f012d59
 sections: [drone-runner-trait, protocol, harness, types]
 ---
 

@@ -6,21 +6,21 @@ lastmod: 2026-04-05
 tags: [overseer, api, database, mcp, service]
 sources:
   - path: src/overseer/src/main.rs
-    hash: ""
+    hash: f26703e8b7ca7fd6b0b88e784bf9aed68bd1a00663a5025eba5f9c0630af80d8
   - path: src/overseer/src/config.rs
-    hash: ""
+    hash: 0c92d54253aa6139ccbfad0d401c1f669adba179c51d1c5f97864646829c5521
   - path: src/overseer/src/db/trait_def.rs
-    hash: ""
+    hash: a38bf81d9938ce5883685e2223ecaa8d4dd134c60e551d6975bb4e2164ca222f
   - path: src/overseer/src/db/models.rs
-    hash: ""
+    hash: 2b1b95c8f3e998fbf5c0bc42e206bcb48acafc6ec40faadc823c522f36ec3323
   - path: src/overseer/src/api/mod.rs
-    hash: ""
+    hash: f1c944f484911d72ce0b6d83b3e58dbc5e61d4f14d0b8547b0432dfcb67feec2
   - path: src/overseer/src/mcp/mod.rs
-    hash: ""
+    hash: 766bb95d7318151805b0a5807bdc9bbd0d1513bf46ce3caeebbd1fbbcbb5aff4
   - path: src/overseer/src/storage.rs
-    hash: ""
+    hash: 769a7ef3d17df52c76b9e3b6a8862d3fcd9cdefccd2bb44fc2e60373c6e83155
   - path: src/overseer/src/error.rs
-    hash: ""
+    hash: b37b233d32d5eebc2caf544a22a480e02e15dd8139076bd14f6d39f6ffea27d0
 sections: [architecture, database-layer, service-layer, http-api, mcp-tools, storage, embedding, configuration, error-handling]
 ---
 

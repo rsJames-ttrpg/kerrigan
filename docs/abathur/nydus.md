@@ -6,13 +6,13 @@ lastmod: 2026-04-05
 tags: [nydus, client, http, api]
 sources:
   - path: src/nydus/src/client.rs
-    hash: ""
+    hash: 00b11dbe374d32749e300351af364b9038586a307f527ac97ed8a1082203f6e1
   - path: src/nydus/src/types.rs
-    hash: ""
+    hash: 71b7ec1f573adfe7940ead957b9afc183c63e2068f06e835a27f17a80da163f9
   - path: src/nydus/src/error.rs
-    hash: ""
+    hash: 11c821f3a84189c1c9b5bebd70f4d7971b6fb41ad17c1a4addd1069c5b93210b
   - path: src/nydus/src/normalize.rs
-    hash: ""
+    hash: bf571537fb53f519976de43cace85a9040035178b464c3d11b0fce8ff0468404
 sections: [client, methods, types, error-handling, url-normalization]
 ---
 

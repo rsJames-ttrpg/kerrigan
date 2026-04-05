@@ -6,27 +6,27 @@ lastmod: 2026-04-05
 tags: [queen, hatchery, actors, drones, notifications]
 sources:
   - path: src/queen/src/main.rs
-    hash: ""
+    hash: fe0adecce258ca4dd3090d6dec4c7ef85fc7bd81c8b9efb8c6561d49eea035d5
   - path: src/queen/src/config.rs
-    hash: ""
+    hash: 054d124a293c11d8fdeb7094369b231d600bfa921e632a27393f2ba151c9a8ca
   - path: src/queen/src/messages.rs
-    hash: ""
+    hash: 134afb9ab6df2f36fc00be9adb76f9ee5e03657045062458085cbdafaf7c0c4f
   - path: src/queen/src/actors/supervisor.rs
-    hash: ""
+    hash: c44a0455645c7a5c349a115618f9818d3f1ef672ab12a0ecc5c4458b0528b617
   - path: src/queen/src/actors/poller.rs
-    hash: ""
+    hash: 7317cc684b88dd4cc9c23a4cc1858b0fc3735c415880cdb10efd52d3b610d0e8
   - path: src/queen/src/actors/heartbeat.rs
-    hash: ""
+    hash: 256d7313b8218d6a15a12099f7a3b354d03d105f2371025171ba57fdcc62c6c9
   - path: src/queen/src/actors/registrar.rs
-    hash: ""
+    hash: b130e383ab98472670d2b647c2833daa410813096dee757d2d93ac3e13e45f97
   - path: src/queen/src/actors/creep_manager.rs
-    hash: ""
+    hash: 2523ed8a5b7c8baacfa625ab5813b6c8263cb993523d1d98f4b9afb3a3d614ba
   - path: src/queen/src/actors/evolution.rs
-    hash: ""
+    hash: 4bd5634d60ccd889e850a706643e359f3c99975b56a79370b62c3c61aa321753
   - path: src/queen/src/notifier/mod.rs
-    hash: ""
+    hash: 1bff129fd9519aa6e66a2d0d3bb44425a8445ff1fa85d9bc4009eae47ff1e112
   - path: src/queen/src/notifier/webhook.rs
-    hash: ""
+    hash: fdf0caac58940d35200e36a64dab6519c0ae517e0a9ae8e109ea352ab9bf81a8
 sections: [architecture, actors, job-claiming-flow, notification-system, evolution-actor, configuration, shutdown]
 ---
 

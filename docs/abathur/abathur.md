@@ -6,19 +6,19 @@ lastmod: 2026-04-05
 tags: [abathur, documentation, indexing, generation]
 sources:
   - path: src/abathur/src/config.rs
-    hash: ""
+    hash: 4ce041a96fe24bef22bb252e1cf520593e7f11c136cd9b9c353dfc9bcfbcd2e8
   - path: src/abathur/src/frontmatter.rs
-    hash: ""
+    hash: 5ed7fa3e7f55ce75ecd0b5c18b28da8f3c8fcdeaa03e04917584981309b0bc1c
   - path: src/abathur/src/index.rs
-    hash: ""
+    hash: ada8973f4918bd6c1696b2ea10507933748c3b2211345aaf1502dcaff0c19a87
   - path: src/abathur/src/hash.rs
-    hash: ""
+    hash: 5954217ea82aaf776758b125afa3ff80d48cb689c847fc8ad75a60ad2dc3b0e6
   - path: src/abathur/src/staleness.rs
-    hash: ""
+    hash: 6ff29e78c5ed1029bcb4361bfeda4188e509fcf888ed4cbd2f16f1badde4d144
   - path: src/abathur/src/generator.rs
-    hash: ""
+    hash: 44e9a67ca2552917241c62f68dca765f9af300e3e446b6693de72908a29005a5
   - path: src/abathur/src/code.rs
-    hash: ""
+    hash: e149de477e07eae46b540465c06f4cca44d14c7042ac1cb55b8323ca116144ee
 sections: [config, frontmatter, index, staleness, hash-management, generator]
 ---
 

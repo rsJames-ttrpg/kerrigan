@@ -6,17 +6,17 @@ lastmod: 2026-04-05
 tags: [evolution, analysis, metrics, recommendations]
 sources:
   - path: src/evolution/src/lib.rs
-    hash: ""
+    hash: fb5a1ffc803d59f08617266278d4cd221c7e7f1d5879d38427128eddc0d292d0
   - path: src/evolution/src/fetch.rs
-    hash: ""
+    hash: 2f4c635dfee5f287dd95c7da74975f78cc759f879ad63c5cf893be8d1dfddb72
   - path: src/evolution/src/parse.rs
-    hash: ""
+    hash: f83b654fead3e1ba8e876327ee53b609290c595e1706df89528bbc6ef408ab00
   - path: src/evolution/src/metrics.rs
-    hash: ""
+    hash: c879d7c463aa5164b745b673cd304f8acc338cdc906375042e2af4788828a97e
   - path: src/evolution/src/rules.rs
-    hash: ""
+    hash: 2a72fb8c17a635d5f61f821669733265d38fcaceed2b7ee3aeb2a651775d1563
   - path: src/evolution/src/report.rs
-    hash: ""
+    hash: a4f38501f0abb711c953a914fb8308a892d8e3cbf79dcce0c5f1ad17499d1e62
 sections: [pipeline, fetch, parse, metrics, rules, report]
 ---
 

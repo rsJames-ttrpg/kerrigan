@@ -6,7 +6,7 @@ lastmod: 2026-04-05
 tags: [creep-cli, cli, grpc]
 sources:
   - path: src/creep-cli/src/main.rs
-    hash: ""
+    hash: b9d2a583e28ab310f63e59d1223cf62f4541969e987c59af78cf2a2f00b65a52
 sections: [commands, output]
 ---
 

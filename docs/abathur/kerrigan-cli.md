@@ -6,9 +6,9 @@ lastmod: 2026-04-05
 tags: [kerrigan, cli, operator, pipeline]
 sources:
   - path: src/kerrigan/src/main.rs
-    hash: ""
+    hash: de48dd53592c1d6dbd221d8af65afa65be03ea777b889c572ed9471d3bbcc5d6
   - path: src/kerrigan/src/display.rs
-    hash: ""
+    hash: 57a4fe13a917c639c61bc83f2ded43239e5b1cc50a677832aa7a8f1fa94b4f52
 sections: [commands, pipeline-display, completions]
 ---
 
