@@ -12,6 +12,7 @@ NATIVE_DRONE_DEPS = [
     "//third-party:tracing-subscriber",
     "//third-party:toml",
     "//third-party:globset",
+    "//third-party:ignore",
     "//third-party:thiserror",
     "//third-party:tempfile",
 ]
