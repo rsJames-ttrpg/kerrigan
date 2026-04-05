@@ -4,6 +4,7 @@ mod exit_conditions;
 mod git_workflow;
 mod health;
 mod pipeline;
+mod resolve;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
