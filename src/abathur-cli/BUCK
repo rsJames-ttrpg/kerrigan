@@ -1,0 +1,24 @@
+load("//rules:install.bzl", "install_binary")
+
+ABATHUR_CLI_SRCS = glob(["src/**/*.rs"])
+
+ABATHUR_CLI_DEPS = [
+    "//src/abathur:abathur",
+    "//third-party:anyhow",
+    "//third-party:clap",
+    "//third-party:serde_json",
+    "//third-party:tokio",
+]
+
+rust_binary(
+    name = "abathur-cli",
+    srcs = ABATHUR_CLI_SRCS,
+    crate_root = "src/main.rs",
+    deps = ABATHUR_CLI_DEPS,
+    visibility = ["PUBLIC"],
+)
+
+install_binary(
+    name = "install",
+    binary = ":abathur-cli",
+)

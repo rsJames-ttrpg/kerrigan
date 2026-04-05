@@ -7,7 +7,7 @@ use crate::config::AbathurConfig;
 use crate::frontmatter::{self, DocMeta};
 
 pub struct Index {
-    pub(crate) docs: HashMap<String, DocMeta>,
+    pub docs: HashMap<String, DocMeta>,
 }
 
 impl Index {
