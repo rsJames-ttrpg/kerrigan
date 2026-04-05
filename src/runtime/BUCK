@@ -12,6 +12,9 @@ RUNTIME_DEPS = [
     "//third-party:reqwest",
     "//third-party:futures-util",
     "//third-party:bytes",
+    "//third-party:globset",
+    "//third-party:regex",
+    "//third-party:tempfile",
 ]
 
 rust_library(
