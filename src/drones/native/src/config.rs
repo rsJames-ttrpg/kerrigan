@@ -20,6 +20,8 @@ pub struct DroneConfig {
     #[serde(default)]
     pub environment: EnvironmentSection,
     #[serde(default)]
+    pub orchestrator: OrchestratorSection,
+    #[serde(default)]
     pub health_checks: Vec<CustomHealthCheck>,
 }
 
@@ -190,6 +192,33 @@ pub struct CustomHealthCheck {
     pub timeout_secs: u64,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct OrchestratorSection {
+    #[serde(default)]
+    pub test_command: Option<String>,
+    #[serde(default = "default_max_fixup_iterations")]
+    pub max_fixup_iterations: u32,
+    #[serde(default = "default_max_parallel")]
+    pub max_parallel: usize,
+}
+
+impl Default for OrchestratorSection {
+    fn default() -> Self {
+        Self {
+            test_command: None,
+            max_fixup_iterations: default_max_fixup_iterations(),
+            max_parallel: default_max_parallel(),
+        }
+    }
+}
+
+fn default_max_fixup_iterations() -> u32 {
+    5
+}
+fn default_max_parallel() -> usize {
+    2
+}
+
 fn default_max_tokens() -> u32 {
     8192
 }
@@ -251,6 +280,7 @@ impl Default for DroneConfig {
             tools: ToolsSection::default(),
             mcp: HashMap::new(),
             environment: EnvironmentSection::default(),
+            orchestrator: OrchestratorSection::default(),
             health_checks: Vec::new(),
         }
     }
@@ -340,6 +370,11 @@ extra_path = ["/usr/local/bin"]
 RUST_LOG = "debug"
 MY_VAR = "value"
 
+[orchestrator]
+test_command = "cargo test --workspace"
+max_fixup_iterations = 3
+max_parallel = 4
+
 [[health_checks]]
 name = "cargo-check"
 command = "cargo"
@@ -403,6 +438,14 @@ timeout_secs = 60
         assert_eq!(config.environment.extra_path, vec!["/usr/local/bin"]);
         assert_eq!(config.environment.env["RUST_LOG"], "debug");
         assert_eq!(config.environment.env["MY_VAR"], "value");
+
+        // Orchestrator
+        assert_eq!(
+            config.orchestrator.test_command.as_deref(),
+            Some("cargo test --workspace")
+        );
+        assert_eq!(config.orchestrator.max_fixup_iterations, 3);
+        assert_eq!(config.orchestrator.max_parallel, 4);
 
         // Health checks
         assert_eq!(config.health_checks.len(), 1);
@@ -557,5 +600,45 @@ model = "claude-sonnet-4-20250514"
     fn load_nonexistent_file_errors() {
         let result = DroneConfig::load(std::path::Path::new("/nonexistent/drone.toml"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_orchestrator_section() {
+        let config: DroneConfig = toml::from_str(
+            r#"
+[provider]
+kind = "anthropic"
+model = "claude-sonnet-4-20250514"
+
+[orchestrator]
+test_command = "cargo test"
+max_fixup_iterations = 3
+max_parallel = 4
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.orchestrator.test_command.as_deref(),
+            Some("cargo test")
+        );
+        assert_eq!(config.orchestrator.max_fixup_iterations, 3);
+        assert_eq!(config.orchestrator.max_parallel, 4);
+    }
+
+    #[test]
+    fn orchestrator_section_defaults() {
+        let config: DroneConfig = toml::from_str(
+            r#"
+[provider]
+kind = "anthropic"
+model = "claude-sonnet-4-20250514"
+"#,
+        )
+        .unwrap();
+
+        assert!(config.orchestrator.test_command.is_none());
+        assert_eq!(config.orchestrator.max_fixup_iterations, 5);
+        assert_eq!(config.orchestrator.max_parallel, 2);
     }
 }
