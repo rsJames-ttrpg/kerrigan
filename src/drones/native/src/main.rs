@@ -1,3 +1,4 @@
+mod cache;
 mod config;
 mod drone;
 mod exit_conditions;
