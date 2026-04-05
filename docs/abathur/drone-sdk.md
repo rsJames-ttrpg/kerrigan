@@ -10,7 +10,7 @@ sources:
   - path: src/drone-sdk/src/protocol.rs
     hash: 9cd847e1a364d8d319de0a6944ac5005e7cc67915f25c64fa2d4facf7ebb92fc
   - path: src/drone-sdk/src/harness.rs
-    hash: cf571664dbfd73908846064aea22f9d31df58bd948ce941a54b543f40f012d59
+    hash: 15e8c7c69b6f5dc902d67676b09967318c336289eca916a4ec40ebfb7f242afc
 sections: [drone-runner-trait, protocol, harness, types]
 ---
 
