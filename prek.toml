@@ -38,7 +38,7 @@ id = "docs-check"
 name = "abathur docs in sync"
 entry = "buck2 run root//src/abathur-cli -- check"
 language = "system"
-files = "^src/.*\\.rs$"
+files = "^src/.*"
 pass_filenames = false
 
 
