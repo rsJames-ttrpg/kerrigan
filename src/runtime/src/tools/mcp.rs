@@ -369,7 +369,7 @@ async fn read_content_length(
 // --- MCP Tool Proxy ---
 
 pub struct McpToolProxy {
-    server_name: String,
+    namespaced_name: String,
     tool_name: String,
     description: String,
     schema: serde_json::Value,
@@ -379,7 +379,7 @@ pub struct McpToolProxy {
 impl McpToolProxy {
     pub fn new(server_name: &str, info: &McpToolInfo, client: Arc<McpClient>) -> Self {
         Self {
-            server_name: server_name.to_string(),
+            namespaced_name: Self::namespaced_name(server_name, &info.name),
             tool_name: info.name.clone(),
             description: info.description.clone(),
             schema: info.input_schema.clone(),
@@ -395,13 +395,7 @@ impl McpToolProxy {
 #[async_trait]
 impl Tool for McpToolProxy {
     fn name(&self) -> &str {
-        // We store the full namespaced name
-        // This is a bit awkward — we need to store it
-        // Use a leaked string for the lifetime (tools are long-lived)
-        // Actually, let's just compute and cache it
-        Box::leak(
-            McpToolProxy::namespaced_name(&self.server_name, &self.tool_name).into_boxed_str(),
-        )
+        &self.namespaced_name
     }
 
     fn description(&self) -> &str {
