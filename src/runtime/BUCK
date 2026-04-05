@@ -15,6 +15,7 @@ RUNTIME_DEPS = [
     "//third-party:globset",
     "//third-party:regex",
     "//third-party:tempfile",
+    "//third-party:uuid",
 ]
 
 rust_library(

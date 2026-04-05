@@ -18,3 +18,4 @@ bytes = "1"
 globset = "0.4"
 regex = "1"
 tempfile = "3"
+uuid = { version = "1", features = ["v4"] }

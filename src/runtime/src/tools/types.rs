@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::event::EventSink;
+use crate::tools::ToolRegistry;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OutputFormat {
@@ -50,6 +51,8 @@ pub struct ToolContext {
     pub workspace: PathBuf,
     pub home: PathBuf,
     pub event_sink: Arc<dyn EventSink>,
+    pub tool_registry: Arc<ToolRegistry>,
+    pub agent_depth: u32,
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
@@ -586,17 +587,18 @@ fn grep_dir(
 }
 
 pub fn register_file_tools(registry: &mut super::ToolRegistry) {
-    registry.register(Box::new(ReadFileTool));
-    registry.register(Box::new(WriteFileTool));
-    registry.register(Box::new(EditFileTool));
-    registry.register(Box::new(GlobSearchTool));
-    registry.register(Box::new(GrepSearchTool));
+    registry.register(Arc::new(ReadFileTool));
+    registry.register(Arc::new(WriteFileTool));
+    registry.register(Arc::new(EditFileTool));
+    registry.register(Arc::new(GlobSearchTool));
+    registry.register(Arc::new(GrepSearchTool));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::event::NullEventSink;
+    use crate::tools::ToolRegistry;
     use std::sync::Arc;
     use tempfile::TempDir;
 
@@ -605,6 +607,8 @@ mod tests {
             workspace: dir.to_path_buf(),
             home: dir.to_path_buf(),
             event_sink: Arc::new(NullEventSink),
+            tool_registry: Arc::new(ToolRegistry::new()),
+            agent_depth: 0,
         }
     }
 
