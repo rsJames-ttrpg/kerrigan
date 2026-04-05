@@ -5,6 +5,7 @@ mod exit_conditions;
 mod git_workflow;
 mod health;
 mod pipeline;
+mod prompt;
 mod resolve;
 
 #[tokio::main]

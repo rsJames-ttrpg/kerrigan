@@ -16,6 +16,7 @@ NATIVE_DRONE_DEPS = [
     "//third-party:thiserror",
     "//third-party:tempfile",
     "//third-party:blake3",
+    "//third-party:chrono",
 ]
 
 rust_binary(
