@@ -9825,6 +9825,50 @@ http_archive(
     visibility = [],
 )
 
+alias(
+    name = "serde_yaml",
+    actual = ":serde_yaml-0.9",
+    visibility = ["PUBLIC"],
+)
+
+cargo.rust_library(
+    name = "serde_yaml-0.9",
+    srcs = [":serde_yaml-0.9.34+deprecated.crate"],
+    crate = "serde_yaml",
+    crate_root = "serde_yaml-0.9.34+deprecated.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "serde_yaml",
+        "CARGO_CRATE_NAME": "serde_yaml",
+        "CARGO_MANIFEST_DIR": "serde_yaml-0.9.34+deprecated.crate",
+        "CARGO_PKG_AUTHORS": "David Tolnay <dtolnay@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "YAML data format for Serde",
+        "CARGO_PKG_NAME": "serde_yaml",
+        "CARGO_PKG_REPOSITORY": "https://github.com/dtolnay/serde-yaml",
+        "CARGO_PKG_VERSION": "0.9.34+deprecated",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "9",
+        "CARGO_PKG_VERSION_PATCH": "34",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+    deps = [
+        ":indexmap-2",
+        ":itoa-1",
+        ":ryu-1",
+        ":serde-1",
+        ":unsafe-libyaml-0.2",
+    ],
+)
+
+http_archive(
+    name = "serde_yaml-0.9.34+deprecated.crate",
+    sha256 = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47",
+    strip_prefix = "serde_yaml-0.9.34+deprecated",
+    urls = ["https://static.crates.io/crates/serde_yaml/0.9.34+deprecated/download"],
+    visibility = [],
+)
+
 cargo.rust_library(
     name = "sha2-0.10",
     srcs = [":sha2-0.10.9.crate"],
@@ -12921,6 +12965,37 @@ http_archive(
     sha256 = "7df058c713841ad818f1dc5d3fd88063241cc61f49f5fbea4b951e8cf5a8d71d",
     strip_prefix = "unicode-properties-0.1.4",
     urls = ["https://static.crates.io/crates/unicode-properties/0.1.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "unsafe-libyaml-0.2",
+    srcs = [":unsafe-libyaml-0.2.11.crate"],
+    crate = "unsafe_libyaml",
+    crate_root = "unsafe-libyaml-0.2.11.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "unsafe_libyaml",
+        "CARGO_CRATE_NAME": "unsafe_libyaml",
+        "CARGO_MANIFEST_DIR": "unsafe-libyaml-0.2.11.crate",
+        "CARGO_PKG_AUTHORS": "David Tolnay <dtolnay@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "libyaml transpiled to rust by c2rust",
+        "CARGO_PKG_NAME": "unsafe-libyaml",
+        "CARGO_PKG_REPOSITORY": "https://github.com/dtolnay/unsafe-libyaml",
+        "CARGO_PKG_VERSION": "0.2.11",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "2",
+        "CARGO_PKG_VERSION_PATCH": "11",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+)
+
+http_archive(
+    name = "unsafe-libyaml-0.2.11.crate",
+    sha256 = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861",
+    strip_prefix = "unsafe-libyaml-0.2.11",
+    urls = ["https://static.crates.io/crates/unsafe-libyaml/0.2.11/download"],
     visibility = [],
 )
 

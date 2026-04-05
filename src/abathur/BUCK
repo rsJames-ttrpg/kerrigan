@@ -1,0 +1,29 @@
+ABATHUR_SRCS = glob(["src/**/*.rs"])
+
+ABATHUR_DEPS = [
+    "//third-party:anyhow",
+    "//third-party:blake3",
+    "//third-party:chrono",
+    "//third-party:globset",
+    "//third-party:reqwest",
+    "//third-party:serde",
+    "//third-party:serde_json",
+    "//third-party:serde_yaml",
+    "//third-party:toml",
+]
+
+rust_library(
+    name = "abathur",
+    srcs = ABATHUR_SRCS,
+    crate_root = "src/lib.rs",
+    deps = ABATHUR_DEPS,
+    visibility = ["PUBLIC"],
+)
+
+rust_test(
+    name = "abathur-test",
+    srcs = ABATHUR_SRCS,
+    crate_root = "src/lib.rs",
+    deps = ABATHUR_DEPS,
+    visibility = ["PUBLIC"],
+)
