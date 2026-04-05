@@ -1,6 +1,8 @@
 pub mod bash;
+pub mod external;
 pub mod file_ops;
 pub mod git;
+pub mod mcp;
 pub mod registry;
 pub mod test_runner;
 pub mod types;
