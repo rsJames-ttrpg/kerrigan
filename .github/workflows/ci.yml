@@ -37,6 +37,7 @@ jobs:
       - name: Lint (prek)
         env:
           BUCK2_RE_HTTP_HEADERS: ${{ secrets.BUCK2_RE_HTTP_HEADERS }}
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             buck2 run root//tools:prek -- run --from-ref origin/${{ github.base_ref }} --to-ref HEAD
@@ -47,9 +48,11 @@ jobs:
       - name: Build all targets
         env:
           BUCK2_RE_HTTP_HEADERS: ${{ secrets.BUCK2_RE_HTTP_HEADERS }}
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: buck2 build root//... --materializations none --config project.remote_only=true
 
       - name: Run tests
         env:
           BUCK2_RE_HTTP_HEADERS: ${{ secrets.BUCK2_RE_HTTP_HEADERS }}
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: buck2 test //src/...
