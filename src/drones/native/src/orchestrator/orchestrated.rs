@@ -110,7 +110,7 @@ pub async fn run_orchestrated(
 
     // 3. Test-fix loop (only if test_command is configured)
     let mut fixup_iterations = 0u32;
-    let mut tests_passing = false;
+    let mut tests_passing = config.test_command.is_none();
     let mut fixup_summaries = Vec::new();
 
     if let Some(test_command) = &config.test_command {
