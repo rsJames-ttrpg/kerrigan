@@ -1,4 +1,5 @@
 mod drone;
+mod health;
 mod pipeline;
 
 #[tokio::main]
