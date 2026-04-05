@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use runtime::api::ProviderConfig;
 use runtime::conversation::loop_core::{CompactionStrategy, LoopConfig};
 
-use crate::config::{CacheSection, DroneConfig, EnvironmentSection};
-use crate::pipeline::{Stage, StageConfig, StageGitConfig};
+use crate::config::{CacheSection, DroneConfig};
+use crate::pipeline::{Stage, StageConfig};
 
 /// Fully resolved configuration after merging all layers:
 /// compiled defaults → drone.toml → job spec overrides → stage defaults

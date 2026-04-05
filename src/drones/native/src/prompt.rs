@@ -35,7 +35,7 @@ impl PromptBuilder {
     /// Build the full system prompt, sorted by priority (highest first).
     pub fn build(&self) -> Vec<String> {
         let mut sorted: Vec<_> = self.sections.iter().collect();
-        sorted.sort_by(|a, b| b.priority.cmp(&a.priority));
+        sorted.sort_by_key(|b| std::cmp::Reverse(b.priority));
         sorted.iter().map(|s| s.content.clone()).collect()
     }
 
