@@ -1,5 +1,6 @@
 mod config;
 mod index;
+pub mod lsp;
 mod parser;
 mod symbol_index;
 mod proto {

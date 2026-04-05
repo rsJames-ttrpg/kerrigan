@@ -12,12 +12,13 @@ notify-debouncer-mini = "0.7"
 ignore = "0.4"
 blake3 = "1"
 glob-match = "0.2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "signal", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "signal", "time", "process", "io-util"] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1"
+serde_json = "1"
 tempfile = "3"
 tree-sitter = "0.26.8"
 tree-sitter-rust = "0.24.2"
