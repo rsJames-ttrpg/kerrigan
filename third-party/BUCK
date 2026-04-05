@@ -3767,6 +3767,12 @@ http_archive(
     visibility = [],
 )
 
+alias(
+    name = "globset",
+    actual = ":globset-0.4",
+    visibility = ["PUBLIC"],
+)
+
 cargo.rust_library(
     name = "globset-0.4",
     srcs = [":globset-0.4.18.crate"],
@@ -7957,6 +7963,12 @@ http_archive(
     visibility = [],
 )
 
+alias(
+    name = "regex",
+    actual = ":regex-1",
+    visibility = ["PUBLIC"],
+)
+
 cargo.rust_library(
     name = "regex-1",
     srcs = [":regex-1.12.3.crate"],
@@ -7978,6 +7990,7 @@ cargo.rust_library(
         "CARGO_PKG_VERSION_PRE": "",
     },
     features = [
+        "default",
         "perf",
         "perf-backtrack",
         "perf-cache",
@@ -8139,6 +8152,7 @@ cargo.rust_library(
         "CARGO_PKG_VERSION_PRE": "",
     },
     features = [
+        "default",
         "std",
         "unicode",
         "unicode-age",
