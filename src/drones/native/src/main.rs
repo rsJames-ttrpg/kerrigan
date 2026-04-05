@@ -1,3 +1,4 @@
+mod config;
 mod drone;
 mod exit_conditions;
 mod git_workflow;
