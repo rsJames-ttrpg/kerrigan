@@ -107,6 +107,7 @@ async fn main() -> anyhow::Result<()> {
         index.clone(),
         symbol_index.clone(),
         watcher.clone(),
+        lsp_manager.clone(),
         event_rx,
     ));
 

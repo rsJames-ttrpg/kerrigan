@@ -100,7 +100,11 @@ mod tests {
 
     #[test]
     fn test_encode_request_with_params() {
-        let req = JsonRpcRequest::new(2, "textDocument/definition", Some(serde_json::json!({"uri": "file:///foo.rs"})));
+        let req = JsonRpcRequest::new(
+            2,
+            "textDocument/definition",
+            Some(serde_json::json!({"uri": "file:///foo.rs"})),
+        );
         let encoded = encode_message(&req);
         let s = String::from_utf8(encoded).unwrap();
         let body = s.split("\r\n\r\n").nth(1).unwrap();
@@ -158,7 +162,8 @@ mod tests {
 
     #[test]
     fn test_deserialize_error_response() {
-        let json = r#"{"jsonrpc":"2.0","id":2,"error":{"code":-32600,"message":"Invalid Request"}}"#;
+        let json =
+            r#"{"jsonrpc":"2.0","id":2,"error":{"code":-32600,"message":"Invalid Request"}}"#;
         let resp: JsonRpcResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.id, Some(2));
         assert!(resp.result.is_none());
@@ -172,7 +177,10 @@ mod tests {
         let json = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///foo.rs","diagnostics":[]}}"#;
         let msg: JsonRpcMessage = serde_json::from_str(json).unwrap();
         assert!(msg.id.is_none());
-        assert_eq!(msg.method.as_deref(), Some("textDocument/publishDiagnostics"));
+        assert_eq!(
+            msg.method.as_deref(),
+            Some("textDocument/publishDiagnostics")
+        );
         assert!(msg.params.is_some());
     }
 }

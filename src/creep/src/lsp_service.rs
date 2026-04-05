@@ -167,7 +167,12 @@ impl LspServiceTrait for LspServiceImpl {
             })?;
 
         let locations = client
-            .find_references(&req.file_path, req.line, req.column, req.include_declaration)
+            .find_references(
+                &req.file_path,
+                req.line,
+                req.column,
+                req.include_declaration,
+            )
             .await
             .map_err(|e| Status::internal(format!("find_references failed: {e}")))?;
 

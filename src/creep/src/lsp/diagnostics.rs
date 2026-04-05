@@ -95,7 +95,12 @@ impl DiagnosticsCache {
 mod tests {
     use super::*;
 
-    fn make_diagnostic(file: &str, line: u32, severity: DiagnosticSeverity, msg: &str) -> LspDiagnostic {
+    fn make_diagnostic(
+        file: &str,
+        line: u32,
+        severity: DiagnosticSeverity,
+        msg: &str,
+    ) -> LspDiagnostic {
         LspDiagnostic {
             file: PathBuf::from(file),
             line,
@@ -110,9 +115,12 @@ mod tests {
     fn test_update_and_retrieve() {
         let cache = DiagnosticsCache::new();
         let file = PathBuf::from("/src/main.rs");
-        let diags = vec![
-            make_diagnostic("/src/main.rs", 10, DiagnosticSeverity::Error, "undefined variable"),
-        ];
+        let diags = vec![make_diagnostic(
+            "/src/main.rs",
+            10,
+            DiagnosticSeverity::Error,
+            "undefined variable",
+        )];
         cache.update(file.clone(), diags);
 
         let result = cache.get_file(&file);
@@ -126,7 +134,12 @@ mod tests {
         let file = PathBuf::from("/src/main.rs");
         cache.update(
             file.clone(),
-            vec![make_diagnostic("/src/main.rs", 1, DiagnosticSeverity::Error, "err")],
+            vec![make_diagnostic(
+                "/src/main.rs",
+                1,
+                DiagnosticSeverity::Error,
+                "err",
+            )],
         );
         assert_eq!(cache.get_file(&file).len(), 1);
 
@@ -166,11 +179,21 @@ mod tests {
         let cache = DiagnosticsCache::new();
         cache.update(
             PathBuf::from("/a.rs"),
-            vec![make_diagnostic("/a.rs", 1, DiagnosticSeverity::Error, "err1")],
+            vec![make_diagnostic(
+                "/a.rs",
+                1,
+                DiagnosticSeverity::Error,
+                "err1",
+            )],
         );
         cache.update(
             PathBuf::from("/b.rs"),
-            vec![make_diagnostic("/b.rs", 2, DiagnosticSeverity::Error, "err2")],
+            vec![make_diagnostic(
+                "/b.rs",
+                2,
+                DiagnosticSeverity::Error,
+                "err2",
+            )],
         );
 
         let all = cache.get_all(DiagnosticSeverity::Hint);
@@ -206,7 +229,12 @@ mod tests {
         let cache = DiagnosticsCache::new();
         cache.update(
             PathBuf::from("/a.rs"),
-            vec![make_diagnostic("/a.rs", 1, DiagnosticSeverity::Error, "err")],
+            vec![make_diagnostic(
+                "/a.rs",
+                1,
+                DiagnosticSeverity::Error,
+                "err",
+            )],
         );
         assert_eq!(cache.get_all(DiagnosticSeverity::Hint).len(), 1);
         cache.clear();

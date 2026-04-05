@@ -83,7 +83,7 @@ impl LspManager {
     /// Find the workspace that contains the given file path, among active clients.
     pub fn find_workspace_for_file(&self, file: &Path) -> Option<PathBuf> {
         for key in self.clients.keys() {
-            if let Some(ws) = key.split(':').nth(1) {
+            if let Some(ws) = key.splitn(2, ':').nth(1) {
                 let ws_path = PathBuf::from(ws);
                 if file.starts_with(&ws_path) {
                     return Some(ws_path);
@@ -101,7 +101,11 @@ impl LspManager {
     }
 
     /// Get diagnostics across all active servers for a workspace.
-    pub fn diagnostics(&self, workspace: &Path, min_severity: DiagnosticSeverity) -> Vec<LspDiagnostic> {
+    pub fn diagnostics(
+        &self,
+        workspace: &Path,
+        min_severity: DiagnosticSeverity,
+    ) -> Vec<LspDiagnostic> {
         self.clients
             .iter()
             .filter(|(k, _)| k.ends_with(&format!(":{}", workspace.display())))
@@ -149,9 +153,18 @@ mod tests {
     #[test]
     fn test_extension_map() {
         let mgr = LspManager::new(sample_configs());
-        assert_eq!(mgr.extension_map.get(".rs"), Some(&"rust-analyzer".to_string()));
-        assert_eq!(mgr.extension_map.get(".ts"), Some(&"typescript-language-server".to_string()));
-        assert_eq!(mgr.extension_map.get(".tsx"), Some(&"typescript-language-server".to_string()));
+        assert_eq!(
+            mgr.extension_map.get(".rs"),
+            Some(&"rust-analyzer".to_string())
+        );
+        assert_eq!(
+            mgr.extension_map.get(".ts"),
+            Some(&"typescript-language-server".to_string())
+        );
+        assert_eq!(
+            mgr.extension_map.get(".tsx"),
+            Some(&"typescript-language-server".to_string())
+        );
         assert!(mgr.extension_map.get(".py").is_none());
     }
 
@@ -195,6 +208,9 @@ mod tests {
     #[test]
     fn test_find_workspace_for_file_none_when_no_clients() {
         let mgr = LspManager::new(sample_configs());
-        assert!(mgr.find_workspace_for_file(Path::new("/workspace/src/main.rs")).is_none());
+        assert!(
+            mgr.find_workspace_for_file(Path::new("/workspace/src/main.rs"))
+                .is_none()
+        );
     }
 }

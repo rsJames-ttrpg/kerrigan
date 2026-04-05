@@ -1,15 +1,20 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 use tokio::sync::{Mutex, oneshot};
 
 use super::diagnostics::{DiagnosticSeverity, DiagnosticsCache, LspDiagnostic};
-use super::jsonrpc::{JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, decode_header, encode_message};
+use super::jsonrpc::{
+    JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, decode_header, encode_message,
+};
 use super::manager::LspServerConfig;
+
+/// Default timeout for LSP requests in seconds.
+const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 30;
 
 #[derive(Debug, Clone)]
 pub struct SymbolLocation {
@@ -25,23 +30,29 @@ pub struct LspClient {
     pending: Arc<Mutex<HashMap<i64, oneshot::Sender<Result<serde_json::Value, String>>>>>,
     next_id: AtomicI64,
     pub diagnostics: DiagnosticsCache,
+    request_timeout: std::time::Duration,
     _reader_task: tokio::task::JoinHandle<()>,
+    _stderr_task: tokio::task::JoinHandle<()>,
     child: Mutex<Child>,
 }
 
 impl LspClient {
     /// Spawn an LSP server process and connect via stdio.
-    pub async fn connect(config: &LspServerConfig, workspace: &std::path::Path) -> anyhow::Result<Self> {
+    pub async fn connect(
+        config: &LspServerConfig,
+        workspace: &std::path::Path,
+    ) -> anyhow::Result<Self> {
         let mut child = tokio::process::Command::new(&config.command)
             .args(&config.args)
             .current_dir(workspace)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             .spawn()?;
 
         let stdin = child.stdin.take().expect("stdin must be piped");
         let stdout = child.stdout.take().expect("stdout must be piped");
+        let stderr = child.stderr.take().expect("stderr must be piped");
 
         let diagnostics = DiagnosticsCache::new();
         let pending: Arc<Mutex<HashMap<i64, oneshot::Sender<Result<serde_json::Value, String>>>>> =
@@ -53,18 +64,40 @@ impl LspClient {
             diagnostics.clone(),
         ));
 
+        let server_name = config.name.clone();
+        let stderr_task = tokio::spawn(async move {
+            let mut reader = BufReader::new(stderr);
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match reader.read_line(&mut line).await {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        tracing::warn!(lsp_server = %server_name, "{}", line.trim_end());
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
         Ok(Self {
             stdin: Mutex::new(stdin),
             pending,
             next_id: AtomicI64::new(1),
             diagnostics,
+            request_timeout: std::time::Duration::from_secs(DEFAULT_REQUEST_TIMEOUT_SECS),
             _reader_task: reader_task,
+            _stderr_task: stderr_task,
             child: Mutex::new(child),
         })
     }
 
     /// Send a request and wait for the response.
-    pub async fn request(&self, method: &str, params: Option<serde_json::Value>) -> anyhow::Result<serde_json::Value> {
+    pub async fn request(
+        &self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> anyhow::Result<serde_json::Value> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let req = JsonRpcRequest::new(id, method, params);
         let encoded = encode_message(&req);
@@ -81,12 +114,24 @@ impl LspClient {
             stdin.flush().await?;
         }
 
-        let result = rx.await.map_err(|_| anyhow::anyhow!("LSP response channel closed for {method}"))?;
+        let result = tokio::time::timeout(self.request_timeout, rx)
+            .await
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "LSP request timed out after {:?} for {method}",
+                    self.request_timeout
+                )
+            })?
+            .map_err(|_| anyhow::anyhow!("LSP response channel closed for {method}"))?;
         result.map_err(|e| anyhow::anyhow!("LSP error for {method}: {e}"))
     }
 
     /// Send a notification (no response expected).
-    pub async fn notify(&self, method: &str, params: Option<serde_json::Value>) -> anyhow::Result<()> {
+    pub async fn notify(
+        &self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> anyhow::Result<()> {
         let notif = JsonRpcNotification::new(method, params);
         let encoded = encode_message(&notif);
 
@@ -111,12 +156,18 @@ impl LspClient {
             }
         });
         self.request("initialize", Some(params)).await?;
-        self.notify("initialized", Some(serde_json::json!({}))).await?;
+        self.notify("initialized", Some(serde_json::json!({})))
+            .await?;
         Ok(())
     }
 
     /// Send textDocument/didOpen notification.
-    pub async fn open_document(&self, path: &str, content: &str, language_id: &str) -> anyhow::Result<()> {
+    pub async fn open_document(
+        &self,
+        path: &str,
+        content: &str,
+        language_id: &str,
+    ) -> anyhow::Result<()> {
         self.notify(
             "textDocument/didOpen",
             Some(serde_json::json!({
@@ -132,7 +183,12 @@ impl LspClient {
     }
 
     /// Send textDocument/didChange notification with full content.
-    pub async fn change_document(&self, path: &str, content: &str, version: i32) -> anyhow::Result<()> {
+    pub async fn change_document(
+        &self,
+        path: &str,
+        content: &str,
+        version: i32,
+    ) -> anyhow::Result<()> {
         self.notify(
             "textDocument/didChange",
             Some(serde_json::json!({
@@ -155,7 +211,12 @@ impl LspClient {
     }
 
     /// Request textDocument/definition.
-    pub async fn goto_definition(&self, file: &str, line: u32, column: u32) -> anyhow::Result<Vec<SymbolLocation>> {
+    pub async fn goto_definition(
+        &self,
+        file: &str,
+        line: u32,
+        column: u32,
+    ) -> anyhow::Result<Vec<SymbolLocation>> {
         let result = self
             .request(
                 "textDocument/definition",
@@ -189,12 +250,19 @@ impl LspClient {
         Ok(parse_locations(result))
     }
 
-    /// Send shutdown request and exit notification.
+    /// Send shutdown request and exit notification, then wait briefly for
+    /// the server to exit gracefully before falling back to kill.
     pub async fn shutdown(self) -> anyhow::Result<()> {
         let _ = self.request("shutdown", None).await;
         let _ = self.notify("exit", None).await;
         let mut child = self.child.lock().await;
-        let _ = child.kill().await;
+        match tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await {
+            Ok(Ok(_)) => {}
+            _ => {
+                tracing::warn!("LSP server did not exit after 5s, killing");
+                let _ = child.kill().await;
+            }
+        }
         Ok(())
     }
 

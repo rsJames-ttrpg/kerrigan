@@ -403,10 +403,22 @@ async fn cmd_diagnostics(
 }
 
 fn print_diagnostics_markdown(diagnostics: &[proto::Diagnostic]) {
-    let errors: Vec<_> = diagnostics.iter().filter(|d| d.severity == "error").collect();
-    let warnings: Vec<_> = diagnostics.iter().filter(|d| d.severity == "warning").collect();
-    let infos: Vec<_> = diagnostics.iter().filter(|d| d.severity == "info").collect();
-    let hints: Vec<_> = diagnostics.iter().filter(|d| d.severity == "hint").collect();
+    let errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == "error")
+        .collect();
+    let warnings: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == "warning")
+        .collect();
+    let infos: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == "info")
+        .collect();
+    let hints: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == "hint")
+        .collect();
 
     println!(
         "## Workspace Diagnostics ({} error{}, {} warning{})",
@@ -425,7 +437,14 @@ fn print_diagnostics_markdown(diagnostics: &[proto::Diagnostic]) {
             } else {
                 format!(" ({})", d.source)
             };
-            println!("- `{}:{}:{}` — {}{}", d.file_path, d.line + 1, d.column + 1, d.message, source);
+            println!(
+                "- `{}:{}:{}` — {}{}",
+                d.file_path,
+                d.line + 1,
+                d.column + 1,
+                d.message,
+                source
+            );
         }
         println!();
     }
@@ -438,7 +457,14 @@ fn print_diagnostics_markdown(diagnostics: &[proto::Diagnostic]) {
             } else {
                 format!(" ({})", d.source)
             };
-            println!("- `{}:{}:{}` — {}{}", d.file_path, d.line + 1, d.column + 1, d.message, source);
+            println!(
+                "- `{}:{}:{}` — {}{}",
+                d.file_path,
+                d.line + 1,
+                d.column + 1,
+                d.message,
+                source
+            );
         }
         println!();
     }
@@ -451,7 +477,14 @@ fn print_diagnostics_markdown(diagnostics: &[proto::Diagnostic]) {
             } else {
                 format!(" ({})", d.source)
             };
-            println!("- `{}:{}:{}` — {}{}", d.file_path, d.line + 1, d.column + 1, d.message, source);
+            println!(
+                "- `{}:{}:{}` — {}{}",
+                d.file_path,
+                d.line + 1,
+                d.column + 1,
+                d.message,
+                source
+            );
         }
         println!();
     }
@@ -464,7 +497,14 @@ fn print_diagnostics_markdown(diagnostics: &[proto::Diagnostic]) {
             } else {
                 format!(" ({})", d.source)
             };
-            println!("- `{}:{}:{}` — {}{}", d.file_path, d.line + 1, d.column + 1, d.message, source);
+            println!(
+                "- `{}:{}:{}` — {}{}",
+                d.file_path,
+                d.line + 1,
+                d.column + 1,
+                d.message,
+                source
+            );
         }
         println!();
     }

@@ -8,7 +8,7 @@ sources:
   - path: src/queen/src/main.rs
     hash: fe0adecce258ca4dd3090d6dec4c7ef85fc7bd81c8b9efb8c6561d49eea035d5
   - path: src/queen/src/config.rs
-    hash: 054d124a293c11d8fdeb7094369b231d600bfa921e632a27393f2ba151c9a8ca
+    hash: 0817c30a5d093a59f544dea8a078569aea705fd1280496cd93268a092590e6f4
   - path: src/queen/src/messages.rs
     hash: 134afb9ab6df2f36fc00be9adb76f9ee5e03657045062458085cbdafaf7c0c4f
   - path: src/queen/src/actors/supervisor.rs
@@ -171,6 +171,12 @@ Disabled by default. When enabled, monitors completed runs and triggers heuristi
 | `queen.default_repo_url` | Fallback repo URL | None |
 | `creep.enabled` | Enable Creep sidecar | true |
 | `creep.binary` | Creep binary path | "./creep" |
+| `creep.health_port` | Creep health check port | 9090 |
+| `creep.restart_delay` | Restart delay (s) | 5 |
+| `creep.lsp.<name>.command` | LSP server binary | (required) |
+| `creep.lsp.<name>.args` | LSP server arguments | [] |
+| `creep.lsp.<name>.extensions` | File extensions handled | (required) |
+| `creep.lsp.<name>.language_id` | LSP language identifier | (required) |
 | `notifications.backend` | "log" or "webhook" | "log" |
 | `evolution.enabled` | Enable evolution actor | false |
 | `evolution.run_interval` | Runs between analyses | 10 |
