@@ -187,10 +187,10 @@ pub mod file_index_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value,
+        clippy::let_unit_value
     )]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     #[derive(Debug, Clone)]
     pub struct FileIndexClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -229,14 +229,13 @@ pub mod file_index_client {
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
             T: tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-                Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
+                    http::Request<tonic::body::Body>,
+                    Response = http::Response<
+                        <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
+                    >,
                 >,
-            >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+            <T as tonic::codegen::Service<http::Request<tonic::body::Body>>>::Error:
+                Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             FileIndexClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -274,22 +273,13 @@ pub mod file_index_client {
         pub async fn search_files(
             &mut self,
             request: impl tonic::IntoRequest<super::SearchFilesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::SearchFilesResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::SearchFilesResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/creep.v1.FileIndex/SearchFiles",
-            );
+            let path = http::uri::PathAndQuery::from_static("/creep.v1.FileIndex/SearchFiles");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("creep.v1.FileIndex", "SearchFiles"));
@@ -298,22 +288,13 @@ pub mod file_index_client {
         pub async fn get_file_metadata(
             &mut self,
             request: impl tonic::IntoRequest<super::GetFileMetadataRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetFileMetadataResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::GetFileMetadataResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/creep.v1.FileIndex/GetFileMetadata",
-            );
+            let path = http::uri::PathAndQuery::from_static("/creep.v1.FileIndex/GetFileMetadata");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("creep.v1.FileIndex", "GetFileMetadata"));
@@ -322,22 +303,14 @@ pub mod file_index_client {
         pub async fn register_workspace(
             &mut self,
             request: impl tonic::IntoRequest<super::RegisterWorkspaceRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::RegisterWorkspaceResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::RegisterWorkspaceResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/creep.v1.FileIndex/RegisterWorkspace",
-            );
+            let path =
+                http::uri::PathAndQuery::from_static("/creep.v1.FileIndex/RegisterWorkspace");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("creep.v1.FileIndex", "RegisterWorkspace"));
@@ -346,22 +319,14 @@ pub mod file_index_client {
         pub async fn unregister_workspace(
             &mut self,
             request: impl tonic::IntoRequest<super::UnregisterWorkspaceRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::UnregisterWorkspaceResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::UnregisterWorkspaceResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/creep.v1.FileIndex/UnregisterWorkspace",
-            );
+            let path =
+                http::uri::PathAndQuery::from_static("/creep.v1.FileIndex/UnregisterWorkspace");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("creep.v1.FileIndex", "UnregisterWorkspace"));
@@ -370,22 +335,13 @@ pub mod file_index_client {
         pub async fn search_symbols(
             &mut self,
             request: impl tonic::IntoRequest<super::SearchSymbolsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::SearchSymbolsResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::SearchSymbolsResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/creep.v1.FileIndex/SearchSymbols",
-            );
+            let path = http::uri::PathAndQuery::from_static("/creep.v1.FileIndex/SearchSymbols");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("creep.v1.FileIndex", "SearchSymbols"));
@@ -394,22 +350,13 @@ pub mod file_index_client {
         pub async fn list_file_symbols(
             &mut self,
             request: impl tonic::IntoRequest<super::ListFileSymbolsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::ListFileSymbolsResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::ListFileSymbolsResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/creep.v1.FileIndex/ListFileSymbols",
-            );
+            let path = http::uri::PathAndQuery::from_static("/creep.v1.FileIndex/ListFileSymbols");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("creep.v1.FileIndex", "ListFileSymbols"));
@@ -424,10 +371,10 @@ pub mod lsp_service_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value,
+        clippy::let_unit_value
     )]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     #[derive(Debug, Clone)]
     pub struct LspServiceClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -466,14 +413,13 @@ pub mod lsp_service_client {
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
             T: tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-                Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
+                    http::Request<tonic::body::Body>,
+                    Response = http::Response<
+                        <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
+                    >,
                 >,
-            >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+            <T as tonic::codegen::Service<http::Request<tonic::body::Body>>>::Error:
+                Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             LspServiceClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -511,22 +457,13 @@ pub mod lsp_service_client {
         pub async fn get_diagnostics(
             &mut self,
             request: impl tonic::IntoRequest<super::GetDiagnosticsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetDiagnosticsResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::GetDiagnosticsResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/creep.v1.LspService/GetDiagnostics",
-            );
+            let path = http::uri::PathAndQuery::from_static("/creep.v1.LspService/GetDiagnostics");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("creep.v1.LspService", "GetDiagnostics"));
@@ -535,22 +472,14 @@ pub mod lsp_service_client {
         pub async fn get_file_diagnostics(
             &mut self,
             request: impl tonic::IntoRequest<super::GetFileDiagnosticsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetFileDiagnosticsResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::GetFileDiagnosticsResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/creep.v1.LspService/GetFileDiagnostics",
-            );
+            let path =
+                http::uri::PathAndQuery::from_static("/creep.v1.LspService/GetFileDiagnostics");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("creep.v1.LspService", "GetFileDiagnostics"));
@@ -559,22 +488,13 @@ pub mod lsp_service_client {
         pub async fn goto_definition(
             &mut self,
             request: impl tonic::IntoRequest<super::GotoDefinitionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GotoDefinitionResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::GotoDefinitionResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/creep.v1.LspService/GotoDefinition",
-            );
+            let path = http::uri::PathAndQuery::from_static("/creep.v1.LspService/GotoDefinition");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("creep.v1.LspService", "GotoDefinition"));
@@ -583,22 +503,13 @@ pub mod lsp_service_client {
         pub async fn find_references(
             &mut self,
             request: impl tonic::IntoRequest<super::FindReferencesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::FindReferencesResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+        ) -> std::result::Result<tonic::Response<super::FindReferencesResponse>, tonic::Status>
+        {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/creep.v1.LspService/FindReferences",
-            );
+            let path = http::uri::PathAndQuery::from_static("/creep.v1.LspService/FindReferences");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("creep.v1.LspService", "FindReferences"));
@@ -613,7 +524,7 @@ pub mod file_index_server {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value,
+        clippy::let_unit_value
     )]
     use tonic::codegen::*;
     /// Generated trait containing gRPC methods that should be implemented for use with FileIndexServer.
@@ -622,45 +533,27 @@ pub mod file_index_server {
         async fn search_files(
             &self,
             request: tonic::Request<super::SearchFilesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::SearchFilesResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::SearchFilesResponse>, tonic::Status>;
         async fn get_file_metadata(
             &self,
             request: tonic::Request<super::GetFileMetadataRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetFileMetadataResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::GetFileMetadataResponse>, tonic::Status>;
         async fn register_workspace(
             &self,
             request: tonic::Request<super::RegisterWorkspaceRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::RegisterWorkspaceResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::RegisterWorkspaceResponse>, tonic::Status>;
         async fn unregister_workspace(
             &self,
             request: tonic::Request<super::UnregisterWorkspaceRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::UnregisterWorkspaceResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::UnregisterWorkspaceResponse>, tonic::Status>;
         async fn search_symbols(
             &self,
             request: tonic::Request<super::SearchSymbolsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::SearchSymbolsResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::SearchSymbolsResponse>, tonic::Status>;
         async fn list_file_symbols(
             &self,
             request: tonic::Request<super::ListFileSymbolsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::ListFileSymbolsResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::ListFileSymbolsResponse>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct FileIndexServer<T> {
@@ -683,10 +576,7 @@ pub mod file_index_server {
                 max_encoding_message_size: None,
             }
         }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
+        pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
         where
             F: tonic::service::Interceptor,
         {
@@ -741,15 +631,9 @@ pub mod file_index_server {
                 "/creep.v1.FileIndex/SearchFiles" => {
                     #[allow(non_camel_case_types)]
                     struct SearchFilesSvc<T: FileIndex>(pub Arc<T>);
-                    impl<
-                        T: FileIndex,
-                    > tonic::server::UnaryService<super::SearchFilesRequest>
-                    for SearchFilesSvc<T> {
+                    impl<T: FileIndex> tonic::server::UnaryService<super::SearchFilesRequest> for SearchFilesSvc<T> {
                         type Response = super::SearchFilesResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::SearchFilesRequest>,
@@ -786,15 +670,11 @@ pub mod file_index_server {
                 "/creep.v1.FileIndex/GetFileMetadata" => {
                     #[allow(non_camel_case_types)]
                     struct GetFileMetadataSvc<T: FileIndex>(pub Arc<T>);
-                    impl<
-                        T: FileIndex,
-                    > tonic::server::UnaryService<super::GetFileMetadataRequest>
-                    for GetFileMetadataSvc<T> {
+                    impl<T: FileIndex> tonic::server::UnaryService<super::GetFileMetadataRequest>
+                        for GetFileMetadataSvc<T>
+                    {
                         type Response = super::GetFileMetadataResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::GetFileMetadataRequest>,
@@ -831,15 +711,11 @@ pub mod file_index_server {
                 "/creep.v1.FileIndex/RegisterWorkspace" => {
                     #[allow(non_camel_case_types)]
                     struct RegisterWorkspaceSvc<T: FileIndex>(pub Arc<T>);
-                    impl<
-                        T: FileIndex,
-                    > tonic::server::UnaryService<super::RegisterWorkspaceRequest>
-                    for RegisterWorkspaceSvc<T> {
+                    impl<T: FileIndex> tonic::server::UnaryService<super::RegisterWorkspaceRequest>
+                        for RegisterWorkspaceSvc<T>
+                    {
                         type Response = super::RegisterWorkspaceResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::RegisterWorkspaceRequest>,
@@ -876,23 +752,19 @@ pub mod file_index_server {
                 "/creep.v1.FileIndex/UnregisterWorkspace" => {
                     #[allow(non_camel_case_types)]
                     struct UnregisterWorkspaceSvc<T: FileIndex>(pub Arc<T>);
-                    impl<
-                        T: FileIndex,
-                    > tonic::server::UnaryService<super::UnregisterWorkspaceRequest>
-                    for UnregisterWorkspaceSvc<T> {
+                    impl<T: FileIndex>
+                        tonic::server::UnaryService<super::UnregisterWorkspaceRequest>
+                        for UnregisterWorkspaceSvc<T>
+                    {
                         type Response = super::UnregisterWorkspaceResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::UnregisterWorkspaceRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as FileIndex>::unregister_workspace(&inner, request)
-                                    .await
+                                <T as FileIndex>::unregister_workspace(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -922,15 +794,11 @@ pub mod file_index_server {
                 "/creep.v1.FileIndex/SearchSymbols" => {
                     #[allow(non_camel_case_types)]
                     struct SearchSymbolsSvc<T: FileIndex>(pub Arc<T>);
-                    impl<
-                        T: FileIndex,
-                    > tonic::server::UnaryService<super::SearchSymbolsRequest>
-                    for SearchSymbolsSvc<T> {
+                    impl<T: FileIndex> tonic::server::UnaryService<super::SearchSymbolsRequest>
+                        for SearchSymbolsSvc<T>
+                    {
                         type Response = super::SearchSymbolsResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::SearchSymbolsRequest>,
@@ -967,15 +835,11 @@ pub mod file_index_server {
                 "/creep.v1.FileIndex/ListFileSymbols" => {
                     #[allow(non_camel_case_types)]
                     struct ListFileSymbolsSvc<T: FileIndex>(pub Arc<T>);
-                    impl<
-                        T: FileIndex,
-                    > tonic::server::UnaryService<super::ListFileSymbolsRequest>
-                    for ListFileSymbolsSvc<T> {
+                    impl<T: FileIndex> tonic::server::UnaryService<super::ListFileSymbolsRequest>
+                        for ListFileSymbolsSvc<T>
+                    {
                         type Response = super::ListFileSymbolsResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::ListFileSymbolsRequest>,
@@ -1009,25 +873,19 @@ pub mod file_index_server {
                     };
                     Box::pin(fut)
                 }
-                _ => {
-                    Box::pin(async move {
-                        let mut response = http::Response::new(
-                            tonic::body::Body::default(),
-                        );
-                        let headers = response.headers_mut();
-                        headers
-                            .insert(
-                                tonic::Status::GRPC_STATUS,
-                                (tonic::Code::Unimplemented as i32).into(),
-                            );
-                        headers
-                            .insert(
-                                http::header::CONTENT_TYPE,
-                                tonic::metadata::GRPC_CONTENT_TYPE,
-                            );
-                        Ok(response)
-                    })
-                }
+                _ => Box::pin(async move {
+                    let mut response = http::Response::new(tonic::body::Body::default());
+                    let headers = response.headers_mut();
+                    headers.insert(
+                        tonic::Status::GRPC_STATUS,
+                        (tonic::Code::Unimplemented as i32).into(),
+                    );
+                    headers.insert(
+                        http::header::CONTENT_TYPE,
+                        tonic::metadata::GRPC_CONTENT_TYPE,
+                    );
+                    Ok(response)
+                }),
             }
         }
     }
@@ -1056,7 +914,7 @@ pub mod lsp_service_server {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value,
+        clippy::let_unit_value
     )]
     use tonic::codegen::*;
     /// Generated trait containing gRPC methods that should be implemented for use with LspServiceServer.
@@ -1065,31 +923,19 @@ pub mod lsp_service_server {
         async fn get_diagnostics(
             &self,
             request: tonic::Request<super::GetDiagnosticsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetDiagnosticsResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::GetDiagnosticsResponse>, tonic::Status>;
         async fn get_file_diagnostics(
             &self,
             request: tonic::Request<super::GetFileDiagnosticsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GetFileDiagnosticsResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::GetFileDiagnosticsResponse>, tonic::Status>;
         async fn goto_definition(
             &self,
             request: tonic::Request<super::GotoDefinitionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::GotoDefinitionResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::GotoDefinitionResponse>, tonic::Status>;
         async fn find_references(
             &self,
             request: tonic::Request<super::FindReferencesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::FindReferencesResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<super::FindReferencesResponse>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct LspServiceServer<T> {
@@ -1112,10 +958,7 @@ pub mod lsp_service_server {
                 max_encoding_message_size: None,
             }
         }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
+        pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
         where
             F: tonic::service::Interceptor,
         {
@@ -1170,15 +1013,11 @@ pub mod lsp_service_server {
                 "/creep.v1.LspService/GetDiagnostics" => {
                     #[allow(non_camel_case_types)]
                     struct GetDiagnosticsSvc<T: LspService>(pub Arc<T>);
-                    impl<
-                        T: LspService,
-                    > tonic::server::UnaryService<super::GetDiagnosticsRequest>
-                    for GetDiagnosticsSvc<T> {
+                    impl<T: LspService> tonic::server::UnaryService<super::GetDiagnosticsRequest>
+                        for GetDiagnosticsSvc<T>
+                    {
                         type Response = super::GetDiagnosticsResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::GetDiagnosticsRequest>,
@@ -1215,23 +1054,19 @@ pub mod lsp_service_server {
                 "/creep.v1.LspService/GetFileDiagnostics" => {
                     #[allow(non_camel_case_types)]
                     struct GetFileDiagnosticsSvc<T: LspService>(pub Arc<T>);
-                    impl<
-                        T: LspService,
-                    > tonic::server::UnaryService<super::GetFileDiagnosticsRequest>
-                    for GetFileDiagnosticsSvc<T> {
+                    impl<T: LspService>
+                        tonic::server::UnaryService<super::GetFileDiagnosticsRequest>
+                        for GetFileDiagnosticsSvc<T>
+                    {
                         type Response = super::GetFileDiagnosticsResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::GetFileDiagnosticsRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
                             let fut = async move {
-                                <T as LspService>::get_file_diagnostics(&inner, request)
-                                    .await
+                                <T as LspService>::get_file_diagnostics(&inner, request).await
                             };
                             Box::pin(fut)
                         }
@@ -1261,15 +1096,11 @@ pub mod lsp_service_server {
                 "/creep.v1.LspService/GotoDefinition" => {
                     #[allow(non_camel_case_types)]
                     struct GotoDefinitionSvc<T: LspService>(pub Arc<T>);
-                    impl<
-                        T: LspService,
-                    > tonic::server::UnaryService<super::GotoDefinitionRequest>
-                    for GotoDefinitionSvc<T> {
+                    impl<T: LspService> tonic::server::UnaryService<super::GotoDefinitionRequest>
+                        for GotoDefinitionSvc<T>
+                    {
                         type Response = super::GotoDefinitionResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::GotoDefinitionRequest>,
@@ -1306,15 +1137,11 @@ pub mod lsp_service_server {
                 "/creep.v1.LspService/FindReferences" => {
                     #[allow(non_camel_case_types)]
                     struct FindReferencesSvc<T: LspService>(pub Arc<T>);
-                    impl<
-                        T: LspService,
-                    > tonic::server::UnaryService<super::FindReferencesRequest>
-                    for FindReferencesSvc<T> {
+                    impl<T: LspService> tonic::server::UnaryService<super::FindReferencesRequest>
+                        for FindReferencesSvc<T>
+                    {
                         type Response = super::FindReferencesResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::FindReferencesRequest>,
@@ -1348,25 +1175,19 @@ pub mod lsp_service_server {
                     };
                     Box::pin(fut)
                 }
-                _ => {
-                    Box::pin(async move {
-                        let mut response = http::Response::new(
-                            tonic::body::Body::default(),
-                        );
-                        let headers = response.headers_mut();
-                        headers
-                            .insert(
-                                tonic::Status::GRPC_STATUS,
-                                (tonic::Code::Unimplemented as i32).into(),
-                            );
-                        headers
-                            .insert(
-                                http::header::CONTENT_TYPE,
-                                tonic::metadata::GRPC_CONTENT_TYPE,
-                            );
-                        Ok(response)
-                    })
-                }
+                _ => Box::pin(async move {
+                    let mut response = http::Response::new(tonic::body::Body::default());
+                    let headers = response.headers_mut();
+                    headers.insert(
+                        tonic::Status::GRPC_STATUS,
+                        (tonic::Code::Unimplemented as i32).into(),
+                    );
+                    headers.insert(
+                        http::header::CONTENT_TYPE,
+                        tonic::metadata::GRPC_CONTENT_TYPE,
+                    );
+                    Ok(response)
+                }),
             }
         }
     }
