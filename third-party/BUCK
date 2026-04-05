@@ -1015,6 +1015,12 @@ http_archive(
     visibility = [],
 )
 
+alias(
+    name = "bytes",
+    actual = ":bytes-1",
+    visibility = ["PUBLIC"],
+)
+
 cargo.rust_library(
     name = "bytes-1",
     srcs = [":bytes-1.11.1.crate"],
@@ -3432,6 +3438,12 @@ http_archive(
     strip_prefix = "futures-task-0.3.32",
     urls = ["https://static.crates.io/crates/futures-task/0.3.32/download"],
     visibility = [],
+)
+
+alias(
+    name = "futures-util",
+    actual = ":futures-util-0.3",
+    visibility = ["PUBLIC"],
 )
 
 cargo.rust_library(
@@ -11433,6 +11445,7 @@ cargo.rust_library(
         "signal-hook-registry",
         "socket2",
         "sync",
+        "test-util",
         "time",
         "tokio-macros",
     ],
@@ -11562,6 +11575,12 @@ http_archive(
     strip_prefix = "tokio-rustls-0.26.4",
     urls = ["https://static.crates.io/crates/tokio-rustls/0.26.4/download"],
     visibility = [],
+)
+
+alias(
+    name = "tokio-stream",
+    actual = ":tokio-stream-0.1",
+    visibility = ["PUBLIC"],
 )
 
 cargo.rust_library(

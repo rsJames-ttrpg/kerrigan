@@ -7,6 +7,11 @@ RUNTIME_DEPS = [
     "//third-party:async-trait",
     "//third-party:anyhow",
     "//third-party:tracing",
+    "//third-party:thiserror",
+    "//third-party:tokio-stream",
+    "//third-party:reqwest",
+    "//third-party:futures-util",
+    "//third-party:bytes",
 ]
 
 rust_library(
