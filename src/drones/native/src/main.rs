@@ -1,6 +1,7 @@
 mod cache;
 mod config;
 mod drone;
+mod event_bridge;
 mod exit_conditions;
 mod git_workflow;
 mod health;
