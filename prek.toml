@@ -34,6 +34,15 @@ files = "Cargo\\.(toml|lock)$"
 pass_filenames = false
 
 [[repos.hooks]]
+id = "docs-check"
+name = "abathur docs in sync"
+entry = "buck2 run root//src/abathur-cli -- check"
+language = "system"
+files = "^src/.*"
+pass_filenames = false
+
+
+[[repos.hooks]]
 id = "buck2-build"
 name = "buck2 build"
 entry = "buck2 build root//..."
