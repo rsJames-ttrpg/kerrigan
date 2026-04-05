@@ -43,7 +43,7 @@ fn check_file_created(workspace: &Path, pattern: &str) -> ConditionResult {
         }
     };
 
-    let met = find_matching_file(workspace, workspace, &matcher);
+    let met = find_matching_file(workspace, &matcher);
 
     ConditionResult {
         condition: format!("file:{pattern}"),
@@ -56,30 +56,20 @@ fn check_file_created(workspace: &Path, pattern: &str) -> ConditionResult {
     }
 }
 
-fn find_matching_file(base: &Path, dir: &Path, matcher: &globset::GlobMatcher) -> bool {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return false,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.starts_with('.') || name == "target" || name == "node_modules" {
-                    continue;
-                }
-            }
-        }
-        if let Ok(relative) = path.strip_prefix(base) {
-            if matcher.is_match(relative) {
-                return true;
-            }
-        }
-        if path.is_dir() && find_matching_file(base, &path, matcher) {
-            return true;
-        }
-    }
-    false
+fn find_matching_file(base: &Path, matcher: &globset::GlobMatcher) -> bool {
+    ignore::WalkBuilder::new(base)
+        .hidden(true)
+        .git_ignore(true)
+        .git_global(false)
+        .git_exclude(true)
+        .build()
+        .flatten()
+        .any(|entry| {
+            entry
+                .path()
+                .strip_prefix(base)
+                .is_ok_and(|rel| matcher.is_match(rel))
+        })
 }
 
 async fn check_tests_passing(workspace: &Path) -> ConditionResult {

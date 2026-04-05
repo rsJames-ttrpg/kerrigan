@@ -15,5 +15,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 toml = "0.8"
 globset = "0.4"
+ignore = "0.4"
 thiserror = "2"
 tempfile = "3"
