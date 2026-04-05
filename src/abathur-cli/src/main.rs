@@ -173,7 +173,7 @@ fn cmd_check(cli: &Cli) -> anyhow::Result<()> {
 
     if !stale.is_empty() {
         anyhow::bail!(
-            "{} stale document(s) — run `abathur hash --all` to update",
+            "{} stale document(s) — run update any relevant documentation and `abathur hash --all` to update",
             stale.len(),
         );
     }
