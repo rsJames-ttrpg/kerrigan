@@ -1,4 +1,5 @@
 mod executor;
+mod orchestrated;
 mod plan_parser;
 mod scheduler;
 
