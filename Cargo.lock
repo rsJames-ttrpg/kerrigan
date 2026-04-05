@@ -532,6 +532,7 @@ dependencies = [
  "notify-debouncer-mini",
  "prost",
  "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "toml",
