@@ -90,7 +90,7 @@ impl Orchestrator {
     /// Run all tasks, respecting the dependency graph and parallelism limit.
     pub async fn run(&mut self) -> Vec<TaskResult> {
         let mut results = Vec::new();
-        let mut active: Vec<tokio::task::JoinHandle<TaskResult>> = Vec::new();
+        let mut active: Vec<(String, tokio::task::JoinHandle<TaskResult>)> = Vec::new();
 
         loop {
             // Spawn ready tasks up to max_parallel
@@ -106,8 +106,9 @@ impl Orchestrator {
                     task: format!("Task {}: {}", task.id, task.description),
                 });
 
+                let task_id = task.id.clone();
                 let handle = self.spawn_task_agent(task);
-                active.push(handle);
+                active.push((task_id, handle));
             }
 
             if active.is_empty() {
@@ -115,17 +116,21 @@ impl Orchestrator {
             }
 
             // Wait for any task to complete
-            let (result, _index, remaining) = futures::future::select_all(active).await;
-            active = remaining;
+            let (task_ids, handles): (Vec<_>, Vec<_>) = active.into_iter().unzip();
+            let (result, index, remaining) = futures::future::select_all(handles).await;
+
+            // Rebuild active list from remaining handles with their task IDs
+            let mut remaining_ids: Vec<String> = task_ids;
+            let completed_id = remaining_ids.remove(index);
+            active = remaining_ids.into_iter().zip(remaining).collect();
 
             match result {
                 Ok(task_result) => {
-                    let task_id = task_result.task_id.clone();
                     let success = task_result.success;
-                    self.scheduler.complete(&task_id);
+                    self.scheduler.complete(&task_result.task_id);
 
                     tracing::info!(
-                        task_id = %task_id,
+                        task_id = %task_result.task_id,
                         success,
                         remaining = self.scheduler.remaining(),
                         "Task completed"
@@ -134,7 +139,15 @@ impl Orchestrator {
                     results.push(task_result);
                 }
                 Err(e) => {
-                    tracing::error!("task agent panicked: {e}");
+                    tracing::error!(task_id = %completed_id, "task agent panicked: {e}");
+                    self.scheduler.fail(&completed_id);
+
+                    results.push(TaskResult {
+                        task_id: completed_id,
+                        success: false,
+                        output: format!("task panicked: {e}"),
+                        commits: vec![],
+                    });
                 }
             }
         }

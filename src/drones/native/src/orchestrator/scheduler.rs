@@ -5,7 +5,9 @@ use super::plan_parser::Task;
 #[derive(Debug)]
 pub struct TaskScheduler {
     tasks: Vec<Task>,
+    task_ids: HashSet<String>,
     completed: HashSet<String>,
+    failed: HashSet<String>,
     in_progress: HashSet<String>,
 }
 
@@ -13,44 +15,61 @@ impl TaskScheduler {
     /// Create a new scheduler, validating that the task graph is a valid DAG.
     pub fn new(tasks: Vec<Task>) -> anyhow::Result<Self> {
         validate_dag(&tasks)?;
+        let task_ids = tasks.iter().map(|t| t.id.clone()).collect();
         Ok(Self {
             tasks,
+            task_ids,
             completed: HashSet::new(),
+            failed: HashSet::new(),
             in_progress: HashSet::new(),
         })
     }
 
     /// Get tasks whose dependencies are all satisfied and not yet started.
+    /// Tasks whose dependencies include a failed task are never returned.
     pub fn ready_tasks(&self) -> Vec<&Task> {
         self.tasks
             .iter()
             .filter(|t| {
                 !self.completed.contains(&t.id)
+                    && !self.failed.contains(&t.id)
                     && !self.in_progress.contains(&t.id)
                     && t.dependencies.iter().all(|d| self.completed.contains(d))
+                    && !t.dependencies.iter().any(|d| self.failed.contains(d))
             })
             .collect()
     }
 
     /// Mark a task as in-progress.
     pub fn start(&mut self, task_id: &str) {
+        debug_assert!(self.task_ids.contains(task_id), "unknown task: {task_id}");
         self.in_progress.insert(task_id.to_string());
     }
 
-    /// Mark a task as completed.
+    /// Mark a task as completed successfully.
     pub fn complete(&mut self, task_id: &str) {
+        debug_assert!(self.task_ids.contains(task_id), "unknown task: {task_id}");
         self.in_progress.remove(task_id);
         self.completed.insert(task_id.to_string());
     }
 
-    /// Returns true when all tasks have been completed.
-    pub fn is_done(&self) -> bool {
-        self.completed.len() == self.tasks.len()
+    /// Mark a task as failed. Downstream dependents will be skipped.
+    pub fn fail(&mut self, task_id: &str) {
+        debug_assert!(self.task_ids.contains(task_id), "unknown task: {task_id}");
+        self.in_progress.remove(task_id);
+        self.failed.insert(task_id.to_string());
     }
 
-    /// Number of tasks not yet completed.
+    /// Returns true when all tasks have been completed or failed
+    /// (no more work can be done).
+    pub fn is_done(&self) -> bool {
+        // Done when no tasks are in-progress and nothing new can become ready
+        self.in_progress.is_empty() && self.ready_tasks().is_empty()
+    }
+
+    /// Number of tasks not yet completed or failed.
     pub fn remaining(&self) -> usize {
-        self.tasks.len() - self.completed.len()
+        self.tasks.len() - self.completed.len() - self.failed.len()
     }
 }
 
@@ -224,6 +243,39 @@ mod tests {
         let ready = scheduler.ready_tasks();
         assert_eq!(ready.len(), 1);
         assert_eq!(ready[0].id, "d");
+    }
+
+    #[test]
+    fn test_fail_blocks_dependents() {
+        // a -> b -> c
+        let mut scheduler =
+            TaskScheduler::new(vec![task("a", &[]), task("b", &["a"]), task("c", &["b"])]).unwrap();
+
+        scheduler.start("a");
+        scheduler.fail("a");
+
+        // b depends on a which failed, so b should never become ready
+        assert!(scheduler.ready_tasks().is_empty());
+        // c transitively blocked too
+        assert!(scheduler.is_done()); // nothing more can run
+        assert_eq!(scheduler.remaining(), 2); // b and c never ran
+    }
+
+    #[test]
+    fn test_fail_partial_graph() {
+        // a -> c, b -> c  (diamond without d)
+        let mut scheduler =
+            TaskScheduler::new(vec![task("a", &[]), task("b", &[]), task("c", &["a", "b"])])
+                .unwrap();
+
+        scheduler.start("a");
+        scheduler.start("b");
+        scheduler.fail("a");
+        scheduler.complete("b");
+
+        // c depends on both a and b; a failed, so c is blocked
+        assert!(scheduler.ready_tasks().is_empty());
+        assert!(scheduler.is_done());
     }
 
     #[test]

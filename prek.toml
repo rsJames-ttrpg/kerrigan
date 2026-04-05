@@ -16,7 +16,6 @@ name = "rustfmt (hermetic)"
 entry = "buck2 run root//tools:rustfmt -- --check"
 language = "system"
 types = ["rust"]
-exclude = "proto_gen/"
 
 [[repos.hooks]]
 id = "clippy"
