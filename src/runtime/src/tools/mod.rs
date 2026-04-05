@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod bash;
 pub mod external;
 pub mod file_ops;
