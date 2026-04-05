@@ -11,7 +11,7 @@ pub fn update_hashes(doc_path: &Path) -> anyhow::Result<()> {
 
     let mut updated = content.clone();
 
-    // Replace each source hash in-place
+    // Replace each source hash in-place using the full "hash: <value>" pattern
     for source in &meta.sources {
         let new_hash = match staleness::hash_file(&source.path) {
             Ok(hash) => hash,
@@ -20,7 +20,9 @@ pub fn update_hashes(doc_path: &Path) -> anyhow::Result<()> {
             }
         };
         if new_hash != source.hash {
-            updated = updated.replacen(&source.hash, &new_hash, 1);
+            let old_pattern = format!("hash: {}", source.hash);
+            let new_pattern = format!("hash: {new_hash}");
+            updated = updated.replacen(&old_pattern, &new_pattern, 1);
         }
     }
 
@@ -84,5 +86,30 @@ Content here.
         assert!(!updated.contains("stale_hash_value"));
         // Body preserved
         assert!(updated.contains("Content here."));
+    }
+
+    #[test]
+    fn update_hashes_from_empty() {
+        let dir = TempDir::new().unwrap();
+
+        let source = dir.path().join("lib.rs");
+        std::fs::write(&source, b"fn hello() {}").unwrap();
+        let real_hash = crate::staleness::hash_file(&source).unwrap();
+
+        let doc_path = dir.path().join("doc.md");
+        let doc = format!(
+            "---\ntitle: Test\nslug: test\ndescription: A test\nlastmod: 2026-04-05\n\
+             tags: []\nsources:\n  - path: {}\n    hash: \"\"\nsections: []\n---\n\n# Test\n",
+            source.display()
+        );
+        std::fs::write(&doc_path, &doc).unwrap();
+
+        update_hashes(&doc_path).unwrap();
+
+        let updated = std::fs::read_to_string(&doc_path).unwrap();
+        assert!(updated.contains(&format!("hash: {real_hash}")));
+        assert!(!updated.contains("hash: \"\""));
+        // Frontmatter delimiter preserved
+        assert!(updated.starts_with("---\n"));
     }
 }
