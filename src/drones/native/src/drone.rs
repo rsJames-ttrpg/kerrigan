@@ -98,7 +98,7 @@ impl DroneRunner for NativeDrone {
             DroneConfig::load(std::path::Path::new(&config_path))?
         } else {
             tracing::warn!("No drone.toml found at {config_path}, using defaults");
-            toml::from_str("")?
+            DroneConfig::default()
         };
 
         // 3. Parse job config and resolve stage
@@ -204,7 +204,7 @@ impl DroneRunner for NativeDrone {
         let drone_toml = if std::path::Path::new(config_path).exists() {
             DroneConfig::load(std::path::Path::new(config_path))?
         } else {
-            toml::from_str("")?
+            DroneConfig::default()
         };
         let config = ResolvedConfig::resolve(&drone_toml, &job_config, stage);
 
@@ -437,6 +437,8 @@ async fn create_pr_if_needed(workspace: &std::path::Path) -> anyhow::Result<Stri
 
 #[cfg(test)]
 mod tests {
+    use drone_sdk::runner::DroneRunner;
+
     use super::*;
 
     #[test]
@@ -497,5 +499,191 @@ mod tests {
         let mut config = HashMap::new();
         config.insert("stage".to_string(), "bogus".to_string());
         assert_eq!(NativeDrone::resolve_stage(&config), Stage::Freeform);
+    }
+
+    #[tokio::test]
+    async fn smoke_test_setup_creates_environment() {
+        let drone = NativeDrone;
+        let job = JobSpec {
+            job_run_id: "smoke-test-001".to_string(),
+            repo_url: String::new(), // skip git clone
+            branch: None,
+            task: "write a hello world program".to_string(),
+            config: json!({
+                "stage": "freeform",
+            }),
+        };
+
+        let env = drone.setup(&job).await.unwrap();
+
+        // Verify home and workspace directories were created
+        assert!(env.home.exists());
+        assert!(env.workspace.exists());
+        assert_eq!(env.home, PathBuf::from("/tmp/drone-smoke-test-001"));
+        assert_eq!(
+            env.workspace,
+            PathBuf::from("/tmp/drone-smoke-test-001/workspace")
+        );
+
+        // Verify state file was persisted
+        let state_path = env.home.join("drone_state.json");
+        assert!(state_path.exists());
+        let state: serde_json::Value =
+            serde_json::from_str(&tokio::fs::read_to_string(&state_path).await.unwrap()).unwrap();
+        assert_eq!(state["task"], "write a hello world program");
+        assert_eq!(state["job_run_id"], "smoke-test-001");
+        assert_eq!(state["stage"], "freeform");
+
+        // Verify config meta was persisted
+        let meta_path = env.home.join("config_meta.json");
+        assert!(meta_path.exists());
+
+        // Teardown
+        drone.teardown(&env).await;
+
+        // Verify cleanup
+        assert!(!env.home.exists());
+    }
+
+    #[tokio::test]
+    async fn smoke_test_setup_rejects_invalid_job_id() {
+        let drone = NativeDrone;
+        let job = JobSpec {
+            job_run_id: "has/invalid/chars".to_string(),
+            repo_url: String::new(),
+            branch: None,
+            task: "test".to_string(),
+            config: json!({}),
+        };
+
+        let result = drone.setup(&job).await;
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("invalid characters"),
+            "should mention invalid characters"
+        );
+    }
+
+    #[tokio::test]
+    async fn smoke_test_setup_with_stage_config() {
+        let drone = NativeDrone;
+        let job = JobSpec {
+            job_run_id: "smoke-test-stage".to_string(),
+            repo_url: String::new(),
+            branch: None,
+            task: "implement feature".to_string(),
+            config: json!({
+                "stage": "implement",
+                "model": "claude-sonnet-4-20250514",
+            }),
+        };
+
+        let env = drone.setup(&job).await.unwrap();
+
+        let state: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(env.home.join("drone_state.json"))
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(state["stage"], "implement");
+
+        drone.teardown(&env).await;
+    }
+
+    #[tokio::test]
+    async fn smoke_test_teardown_idempotent() {
+        let drone = NativeDrone;
+        let job = JobSpec {
+            job_run_id: "smoke-test-teardown".to_string(),
+            repo_url: String::new(),
+            branch: None,
+            task: "test".to_string(),
+            config: json!({}),
+        };
+
+        let env = drone.setup(&job).await.unwrap();
+        assert!(env.home.exists());
+
+        // First teardown
+        drone.teardown(&env).await;
+        assert!(!env.home.exists());
+
+        // Second teardown should not panic
+        drone.teardown(&env).await;
+    }
+
+    #[tokio::test]
+    async fn smoke_test_event_bridge_integration() {
+        use crate::event_bridge::DroneEventBridge;
+        use drone_sdk::protocol::DroneEvent;
+        use runtime::event::{EventSink, RuntimeEvent};
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let bridge = DroneEventBridge::new(tx, PathBuf::from("/tmp"), "smoke-run".into());
+
+        // Simulate a series of events like a real execution
+        bridge.emit(RuntimeEvent::TurnStart {
+            task: "implement feature".into(),
+        });
+        bridge.emit(RuntimeEvent::Heartbeat);
+        bridge.emit(RuntimeEvent::ToolUseStart {
+            id: "t1".into(),
+            name: "bash".into(),
+            input: json!({"command": "cargo test"}),
+        });
+        bridge.emit(RuntimeEvent::ToolUseEnd {
+            id: "t1".into(),
+            name: "bash".into(),
+            result: runtime::tools::ToolResult::success("ok".into()),
+            duration_ms: 500,
+        });
+        bridge.emit(RuntimeEvent::Usage(runtime::api::TokenUsage {
+            input_tokens: 1000,
+            output_tokens: 500,
+            cache_read_tokens: 200,
+            cache_creation_tokens: 0,
+        }));
+
+        // Collect all messages
+        drop(bridge);
+        let mut messages = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            messages.push(msg);
+        }
+
+        assert_eq!(messages.len(), 5);
+
+        // Verify first message is TaskStarted event
+        assert!(matches!(
+            &messages[0],
+            DroneMessage::Event(DroneEvent::TaskStarted { .. })
+        ));
+        // Second is heartbeat progress
+        assert!(matches!(&messages[1], DroneMessage::Progress(p) if p.status == "heartbeat"));
+        // Third is tool_use progress
+        assert!(matches!(&messages[2], DroneMessage::Progress(p) if p.status == "tool_use"));
+        // Fourth is ToolUse event
+        assert!(matches!(
+            &messages[3],
+            DroneMessage::Event(DroneEvent::ToolUse {
+                duration_ms: 500,
+                ..
+            })
+        ));
+        // Fifth is TokenUsage event
+        assert!(matches!(
+            &messages[4],
+            DroneMessage::Event(DroneEvent::TokenUsage { input: 1000, .. })
+        ));
+
+        // Verify all messages serialize correctly (roundtrip)
+        for msg in &messages {
+            let json = serde_json::to_string(msg).unwrap();
+            let _: DroneMessage = serde_json::from_str(&json).unwrap();
+        }
     }
 }

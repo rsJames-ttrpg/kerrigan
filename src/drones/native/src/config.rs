@@ -236,6 +236,26 @@ fn default_health_timeout() -> u64 {
     30
 }
 
+impl Default for DroneConfig {
+    fn default() -> Self {
+        Self {
+            provider: ProviderSection {
+                kind: "anthropic".to_string(),
+                base_url: None,
+                model: "claude-sonnet-4-20250514".to_string(),
+                api_key: None,
+            },
+            runtime: RuntimeSection::default(),
+            cache: CacheSection::default(),
+            git: GitSection::default(),
+            tools: ToolsSection::default(),
+            mcp: HashMap::new(),
+            environment: EnvironmentSection::default(),
+            health_checks: Vec::new(),
+        }
+    }
+}
+
 impl DroneConfig {
     pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
