@@ -142,16 +142,21 @@ impl DroneRunner for NativeDrone {
 
         // 8. Set up environment variables
         for (key, value) in &resolved.environment.env {
-            // SAFETY: setup runs single-threaded before spawning any tasks
+            // SAFETY: The drone binary uses current_thread runtime, so no other
+            // tokio worker threads exist. No concurrent set_var/var calls possible.
             unsafe { std::env::set_var(key, value) };
         }
 
-        // 9. Persist state for execute phase
+        // 9. Persist state for execute phase (filter secrets — never write them to disk)
+        let safe_config: HashMap<&String, &String> = job_config
+            .iter()
+            .filter(|(k, _)| !k.starts_with("secrets."))
+            .collect();
         let state = serde_json::json!({
             "task": &job.task,
             "job_run_id": &job.job_run_id,
             "repo_url": &job.repo_url,
-            "job_config": &job_config,
+            "job_config": &safe_config,
             "stage": serde_json::to_value(&resolved.stage_config.stage).unwrap_or(json!("freeform")),
         });
         let state_path = home.join("drone_state.json");
@@ -407,18 +412,43 @@ async fn create_pr_if_needed(workspace: &std::path::Path) -> anyhow::Result<Stri
     }
 
     // Push current branch
-    let _ = tokio::process::Command::new("git")
+    match tokio::process::Command::new("git")
         .args(["push", "-u", "origin", "HEAD"])
         .current_dir(workspace)
         .output()
-        .await;
+        .await
+    {
+        Ok(output) if !output.status.success() => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::warn!(%stderr, "git push failed");
+            anyhow::bail!("git push failed: {stderr}");
+        }
+        Err(e) => {
+            anyhow::bail!("failed to spawn git push: {e}");
+        }
+        _ => {}
+    }
+
+    // Get commit subject for PR title
+    let title = tokio::process::Command::new("git")
+        .args(["log", "-1", "--format=%s"])
+        .current_dir(workspace)
+        .output()
+        .await
+        .ok()
+        .and_then(|o| {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if s.is_empty() { None } else { Some(s) }
+        })
+        .unwrap_or_else(|| "Automated PR from native drone".to_string());
 
     // Create PR
     let output = tokio::process::Command::new("gh")
         .args([
             "pr",
             "create",
-            "--fill",
+            "--title",
+            &title,
             "--body",
             "Automated PR created by native drone",
         ])
@@ -613,6 +643,58 @@ mod tests {
         assert!(!env.home.exists());
 
         // Second teardown should not panic
+        drone.teardown(&env).await;
+    }
+
+    #[tokio::test]
+    async fn smoke_test_secrets_excluded_from_state_file() {
+        let drone = NativeDrone;
+        let job = JobSpec {
+            job_run_id: "smoke-test-secrets".to_string(),
+            repo_url: String::new(),
+            branch: None,
+            task: "test secrets filtering".to_string(),
+            config: json!({
+                "stage": "implement",
+                "model": "claude-sonnet-4-20250514",
+                "secrets": {
+                    "github_pat": "ghp_supersecret",
+                    "api_key": "sk-secret123"
+                }
+            }),
+        };
+
+        let env = drone.setup(&job).await.unwrap();
+
+        let state: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(env.home.join("drone_state.json"))
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+
+        // Secrets must not appear in persisted state
+        let job_config = state["job_config"].as_object().unwrap();
+        assert!(
+            !job_config.contains_key("secrets.github_pat"),
+            "secrets.github_pat should not be persisted"
+        );
+        assert!(
+            !job_config.contains_key("secrets.api_key"),
+            "secrets.api_key should not be persisted"
+        );
+
+        // Non-secret config should still be present
+        assert_eq!(job_config.get("stage").unwrap(), "implement");
+        assert_eq!(job_config.get("model").unwrap(), "claude-sonnet-4-20250514");
+
+        // Full state file should not contain secret values
+        let raw = tokio::fs::read_to_string(env.home.join("drone_state.json"))
+            .await
+            .unwrap();
+        assert!(!raw.contains("ghp_supersecret"), "PAT leaked to disk");
+        assert!(!raw.contains("sk-secret123"), "API key leaked to disk");
+
         drone.teardown(&env).await;
     }
 
