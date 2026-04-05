@@ -107,6 +107,20 @@ Thin CLI client for Creep's gRPC API. Used by skills and drone hooks for file di
 - **Install plugin:** `buck2 run root//src/drones/claude/plugins:install` (installs creep-discovery skill to ~/.claude/plugins/)
 - **Usage:** `creep-cli search "*.rs" --json`, `creep-cli metadata <path>`, `creep-cli register <path>`, `creep-cli unregister <path>`
 
+### Abathur (`src/abathur/`)
+Documentation indexing and generation library. Parses markdown files with YAML frontmatter, builds an in-memory index by slug, supports section-level reads, and detects staleness via blake3 source file hashing. Claude API integration for doc generation.
+
+- **Build:** `buck2 build root//src/abathur:abathur`
+- **Test:** `cd src/abathur && cargo test`
+
+### Abathur CLI (`src/abathur-cli/`)
+CLI tool for querying, reading, checking, and generating abathur documentation. Installed as `abathur` binary.
+
+- **Build:** `buck2 build root//src/abathur-cli:abathur-cli`
+- **Install:** `buck2 run root//src/abathur-cli:install`
+- **Usage:** `abathur query "api"`, `abathur read <slug> --section <name>`, `abathur check`, `abathur code`
+- **Config:** `abathur.toml`
+
 ### Nydus (`src/nydus/`)
 Shared Overseer HTTP client library. Stateless typed wrapper over Overseer's REST API. Used by Queen, kerrigan CLI, and future htmx UI. Methods for jobs, tasks, hatcheries, artifacts, auth, and pipeline advancement.
 

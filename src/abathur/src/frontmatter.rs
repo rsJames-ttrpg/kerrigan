@@ -71,8 +71,8 @@ pub fn extract_section(content: &str, section_name: &str) -> anyhow::Result<Stri
     let mut end = None;
 
     for (i, line) in lines.iter().enumerate() {
-        if line.starts_with("## ") {
-            let heading = normalize_section_name(&line[3..]);
+        if let Some(rest) = line.strip_prefix("## ") {
+            let heading = normalize_section_name(rest);
             if heading == target {
                 start = Some(i + 1); // skip the heading line itself
             } else if start.is_some() && end.is_none() {
@@ -111,10 +111,7 @@ fn extract_frontmatter_raw(content: &str) -> Option<&str> {
 
 /// Normalize a section name for matching: lowercase, replace spaces/underscores with hyphens.
 fn normalize_section_name(name: &str) -> String {
-    name.trim()
-        .to_lowercase()
-        .replace(' ', "-")
-        .replace('_', "-")
+    name.trim().to_lowercase().replace([' ', '_'], "-")
 }
 
 #[cfg(test)]
