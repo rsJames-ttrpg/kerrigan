@@ -20,10 +20,14 @@ rust_library(
     visibility = ["PUBLIC"],
 )
 
+ABATHUR_TEST_SRCS = glob(["src/**/*.rs", "tests/**/*.rs"])
+
 rust_test(
     name = "abathur-test",
-    srcs = ABATHUR_SRCS,
+    srcs = ABATHUR_TEST_SRCS,
     crate_root = "src/lib.rs",
-    deps = ABATHUR_DEPS,
+    deps = ABATHUR_DEPS + [
+        "//third-party:tempfile",
+    ],
     visibility = ["PUBLIC"],
 )
