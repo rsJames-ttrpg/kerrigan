@@ -10,11 +10,15 @@ use drone_sdk::{
 };
 use runtime::{
     api::{self, DefaultApiClientFactory},
-    conversation::loop_core::ConversationLoop,
+    conversation::loop_core::{CompactionStrategy, ConversationLoop, LoopConfig},
+    event::EventSink,
     permission::PermissionPolicy,
     tools,
 };
 use serde_json::json;
+
+use crate::git_workflow::GitWorkflow;
+use crate::orchestrator::{parse_plan, run_orchestrated};
 
 use crate::cache::RepoCache;
 use crate::config::DroneConfig;
@@ -258,27 +262,77 @@ impl DroneRunner for NativeDrone {
         );
         let system_prompt = prompt_builder.build();
 
-        // 7. Create API client
-        let api_client = api::create_client(&config.provider);
+        // 7. Create API client factory
         let api_client_factory = Arc::new(DefaultApiClientFactory::new(config.provider.clone()));
 
-        // 8. Create conversation loop
-        channel.progress("running", "starting agent loop")?;
-        let mut conversation = ConversationLoop::new(
-            api_client,
-            api_client_factory,
-            registry,
-            config.loop_config,
-            bridge.clone(),
-            system_prompt,
-            PermissionPolicy::allow_all(),
-            env.workspace.clone(),
-        );
+        // 8. Dispatch: orchestrated or single-loop
+        let plan_path = job_config.get("plan_path");
+        let use_orchestrator = plan_path.is_some() && stage == Stage::Implement;
 
-        // 9. Run the agent loop
-        let turn_result = conversation.run_turn(&task).await;
+        let (session_value, all_tasks_ok) = if use_orchestrator {
+            let plan_path = plan_path.unwrap();
+            let plan_file = env.workspace.join(plan_path);
+            let plan_content = tokio::fs::read_to_string(&plan_file).await?;
+            let tasks = parse_plan(&plan_content);
 
-        // 10. Drain event bridge messages and forward to Queen
+            if tasks.is_empty() {
+                tracing::warn!(%plan_path, "No tasks found in plan, falling back to single loop");
+                let (session_value, _) = run_single_loop(
+                    &task,
+                    &config,
+                    bridge.clone(),
+                    api_client_factory.clone(),
+                    registry,
+                    &env.workspace,
+                    system_prompt,
+                    channel,
+                )
+                .await?;
+                (session_value, true)
+            } else {
+                tracing::info!(tasks = tasks.len(), %plan_path, "Running orchestrated execution");
+                channel.progress(
+                    "orchestrating",
+                    &format!("executing {} tasks from plan", tasks.len()),
+                )?;
+
+                let git_workflow = Arc::new(GitWorkflow::new(
+                    config.stage_config.git.clone(),
+                    env.workspace.clone(),
+                ));
+
+                let result = run_orchestrated(
+                    tasks,
+                    &config.orchestrator,
+                    bridge.clone(),
+                    git_workflow,
+                    api_client_factory.clone(),
+                    registry,
+                    &config.loop_config,
+                    system_prompt,
+                    env.workspace.clone(),
+                )
+                .await?;
+
+                let success = result.success();
+                (result.to_json(), success)
+            }
+        } else {
+            let (session_value, _) = run_single_loop(
+                &task,
+                &config,
+                bridge.clone(),
+                api_client_factory.clone(),
+                registry,
+                &env.workspace,
+                system_prompt,
+                channel,
+            )
+            .await?;
+            (session_value, true)
+        };
+
+        // 9. Drain event bridge messages and forward to Queen
         // Drop the bridge sender to close the channel
         drop(bridge);
         while let Ok(msg) = rx.try_recv() {
@@ -287,15 +341,7 @@ impl DroneRunner for NativeDrone {
             }
         }
 
-        // Handle turn result
-        let turn_result = turn_result?;
-        tracing::info!(
-            iterations = turn_result.iterations,
-            compacted = turn_result.compacted,
-            "Agent loop completed"
-        );
-
-        // 11. Check exit conditions
+        // 10. Check exit conditions
         let conditions = exit_conditions::check_exit_conditions(
             &config.stage_config.exit_conditions,
             &env.workspace,
@@ -312,7 +358,7 @@ impl DroneRunner for NativeDrone {
             );
         }
 
-        // 12. Handle git finalization - create PR if configured
+        // 11. Handle git finalization - create PR if configured
         let mut pr_url = None;
         if config.stage_config.git.pr_on_stage_complete {
             let pr_result = create_pr_if_needed(&env.workspace).await;
@@ -327,14 +373,12 @@ impl DroneRunner for NativeDrone {
             }
         }
 
-        // 13. Get current git branch
+        // 12. Get current git branch
         let branch = get_current_branch(&env.workspace).await;
 
-        // 14. Build DroneOutput
-        let session_value = serde_json::to_value(conversation.session()).unwrap_or(json!({}));
-
+        // 13. Build DroneOutput
         Ok(DroneOutput {
-            exit_code: if all_met { 0 } else { 1 },
+            exit_code: if all_met && all_tasks_ok { 0 } else { 1 },
             conversation: session_value,
             artifacts: vec![],
             git_refs: GitRefs {
@@ -369,6 +413,52 @@ impl DroneRunner for NativeDrone {
             tracing::warn!(path = %env.home.display(), error = %e, "Failed to clean up drone home");
         }
     }
+}
+
+/// Run a single conversation loop (non-orchestrated path).
+async fn run_single_loop(
+    task: &str,
+    config: &ResolvedConfig,
+    event_sink: Arc<dyn EventSink>,
+    api_client_factory: Arc<DefaultApiClientFactory>,
+    registry: runtime::tools::ToolRegistry,
+    workspace: &std::path::Path,
+    system_prompt: Vec<String>,
+    channel: &mut QueenChannel,
+) -> anyhow::Result<(serde_json::Value, u32)> {
+    let api_client = api::create_client(&config.provider);
+
+    channel.progress("running", "starting agent loop")?;
+    // LoopConfig doesn't implement Clone — reconstruct from resolved config
+    let loop_config = LoopConfig {
+        max_iterations: config.loop_config.max_iterations,
+        max_context_tokens: config.loop_config.max_context_tokens,
+        compaction_strategy: CompactionStrategy::Summarize {
+            preserve_recent: 4,
+        },
+        max_tokens_per_response: config.loop_config.max_tokens_per_response,
+        temperature: config.loop_config.temperature,
+    };
+    let mut conversation = ConversationLoop::new(
+        api_client,
+        api_client_factory.clone(),
+        registry,
+        loop_config,
+        event_sink,
+        system_prompt,
+        PermissionPolicy::allow_all(),
+        workspace.to_path_buf(),
+    );
+
+    let turn_result = conversation.run_turn(task).await?;
+    tracing::info!(
+        iterations = turn_result.iterations,
+        compacted = turn_result.compacted,
+        "Agent loop completed"
+    );
+
+    let session_value = serde_json::to_value(conversation.session()).unwrap_or(json!({}));
+    Ok((session_value, turn_result.iterations))
 }
 
 async fn read_claude_md(workspace: &std::path::Path) -> String {
