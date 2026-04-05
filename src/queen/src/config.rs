@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use serde::Deserialize;
@@ -96,6 +98,16 @@ pub struct QueenConfig {
     pub default_repo_url: Option<String>,
 }
 
+/// Configuration for a single LSP server within hatchery.toml.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LspServerConfig {
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub extensions: Vec<String>,
+    pub language_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreepConfig {
     #[serde(default = "default_creep_enabled")]
@@ -106,6 +118,9 @@ pub struct CreepConfig {
     pub health_port: u16,
     #[serde(default = "default_restart_delay")]
     pub restart_delay: u64,
+    /// LSP server configurations, keyed by server name.
+    #[serde(default)]
+    pub lsp: HashMap<String, LspServerConfig>,
 }
 
 impl Default for CreepConfig {
@@ -115,6 +130,7 @@ impl Default for CreepConfig {
             binary: default_creep_binary(),
             health_port: default_health_port(),
             restart_delay: default_restart_delay(),
+            lsp: HashMap::new(),
         }
     }
 }
@@ -574,5 +590,53 @@ max_concurrency = 4
         assert_eq!(config.queen.name, "override-name");
         assert_eq!(config.queen.overseer_url, "http://other:3100");
         assert_eq!(config.queen.max_concurrency, 16);
+    }
+
+    #[test]
+    fn test_creep_lsp_config_empty_by_default() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert!(config.creep.lsp.is_empty());
+    }
+
+    #[test]
+    fn test_creep_lsp_config_parsing() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[creep.lsp.rust]
+command = "rust-analyzer"
+args = []
+extensions = [".rs"]
+language_id = "rust"
+
+[creep.lsp.typescript]
+command = "typescript-language-server"
+args = ["--stdio"]
+extensions = [".ts", ".tsx"]
+language_id = "typescript"
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert_eq!(config.creep.lsp.len(), 2);
+
+        let rust = &config.creep.lsp["rust"];
+        assert_eq!(rust.command, "rust-analyzer");
+        assert!(rust.args.is_empty());
+        assert_eq!(rust.extensions, vec![".rs"]);
+        assert_eq!(rust.language_id, "rust");
+
+        let ts = &config.creep.lsp["typescript"];
+        assert_eq!(ts.command, "typescript-language-server");
+        assert_eq!(ts.args, vec!["--stdio"]);
+        assert_eq!(ts.extensions, vec![".ts", ".tsx"]);
+        assert_eq!(ts.language_id, "typescript");
     }
 }
