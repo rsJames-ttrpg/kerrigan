@@ -56,15 +56,15 @@ struct ToolCall {
 
 /// The core conversation loop that drives the agentic workflow
 pub struct ConversationLoop {
-    api_client: Box<dyn ApiClient>,
-    api_client_factory: Arc<dyn ApiClientFactory>,
-    tool_registry: ToolRegistry,
-    session: Session,
-    config: LoopConfig,
-    event_sink: Arc<dyn EventSink>,
-    system_prompt: Vec<String>,
-    permission_policy: PermissionPolicy,
-    workspace: PathBuf,
+    pub(super) api_client: Box<dyn ApiClient>,
+    pub(super) api_client_factory: Arc<dyn ApiClientFactory>,
+    pub(super) tool_registry: ToolRegistry,
+    pub(super) session: Session,
+    pub(super) config: LoopConfig,
+    pub(super) event_sink: Arc<dyn EventSink>,
+    pub(super) system_prompt: Vec<String>,
+    pub(super) permission_policy: PermissionPolicy,
+    pub(super) workspace: PathBuf,
 }
 
 impl ConversationLoop {
@@ -241,22 +241,6 @@ impl ConversationLoop {
             compacted,
             usage: total_usage,
         })
-    }
-
-    /// Compact the session to reduce token count. Full implementation in compaction.rs.
-    async fn compact(&mut self) -> anyhow::Result<()> {
-        // Stub — full implementation added in Task 3 (compaction.rs)
-        // For now, just trim old messages keeping recent ones
-        let preserve = 4usize;
-        if self.session.messages.len() > preserve {
-            let recent = self
-                .session
-                .messages
-                .split_off(self.session.messages.len() - preserve);
-            self.session.messages = recent;
-            self.session.recalculate_tokens();
-        }
-        Ok(())
     }
 
     /// Build an API request from the session, translating between session and API role models.
