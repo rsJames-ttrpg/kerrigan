@@ -1,10 +1,12 @@
 FROM ubuntu:24.04
 
-# Runtime dependencies
+# Runtime + build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     git \
+    gcc \
+    libc6-dev \
     python3 \
     zstd \
     && rm -rf /var/lib/apt/lists/*
