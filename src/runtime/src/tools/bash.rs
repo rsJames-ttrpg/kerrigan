@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use tokio::process::Command;
 
+use super::file_ops::validate_path;
 use super::registry::Tool;
 use super::types::*;
 
@@ -39,10 +40,13 @@ impl Tool for BashTool {
         };
 
         let timeout_ms = input["timeout"].as_u64().unwrap_or(120_000);
-        let working_dir = input["working_dir"]
-            .as_str()
-            .map(|p| std::path::PathBuf::from(p))
-            .unwrap_or_else(|| ctx.workspace.clone());
+        let working_dir = match input["working_dir"].as_str() {
+            Some(p) => match validate_path(&ctx.workspace, p) {
+                Ok(path) => path,
+                Err(e) => return ToolResult::error(e),
+            },
+            None => ctx.workspace.clone(),
+        };
 
         let child = Command::new("bash")
             .arg("-c")
@@ -108,6 +112,14 @@ mod tests {
         }
     }
 
+    fn test_ctx_in(dir: &std::path::Path) -> ToolContext {
+        ToolContext {
+            workspace: dir.to_path_buf(),
+            home: dir.to_path_buf(),
+            event_sink: Arc::new(NullEventSink),
+        }
+    }
+
     #[tokio::test]
     async fn test_simple_command() {
         let ctx = test_ctx();
@@ -143,15 +155,30 @@ mod tests {
 
     #[tokio::test]
     async fn test_working_dir() {
-        let ctx = test_ctx();
+        let dir = tempfile::TempDir::new().unwrap();
+        let sub = dir.path().join("subdir");
+        std::fs::create_dir(&sub).unwrap();
+        let ctx = test_ctx_in(dir.path());
         let result = BashTool
             .execute(
-                serde_json::json!({"command": "pwd", "working_dir": "/tmp"}),
+                serde_json::json!({"command": "pwd", "working_dir": sub.to_str().unwrap()}),
                 &ctx,
             )
             .await;
         assert!(!result.is_error);
-        // /tmp may resolve to a different path on some systems but should contain tmp
-        assert!(result.output.contains("tmp"));
+        assert!(result.output.contains("subdir"));
+    }
+
+    #[tokio::test]
+    async fn test_working_dir_outside_workspace() {
+        let ctx = test_ctx();
+        let result = BashTool
+            .execute(
+                serde_json::json!({"command": "pwd", "working_dir": "/etc"}),
+                &ctx,
+            )
+            .await;
+        assert!(result.is_error);
+        assert!(result.output.contains("escapes workspace"));
     }
 }

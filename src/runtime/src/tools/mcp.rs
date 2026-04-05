@@ -326,6 +326,10 @@ impl McpClient {
     }
 
     pub async fn shutdown(&self) {
+        // Send MCP shutdown request before killing the process
+        let _ = self.send_request("shutdown", None).await;
+        let _ = self.send_notification("notifications/exit", None).await;
+
         let mut transport = self.transport.lock().await;
         if let ClientTransport::Stdio { child, .. } = &mut *transport {
             let _ = child.kill().await;

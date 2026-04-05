@@ -18,20 +18,10 @@ pub struct ExternalToolConfig {
     pub input_schema: serde_json::Value,
     #[serde(default = "default_timeout")]
     pub timeout_ms: u64,
-    #[serde(default)]
-    pub output_format: ExternalOutputFormat,
 }
 
 fn default_timeout() -> u64 {
     30_000
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub enum ExternalOutputFormat {
-    #[default]
-    Json,
-    Markdown,
-    Raw,
 }
 
 /// Response expected from external tool on stdout
@@ -127,15 +117,10 @@ impl Tool for ExternalTool {
                 // Try to parse JSON response
                 match serde_json::from_str::<ExternalToolResponse>(&stdout) {
                     Ok(resp) => {
-                        let output_text = match self.config.output_format {
-                            ExternalOutputFormat::Json => resp.output,
-                            ExternalOutputFormat::Markdown => resp.output,
-                            ExternalOutputFormat::Raw => resp.output,
-                        };
                         if resp.is_error {
-                            ToolResult::error(output_text)
+                            ToolResult::error(resp.output)
                         } else {
-                            ToolResult::success(output_text)
+                            ToolResult::success(resp.output)
                         }
                     }
                     Err(_) => {
@@ -228,7 +213,6 @@ mod tests {
             env: Default::default(),
             input_schema: serde_json::json!({"type": "object"}),
             timeout_ms: 5000,
-            output_format: ExternalOutputFormat::Json,
         };
 
         // Only run if jq is available
@@ -259,7 +243,6 @@ mod tests {
             env: Default::default(),
             input_schema: serde_json::json!({"type": "object"}),
             timeout_ms: 100,
-            output_format: ExternalOutputFormat::Raw,
         };
 
         let tool = ExternalTool::new(config);
@@ -279,7 +262,6 @@ mod tests {
             env: Default::default(),
             input_schema: serde_json::json!({"type": "object"}),
             timeout_ms: 5000,
-            output_format: ExternalOutputFormat::Raw,
         };
 
         let tool = ExternalTool::new(config);
@@ -299,7 +281,6 @@ mod tests {
             env: Default::default(),
             input_schema: serde_json::json!({"type": "object"}),
             timeout_ms: 5000,
-            output_format: ExternalOutputFormat::Raw,
         };
 
         let tool = ExternalTool::new(config);

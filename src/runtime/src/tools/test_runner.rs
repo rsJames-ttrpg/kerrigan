@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use tokio::process::Command;
 
+use super::file_ops::validate_path;
 use super::registry::Tool;
 use super::types::*;
 
@@ -96,16 +97,30 @@ impl Tool for TestRunnerTool {
             None => return ToolResult::error("missing required field: command".into()),
         };
 
-        let mut cmd_str = command.to_string();
+        let mut cmd_args: Vec<String> = vec![command.to_string()];
         if let Some(filter) = input["filter"].as_str() {
-            cmd_str.push_str(&format!(" {filter}"));
+            // Validate filter contains only safe characters (alphanumeric, underscore, colon, star)
+            if !filter
+                .chars()
+                .all(|c| c.is_alphanumeric() || matches!(c, '_' | ':' | '*' | '-'))
+            {
+                return ToolResult::error(
+                    "filter contains invalid characters — only alphanumeric, underscore, colon, dash, and star are allowed".into(),
+                );
+            }
+            cmd_args.push("--".into());
+            cmd_args.push(filter.to_string());
         }
 
-        let working_dir = input["working_dir"]
-            .as_str()
-            .map(|p| std::path::PathBuf::from(p))
-            .unwrap_or_else(|| ctx.workspace.clone());
+        let working_dir = match input["working_dir"].as_str() {
+            Some(p) => match validate_path(&ctx.workspace, p) {
+                Ok(path) => path,
+                Err(e) => return ToolResult::error(e),
+            },
+            None => ctx.workspace.clone(),
+        };
 
+        let cmd_str = cmd_args.join(" ");
         let child = Command::new("bash")
             .arg("-c")
             .arg(&cmd_str)

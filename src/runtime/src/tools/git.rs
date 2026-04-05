@@ -96,7 +96,12 @@ fn build_command(op: &GitOperation) -> (String, Vec<String>) {
             vec!["commit".into(), "-m".into(), message.clone()],
         ),
         GitOperation::Push { remote, branch } => {
-            let mut args = vec!["push".into(), "-u".into(), remote.clone()];
+            let mut args = vec!["push".into()];
+            // Only set upstream tracking when a branch is explicitly specified
+            if !branch.is_empty() {
+                args.push("-u".into());
+            }
+            args.push(remote.clone());
             if !branch.is_empty() {
                 args.push(branch.clone());
             }
@@ -304,5 +309,16 @@ mod tests {
         let (cmd, args) = build_command(&op);
         assert_eq!(cmd, "git");
         assert_eq!(args, vec!["push", "-u", "origin", "main"]);
+    }
+
+    #[test]
+    fn test_build_push_without_branch() {
+        let op = GitOperation::Push {
+            remote: "origin".into(),
+            branch: "".into(),
+        };
+        let (cmd, args) = build_command(&op);
+        assert_eq!(cmd, "git");
+        assert_eq!(args, vec!["push", "origin"]);
     }
 }

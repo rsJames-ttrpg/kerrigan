@@ -11,7 +11,7 @@ use super::registry::Tool;
 use super::types::*;
 
 /// Validate that a path is within the workspace. Returns canonical path on success.
-fn validate_path(workspace: &Path, file_path: &str) -> Result<PathBuf, String> {
+pub fn validate_path(workspace: &Path, file_path: &str) -> Result<PathBuf, String> {
     let path = if Path::new(file_path).is_absolute() {
         PathBuf::from(file_path)
     } else {
@@ -319,7 +319,7 @@ impl Tool for GlobSearchTool {
         };
 
         let mut matches: Vec<(PathBuf, SystemTime)> = Vec::new();
-        collect_glob_matches(&search_root, &glob, &mut matches);
+        collect_glob_matches(&search_root, &search_root, &glob, &mut matches);
 
         // Sort by modification time (most recent first)
         matches.sort_by(|a, b| b.1.cmp(&a.1));
@@ -340,6 +340,7 @@ impl Tool for GlobSearchTool {
 
 fn collect_glob_matches(
     dir: &Path,
+    search_root: &Path,
     glob: &globset::GlobMatcher,
     results: &mut Vec<(PathBuf, SystemTime)>,
 ) {
@@ -359,12 +360,10 @@ fn collect_glob_matches(
         }
 
         if path.is_dir() {
-            collect_glob_matches(&path, glob, results);
+            collect_glob_matches(&path, search_root, glob, results);
         } else {
             // Match against the relative path from the search root
-            let rel = path
-                .strip_prefix(dir.ancestors().last().unwrap_or(dir))
-                .unwrap_or(&path);
+            let rel = path.strip_prefix(search_root).unwrap_or(&path);
             if glob.is_match(rel) || glob.is_match(path.file_name().unwrap_or_default()) {
                 let mtime = path
                     .metadata()
@@ -451,6 +450,7 @@ impl Tool for GrepSearchTool {
         } else {
             grep_dir(
                 &search_root,
+                &search_root,
                 &re,
                 &file_glob,
                 context_lines,
@@ -481,9 +481,29 @@ fn grep_file(
         Err(_) => return,
     };
 
-    // Skip binary files
-    let reader = BufReader::new(file);
-    let lines: Vec<String> = reader.lines().take(10_000).filter_map(|l| l.ok()).collect();
+    // Skip binary files by checking for null bytes in the first 8KB
+    let mut reader = BufReader::new(file);
+    let mut probe = [0u8; 8192];
+    let probe_len = {
+        use std::io::Read;
+        reader.read(&mut probe).unwrap_or(0)
+    };
+    if probe[..probe_len].contains(&0) {
+        return;
+    }
+    // Seek back to start
+    use std::io::Seek;
+    if reader.seek(std::io::SeekFrom::Start(0)).is_err() {
+        return;
+    }
+
+    let all_lines: Vec<String> = reader.lines().take(10_001).filter_map(|l| l.ok()).collect();
+    let truncated = all_lines.len() > 10_000;
+    let lines = if truncated {
+        &all_lines[..10_000]
+    } else {
+        &all_lines[..]
+    };
 
     let mut matched_ranges: Vec<usize> = Vec::new();
     for (i, line) in lines.iter().enumerate() {
@@ -509,10 +529,18 @@ fn grep_file(
         }
         output.push('\n');
     }
+
+    if truncated {
+        output.push_str(&format!(
+            "(file truncated at 10,000 lines: {})\n\n",
+            display_path.display()
+        ));
+    }
 }
 
 fn grep_dir(
     dir: &Path,
+    search_root: &Path,
     re: &Regex,
     file_glob: &Option<globset::GlobMatcher>,
     context: usize,
@@ -537,6 +565,7 @@ fn grep_dir(
         if path.is_dir() {
             grep_dir(
                 &path,
+                search_root,
                 re,
                 file_glob,
                 context,
@@ -546,8 +575,8 @@ fn grep_dir(
             );
         } else {
             if let Some(glob) = &file_glob {
-                let fname = path.file_name().unwrap_or_default();
-                if !glob.is_match(fname) {
+                let rel = path.strip_prefix(search_root).unwrap_or(&path);
+                if !glob.is_match(rel) && !glob.is_match(path.file_name().unwrap_or_default()) {
                     continue;
                 }
             }
@@ -787,6 +816,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_glob_nested_directories() {
+        let dir = TempDir::new().unwrap();
+        let src = dir.path().join("src");
+        let nested = src.join("tools");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(src.join("main.rs"), "fn main() {}").unwrap();
+        fs::write(nested.join("mod.rs"), "pub mod tools;").unwrap();
+        fs::write(dir.path().join("readme.md"), "# readme").unwrap();
+        let ctx = test_ctx(dir.path());
+
+        let result = GlobSearchTool
+            .execute(serde_json::json!({"pattern": "src/**/*.rs"}), &ctx)
+            .await;
+        assert!(!result.is_error);
+        assert!(result.output.contains("main.rs"));
+        assert!(result.output.contains("mod.rs"));
+        assert!(!result.output.contains("readme.md"));
+    }
+
+    #[tokio::test]
     async fn test_glob_no_matches() {
         let dir = TempDir::new().unwrap();
         fs::write(dir.path().join("test.txt"), "").unwrap();
@@ -849,6 +898,28 @@ mod tests {
         assert!(result.output.contains("bbb"));
         assert!(result.output.contains("ccc"));
         assert!(result.output.contains("ddd"));
+    }
+
+    #[tokio::test]
+    async fn test_grep_glob_with_path_pattern() {
+        let dir = TempDir::new().unwrap();
+        let src = dir.path().join("src");
+        let tests = dir.path().join("tests");
+        fs::create_dir_all(&src).unwrap();
+        fs::create_dir_all(&tests).unwrap();
+        fs::write(src.join("lib.rs"), "target_text\n").unwrap();
+        fs::write(tests.join("test.rs"), "target_text\n").unwrap();
+        let ctx = test_ctx(dir.path());
+
+        let result = GrepSearchTool
+            .execute(
+                serde_json::json!({"pattern": "target_text", "glob": "src/**/*.rs"}),
+                &ctx,
+            )
+            .await;
+        assert!(!result.is_error);
+        assert!(result.output.contains("lib.rs"));
+        assert!(!result.output.contains("test.rs"));
     }
 
     #[tokio::test]
