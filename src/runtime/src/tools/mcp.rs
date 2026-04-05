@@ -462,7 +462,7 @@ impl McpManager {
         for (server_name, client) in &self.clients {
             for info in client.tool_infos() {
                 let proxy = McpToolProxy::new(server_name, info, Arc::clone(client));
-                registry.register(Box::new(proxy));
+                registry.register(Arc::new(proxy));
             }
         }
     }

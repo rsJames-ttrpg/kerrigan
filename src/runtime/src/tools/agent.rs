@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -21,6 +20,8 @@ struct AgentInput {
     max_iterations: Option<u32>,
 }
 
+const MAX_AGENT_DEPTH: u32 = 3;
+
 /// Tool that spawns a child ConversationLoop as a sub-agent.
 /// The parent context gets only the task + result text, not the full sub-conversation.
 pub struct AgentTool {
@@ -42,28 +43,6 @@ impl AgentTool {
             event_sink,
             system_prompt,
             permission_policy,
-        }
-    }
-
-    /// Build a scoped tool registry: if `tools` is specified, only include those tools.
-    fn scoped_registry(parent: &ToolRegistry, tools: &Option<Vec<String>>) -> ToolRegistry {
-        let mut child_registry = ToolRegistry::new();
-        match tools {
-            Some(tool_names) => {
-                // Only include specified tools by re-fetching definitions
-                // We can't move tools out of the parent, so we just filter definitions
-                // The child will use its own registry which shares tool implementations
-                // For now, the child gets an empty registry with the allowed tool names
-                // This is a limitation - in practice tools would be cloneable or arc-wrapped
-                let _ = tool_names;
-                // Return empty registry - tools aren't Arc-wrapped so can't be shared
-                // The sub-agent will work without tools (text-only responses)
-                child_registry
-            }
-            None => {
-                // No filter - but we can't clone tools, so return empty
-                child_registry
-            }
         }
     }
 }
@@ -91,7 +70,7 @@ impl Tool for AgentTool {
                 "tools": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Optional list of tool names the sub-agent can use"
+                    "description": "Optional list of tool names the sub-agent can use. If omitted, inherits all parent tools."
                 },
                 "max_iterations": {
                     "type": "integer",
@@ -111,6 +90,12 @@ impl Tool for AgentTool {
             Err(e) => return ToolResult::error(format!("Invalid input: {e}")),
         };
 
+        if ctx.agent_depth >= MAX_AGENT_DEPTH {
+            return ToolResult::error(format!(
+                "Maximum sub-agent depth ({MAX_AGENT_DEPTH}) exceeded"
+            ));
+        }
+
         let max_iterations = params.max_iterations.unwrap_or(10);
 
         // Create a fresh API client for the child
@@ -124,8 +109,23 @@ impl Tool for AgentTool {
             temperature: None,
         };
 
-        // Create child loop with scoped tools
-        let child_registry = Self::scoped_registry(&ToolRegistry::new(), &params.tools);
+        // Build child registry from parent's tools (shared via Arc)
+        let child_registry = match &params.tools {
+            Some(tool_names) => {
+                let scoped = ctx.tool_registry.scoped(tool_names);
+                let missing: Vec<_> = tool_names
+                    .iter()
+                    .filter(|n| scoped.get(n).is_none())
+                    .collect();
+                if !missing.is_empty() {
+                    return ToolResult::error(format!(
+                        "Requested tools not available: {missing:?}"
+                    ));
+                }
+                scoped
+            }
+            None => ctx.tool_registry.clone_all(),
+        };
 
         let mut child = ConversationLoop::new(
             child_client,
@@ -137,6 +137,7 @@ impl Tool for AgentTool {
             self.permission_policy.clone(),
             ctx.workspace.clone(),
         );
+        child.set_agent_depth(ctx.agent_depth + 1);
 
         // Run the sub-agent turn
         match child.run_turn(&params.task).await {
@@ -169,6 +170,7 @@ mod tests {
     use crate::api::error::ApiError;
     use crate::api::{ApiClient, ApiRequest, EventStream, StreamEvent, TokenUsage};
     use crate::event::NullEventSink;
+    use std::path::PathBuf;
     use std::sync::Mutex;
 
     struct SubAgentMockClient {
@@ -226,6 +228,8 @@ mod tests {
             workspace: PathBuf::from("/tmp"),
             home: PathBuf::from("/tmp"),
             event_sink: Arc::new(NullEventSink),
+            tool_registry: Arc::new(ToolRegistry::new()),
+            agent_depth: 0,
         };
 
         let result = tool
@@ -253,6 +257,8 @@ mod tests {
             workspace: PathBuf::from("/tmp"),
             home: PathBuf::from("/tmp"),
             event_sink: Arc::new(NullEventSink),
+            tool_registry: Arc::new(ToolRegistry::new()),
+            agent_depth: 0,
         };
 
         let result = tool

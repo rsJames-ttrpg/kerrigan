@@ -102,6 +102,7 @@ impl Tool for BashTool {
 mod tests {
     use super::*;
     use crate::event::NullEventSink;
+    use crate::tools::ToolRegistry;
     use std::sync::Arc;
 
     fn test_ctx() -> ToolContext {
@@ -109,6 +110,8 @@ mod tests {
             workspace: std::env::temp_dir(),
             home: std::env::temp_dir(),
             event_sink: Arc::new(NullEventSink),
+            tool_registry: Arc::new(ToolRegistry::new()),
+            agent_depth: 0,
         }
     }
 
@@ -117,6 +120,8 @@ mod tests {
             workspace: dir.to_path_buf(),
             home: dir.to_path_buf(),
             event_sink: Arc::new(NullEventSink),
+            tool_registry: Arc::new(ToolRegistry::new()),
+            agent_depth: 0,
         }
     }
 

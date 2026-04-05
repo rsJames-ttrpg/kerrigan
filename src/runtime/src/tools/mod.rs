@@ -11,12 +11,14 @@ pub mod types;
 pub use registry::{Tool, ToolRegistry};
 pub use types::*;
 
+use std::sync::Arc;
+
 /// Create a registry with all built-in tools
 pub fn default_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
     file_ops::register_file_tools(&mut registry);
-    registry.register(Box::new(bash::BashTool));
-    registry.register(Box::new(git::GitTool));
-    registry.register(Box::new(test_runner::TestRunnerTool));
+    registry.register(Arc::new(bash::BashTool));
+    registry.register(Arc::new(git::GitTool));
+    registry.register(Arc::new(test_runner::TestRunnerTool));
     registry
 }

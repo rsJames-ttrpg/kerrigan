@@ -58,13 +58,14 @@ struct ToolCall {
 pub struct ConversationLoop {
     pub(super) api_client: Box<dyn ApiClient>,
     pub(super) api_client_factory: Arc<dyn ApiClientFactory>,
-    pub(super) tool_registry: ToolRegistry,
+    pub(super) tool_registry: Arc<ToolRegistry>,
     pub(super) session: Session,
     pub(super) config: LoopConfig,
     pub(super) event_sink: Arc<dyn EventSink>,
     pub(super) system_prompt: Vec<String>,
     pub(super) permission_policy: PermissionPolicy,
     pub(super) workspace: PathBuf,
+    pub(super) agent_depth: u32,
 }
 
 impl ConversationLoop {
@@ -81,13 +82,14 @@ impl ConversationLoop {
         Self {
             api_client,
             api_client_factory,
-            tool_registry,
+            tool_registry: Arc::new(tool_registry),
             session: Session::new(),
             config,
             event_sink,
             system_prompt,
             permission_policy,
             workspace,
+            agent_depth: 0,
         }
     }
 
@@ -99,6 +101,11 @@ impl ConversationLoop {
     /// Access the tool registry
     pub fn tool_registry(&self) -> &ToolRegistry {
         &self.tool_registry
+    }
+
+    /// Set the agent nesting depth (used by AgentTool for sub-agent spawning)
+    pub fn set_agent_depth(&mut self, depth: u32) {
+        self.agent_depth = depth;
     }
 
     /// Access the API client factory (for sub-agent spawning)
@@ -146,10 +153,11 @@ impl ConversationLoop {
                 }
             });
 
-            // Stream response
-            let stream = self.api_client.stream(request).await?;
-            let (assistant_msg, tool_calls, usage) = self.consume_stream(stream).await?;
+            // Stream response — abort heartbeat before propagating errors
+            let stream_result = self.api_client.stream(request).await;
             heartbeat.abort();
+            let stream = stream_result?;
+            let (assistant_msg, tool_calls, usage) = self.consume_stream(stream).await?;
 
             // Accumulate usage
             total_usage.input_tokens += usage.input_tokens;
@@ -171,29 +179,44 @@ impl ConversationLoop {
                 workspace: self.workspace.clone(),
                 home: self.workspace.clone(),
                 event_sink: self.event_sink.clone(),
+                tool_registry: Arc::clone(&self.tool_registry),
+                agent_depth: self.agent_depth,
             };
 
             for tc in &tool_calls {
-                // Check permission
-                if let Some(tool) = self.tool_registry.get(&tc.name) {
-                    if !self
-                        .permission_policy
-                        .is_allowed(&tc.name, tool.permission())
-                    {
-                        let result_output =
-                            format!("Permission denied: tool '{}' is not allowed", tc.name);
-                        self.session.push(Message {
-                            role: Role::Tool,
-                            blocks: vec![ContentBlock::ToolResult {
-                                tool_use_id: tc.id.clone(),
-                                tool_name: tc.name.clone(),
-                                output: result_output.clone(),
-                                is_error: true,
-                            }],
-                            token_estimate: Session::estimate_tokens(&result_output),
-                        });
-                        continue;
-                    }
+                // Check tool exists and permission
+                let Some(tool) = self.tool_registry.get(&tc.name) else {
+                    let result_output = format!("Tool not found: '{}'", tc.name);
+                    self.session.push(Message {
+                        role: Role::Tool,
+                        blocks: vec![ContentBlock::ToolResult {
+                            tool_use_id: tc.id.clone(),
+                            tool_name: tc.name.clone(),
+                            output: result_output.clone(),
+                            is_error: true,
+                        }],
+                        token_estimate: Session::estimate_tokens(&result_output),
+                    });
+                    continue;
+                };
+
+                if !self
+                    .permission_policy
+                    .is_allowed(&tc.name, tool.permission())
+                {
+                    let result_output =
+                        format!("Permission denied: tool '{}' is not allowed", tc.name);
+                    self.session.push(Message {
+                        role: Role::Tool,
+                        blocks: vec![ContentBlock::ToolResult {
+                            tool_use_id: tc.id.clone(),
+                            tool_name: tc.name.clone(),
+                            output: result_output.clone(),
+                            is_error: true,
+                        }],
+                        token_estimate: Session::estimate_tokens(&result_output),
+                    });
+                    continue;
                 }
 
                 self.event_sink.emit(RuntimeEvent::ToolUseStart {
@@ -572,7 +595,7 @@ mod tests {
 
         let mut registry = ToolRegistry::new();
         let (tool, calls) = MockTool::new("mock_tool", "tool output");
-        registry.register(Box::new(tool));
+        registry.register(Arc::new(tool));
 
         let mut conv = make_loop(Box::new(client), registry);
         let result = conv.run_turn("Do something").await.unwrap();
@@ -613,7 +636,7 @@ mod tests {
 
         let mut registry = ToolRegistry::new();
         let (tool, _calls) = MockTool::new("mock_tool", "ok");
-        registry.register(Box::new(tool));
+        registry.register(Arc::new(tool));
 
         let mut conv = make_loop(Box::new(client), registry);
         let result = conv.run_turn("Loop forever").await.unwrap();
@@ -648,8 +671,8 @@ mod tests {
         let mut registry = ToolRegistry::new();
         let (tool_a, calls_a) = MockTool::new("tool_a", "result_a");
         let (tool_b, calls_b) = MockTool::new("tool_b", "result_b");
-        registry.register(Box::new(tool_a));
-        registry.register(Box::new(tool_b));
+        registry.register(Arc::new(tool_a));
+        registry.register(Arc::new(tool_b));
 
         let mut conv = make_loop(Box::new(client), registry);
         let result = conv.run_turn("Use both tools").await.unwrap();
