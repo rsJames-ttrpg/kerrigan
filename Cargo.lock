@@ -1750,6 +1750,7 @@ dependencies = [
  "blake3",
  "chrono",
  "drone-sdk",
+ "futures",
  "globset",
  "ignore",
  "runtime",

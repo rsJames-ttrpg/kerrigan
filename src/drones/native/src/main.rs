@@ -5,6 +5,7 @@ mod event_bridge;
 mod exit_conditions;
 mod git_workflow;
 mod health;
+mod orchestrator;
 mod pipeline;
 mod prompt;
 mod resolve;
