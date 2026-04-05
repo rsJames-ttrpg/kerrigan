@@ -8,6 +8,7 @@ use notify_debouncer_mini::{Debouncer, new_debouncer};
 use tokio::sync::{Mutex, mpsc};
 
 use crate::index::FileIndex;
+use crate::lsp::manager::LspManager;
 
 /// Events produced by the file watcher.
 #[derive(Debug, Clone)]
@@ -133,15 +134,18 @@ impl FileWatcher {
 
 /// Async task that reads `WatchEvent`s from `event_rx` and updates `index`,
 /// skipping paths that `watcher.is_ignored()` reports as gitignored.
+/// Also forwards file events to the LSP manager as document notifications.
 ///
 /// Runs until the sender side of `event_rx` is dropped (all watcher instances gone).
 pub async fn process_events(
     index: FileIndex,
     symbol_index: crate::symbol_index::SymbolIndex,
     watcher: Arc<Mutex<FileWatcher>>,
+    lsp_manager: Arc<Mutex<LspManager>>,
     mut event_rx: mpsc::Receiver<WatchEvent>,
 ) {
     while let Some(event) = event_rx.recv().await {
+        let is_create = matches!(&event, WatchEvent::Created(_));
         let path = match &event {
             WatchEvent::Created(p) | WatchEvent::Modified(p) | WatchEvent::Removed(p) => p.clone(),
         };
@@ -174,13 +178,95 @@ pub async fn process_events(
                         }
                         _ => {}
                     }
+
+                    // Notify LSP servers about the file change.
+                    notify_lsp_file_change(&lsp_manager, &p, is_create).await;
                 }
             }
             WatchEvent::Removed(p) => {
                 index.remove_file(&p).await;
                 symbol_index.remove_file(&p).await;
                 tracing::debug!("removed {} from index", p.display());
+
+                // Notify LSP servers about the file closure.
+                notify_lsp_file_close(&lsp_manager, &p).await;
             }
+        }
+    }
+}
+
+/// Send didOpen or didChange to the appropriate LSP server for a file.
+async fn notify_lsp_file_change(
+    lsp_manager: &Arc<Mutex<LspManager>>,
+    path: &Path,
+    is_create: bool,
+) {
+    let ext = match path.extension().and_then(|e| e.to_str()) {
+        Some(e) => format!(".{e}"),
+        None => return,
+    };
+
+    let mut mgr = lsp_manager.lock().await;
+
+    // Look up language_id before ensure_server (which borrows &mut self).
+    let language_id = match mgr.language_id_for_extension(&ext) {
+        Some(id) => id.to_string(),
+        None => return,
+    };
+
+    // Find (or start) the server for this workspace + extension.
+    let workspace = match mgr.find_workspace_for_file(path) {
+        Some(ws) => ws,
+        None => return,
+    };
+
+    if let Err(e) = mgr.ensure_server(&workspace, &ext).await {
+        tracing::warn!("failed to start LSP server for {}: {e}", path.display());
+        return;
+    }
+
+    let path_str = path.to_string_lossy();
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::debug!("cannot read {} for LSP notification: {e}", path.display());
+            return;
+        }
+    };
+
+    if let Some(client) = mgr.get_client(&workspace, &ext) {
+        let result = if is_create {
+            client
+                .open_document(&path_str, &content, &language_id)
+                .await
+        } else {
+            // Use version 0 for file-watcher driven changes — the LSP server
+            // tracks versions per-URI independently.
+            client.change_document(&path_str, &content, 0).await
+        };
+        if let Err(e) = result {
+            tracing::warn!("LSP notification failed for {}: {e}", path.display());
+        }
+    }
+}
+
+/// Send didClose to the appropriate LSP server for a removed file.
+async fn notify_lsp_file_close(lsp_manager: &Arc<Mutex<LspManager>>, path: &Path) {
+    let ext = match path.extension().and_then(|e| e.to_str()) {
+        Some(e) => format!(".{e}"),
+        None => return,
+    };
+
+    let mgr = lsp_manager.lock().await;
+    let workspace = match mgr.find_workspace_for_file(path) {
+        Some(ws) => ws,
+        None => return,
+    };
+
+    if let Some(client) = mgr.get_client(&workspace, &ext) {
+        let path_str = path.to_string_lossy();
+        if let Err(e) = client.close_document(&path_str).await {
+            tracing::warn!("LSP close notification failed for {}: {e}", path.display());
         }
     }
 }
@@ -189,6 +275,10 @@ pub async fn process_events(
 mod tests {
     use super::*;
     use std::io::Write as _;
+
+    fn empty_lsp_manager() -> Arc<Mutex<LspManager>> {
+        Arc::new(Mutex::new(LspManager::new(vec![])))
+    }
 
     #[tokio::test]
     async fn test_watch_and_unwatch() {
@@ -252,7 +342,13 @@ mod tests {
         let fw_clone = fw.clone();
         let index_clone = index.clone();
         let symbol_index = crate::symbol_index::SymbolIndex::new();
-        let handle = tokio::spawn(process_events(index_clone, symbol_index, fw_clone, rx));
+        let handle = tokio::spawn(process_events(
+            index_clone,
+            symbol_index,
+            fw_clone,
+            empty_lsp_manager(),
+            rx,
+        ));
 
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         handle.abort();
@@ -285,7 +381,13 @@ mod tests {
         let fw_clone = fw.clone();
         let index_clone = index.clone();
         let symbol_index = crate::symbol_index::SymbolIndex::new();
-        let handle = tokio::spawn(process_events(index_clone, symbol_index, fw_clone, rx));
+        let handle = tokio::spawn(process_events(
+            index_clone,
+            symbol_index,
+            fw_clone,
+            empty_lsp_manager(),
+            rx,
+        ));
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         handle.abort();
 
@@ -315,6 +417,7 @@ mod tests {
             index.clone(),
             symbol_index.clone(),
             fw.clone(),
+            empty_lsp_manager(),
             rx,
         ));
 
@@ -358,6 +461,7 @@ mod tests {
             index.clone(),
             symbol_index.clone(),
             fw.clone(),
+            empty_lsp_manager(),
             rx,
         ));
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;

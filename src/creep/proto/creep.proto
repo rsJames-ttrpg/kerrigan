@@ -77,3 +77,70 @@ message ListFileSymbolsRequest {
 message ListFileSymbolsResponse {
   repeated SymbolInfo symbols = 1;
 }
+
+// --- LSP Service ---
+
+service LspService {
+  rpc GetDiagnostics(GetDiagnosticsRequest) returns (GetDiagnosticsResponse);
+  rpc GetFileDiagnostics(GetFileDiagnosticsRequest) returns (GetFileDiagnosticsResponse);
+  rpc GotoDefinition(GotoDefinitionRequest) returns (GotoDefinitionResponse);
+  rpc FindReferences(FindReferencesRequest) returns (FindReferencesResponse);
+}
+
+message GetDiagnosticsRequest {
+  string workspace_path = 1;
+  int32 min_severity = 2;
+  uint32 max_results = 3;
+}
+
+message GetDiagnosticsResponse {
+  repeated Diagnostic diagnostics = 1;
+  uint32 total_count = 2;
+}
+
+message Diagnostic {
+  string file_path = 1;
+  uint32 line = 2;
+  uint32 column = 3;
+  string severity = 4;
+  string message = 5;
+  string source = 6;
+}
+
+message GetFileDiagnosticsRequest {
+  string workspace_path = 1;
+  string file_path = 2;
+}
+
+message GetFileDiagnosticsResponse {
+  repeated Diagnostic diagnostics = 1;
+}
+
+message GotoDefinitionRequest {
+  string file_path = 1;
+  uint32 line = 2;
+  uint32 column = 3;
+}
+
+message GotoDefinitionResponse {
+  repeated SymbolLocation locations = 1;
+}
+
+message FindReferencesRequest {
+  string file_path = 1;
+  uint32 line = 2;
+  uint32 column = 3;
+  bool include_declaration = 4;
+}
+
+message FindReferencesResponse {
+  repeated SymbolLocation locations = 1;
+}
+
+message SymbolLocation {
+  string file_path = 1;
+  uint32 start_line = 2;
+  uint32 start_column = 3;
+  uint32 end_line = 4;
+  uint32 end_column = 5;
+}

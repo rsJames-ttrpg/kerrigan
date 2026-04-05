@@ -11,6 +11,7 @@ CREEP_DEPS = [
     "//third-party:notify-debouncer-mini",
     "//third-party:prost",
     "//third-party:serde",
+    "//third-party:serde_json",
     "//third-party:tokio",
     "//third-party:toml",
     "//third-party:tonic",

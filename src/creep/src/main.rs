@@ -1,5 +1,7 @@
 mod config;
 mod index;
+pub mod lsp;
+mod lsp_service;
 mod parser;
 mod symbol_index;
 mod proto {
@@ -10,12 +12,17 @@ mod watcher;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 
+use tokio::sync::Mutex;
 use tonic::transport::Server;
 
 use crate::config::Config;
 use crate::index::FileIndex;
+use crate::lsp::manager::{LspManager, LspServerConfig};
+use crate::lsp_service::LspServiceImpl;
 use crate::proto::file_index_server::FileIndexServer;
+use crate::proto::lsp_service_server::LspServiceServer;
 use crate::service::FileIndexServiceImpl;
 use crate::watcher::{FileWatcher, process_events};
 
@@ -77,11 +84,30 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Build LSP server configs from creep config.
+    let lsp_configs: Vec<LspServerConfig> = config
+        .creep
+        .lsp
+        .iter()
+        .map(|(name, lsp_cfg)| LspServerConfig {
+            name: name.clone(),
+            command: lsp_cfg.command.clone(),
+            args: lsp_cfg.args.clone(),
+            extensions: lsp_cfg.extensions.clone(),
+            language_id: lsp_cfg.language_id.clone(),
+        })
+        .collect();
+    if !lsp_configs.is_empty() {
+        tracing::info!("configured {} LSP server(s)", lsp_configs.len());
+    }
+    let lsp_manager = Arc::new(Mutex::new(LspManager::new(lsp_configs)));
+
     // Spawn event processor task.
     tokio::spawn(process_events(
         index.clone(),
         symbol_index.clone(),
         watcher.clone(),
+        lsp_manager.clone(),
         event_rx,
     ));
 
@@ -91,14 +117,16 @@ async fn main() -> anyhow::Result<()> {
         .set_serving::<FileIndexServer<FileIndexServiceImpl>>()
         .await;
 
-    // Create FileIndexServiceImpl.
+    // Create service implementations.
     let file_index_svc = FileIndexServiceImpl::new(index, symbol_index, watcher);
+    let lsp_svc = LspServiceImpl::new(lsp_manager);
 
     // Start tonic gRPC server with graceful shutdown on Ctrl+C.
     tracing::info!("gRPC server listening on {addr}");
     Server::builder()
         .add_service(health_service)
         .add_service(FileIndexServer::new(file_index_svc))
+        .add_service(LspServiceServer::new(lsp_svc))
         .serve_with_shutdown(addr, async {
             tokio::signal::ctrl_c()
                 .await
