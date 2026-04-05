@@ -433,9 +433,7 @@ async fn run_single_loop(
     let loop_config = LoopConfig {
         max_iterations: config.loop_config.max_iterations,
         max_context_tokens: config.loop_config.max_context_tokens,
-        compaction_strategy: CompactionStrategy::Summarize {
-            preserve_recent: 4,
-        },
+        compaction_strategy: CompactionStrategy::Summarize { preserve_recent: 4 },
         max_tokens_per_response: config.loop_config.max_tokens_per_response,
         temperature: config.loop_config.temperature,
     };

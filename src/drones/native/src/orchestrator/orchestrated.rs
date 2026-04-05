@@ -63,6 +63,7 @@ fn build_orchestrator_summary(results: &[TaskResult]) -> String {
 ///
 /// Returns a structured result containing orchestrator results, fix-up metadata,
 /// and final test status for inclusion in DroneOutput.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_orchestrated(
     tasks: Vec<Task>,
     config: &OrchestratorConfig,
@@ -166,9 +167,7 @@ pub async fn run_orchestrated(
             let fixup_loop_config = LoopConfig {
                 max_iterations: loop_config.max_iterations,
                 max_context_tokens: loop_config.max_context_tokens,
-                compaction_strategy: CompactionStrategy::Summarize {
-                    preserve_recent: 4,
-                },
+                compaction_strategy: CompactionStrategy::Summarize { preserve_recent: 4 },
                 max_tokens_per_response: loop_config.max_tokens_per_response,
                 temperature: loop_config.temperature,
             };
@@ -263,9 +262,7 @@ async fn summarise_test_output(
     let summarise_config = LoopConfig {
         max_iterations: 3,
         max_context_tokens: 50_000,
-        compaction_strategy: CompactionStrategy::Summarize {
-            preserve_recent: 2,
-        },
+        compaction_strategy: CompactionStrategy::Summarize { preserve_recent: 2 },
         max_tokens_per_response: 4096,
         temperature: None,
     };
@@ -344,8 +341,7 @@ mod tests {
     #[tokio::test]
     async fn run_test_command_invalid() {
         let dir = tempfile::tempdir().unwrap();
-        let (success, _, stderr) =
-            run_test_command("nonexistent_command_12345", dir.path()).await;
+        let (success, _, stderr) = run_test_command("nonexistent_command_12345", dir.path()).await;
         assert!(!success);
         assert!(!stderr.is_empty());
     }
