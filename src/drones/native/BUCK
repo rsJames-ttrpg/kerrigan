@@ -13,6 +13,7 @@ NATIVE_DRONE_DEPS = [
     "//third-party:toml",
     "//third-party:globset",
     "//third-party:thiserror",
+    "//third-party:tempfile",
 ]
 
 rust_binary(
