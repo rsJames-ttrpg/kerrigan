@@ -8,9 +8,9 @@ sources:
   - path: src/drone-sdk/src/runner.rs
     hash: 2d3a4c3e76f0aab83af90d9ed8c89910bc4671932b2ea03c35b508c69bd70ab9
   - path: src/drone-sdk/src/protocol.rs
-    hash: c7d4670a28145c0a8dff9b5bac179875d8d0ee1d50226e348d91c449ab01aff4
+    hash: 9cd847e1a364d8d319de0a6944ac5005e7cc67915f25c64fa2d4facf7ebb92fc
   - path: src/drone-sdk/src/harness.rs
-    hash: cf571664dbfd73908846064aea22f9d31df58bd948ce941a54b543f40f012d59
+    hash: 15e8c7c69b6f5dc902d67676b09967318c336289eca916a4ec40ebfb7f242afc
 sections: [drone-runner-trait, protocol, harness, types]
 ---
 

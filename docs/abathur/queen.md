@@ -12,7 +12,7 @@ sources:
   - path: src/queen/src/messages.rs
     hash: 134afb9ab6df2f36fc00be9adb76f9ee5e03657045062458085cbdafaf7c0c4f
   - path: src/queen/src/actors/supervisor.rs
-    hash: c44a0455645c7a5c349a115618f9818d3f1ef672ab12a0ecc5c4458b0528b617
+    hash: a249166e0286de5e9e95bba642d71005988a39349e644f2114af7d9cf5344215
   - path: src/queen/src/actors/poller.rs
     hash: 7317cc684b88dd4cc9c23a4cc1858b0fc3735c415880cdb10efd52d3b610d0e8
   - path: src/queen/src/actors/heartbeat.rs

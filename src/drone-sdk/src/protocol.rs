@@ -22,6 +22,61 @@ pub enum DroneMessage {
     Progress(Progress),
     Result(DroneOutput),
     Error(DroneError),
+    Event(DroneEvent),
+}
+
+/// Rich structured events emitted by a Drone during execution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DroneEvent {
+    ToolUse {
+        name: String,
+        duration_ms: u64,
+        tokens_used: u32,
+    },
+    Checkpoint {
+        artifact_id: String,
+        tokens_before: u32,
+        tokens_after: u32,
+    },
+    TaskStarted {
+        task_id: String,
+        description: String,
+    },
+    TaskCompleted {
+        task_id: String,
+        description: String,
+    },
+    StageTransition {
+        from: String,
+        to: String,
+    },
+    SubAgentSpawned {
+        agent_id: String,
+        task: String,
+    },
+    SubAgentCompleted {
+        agent_id: String,
+        success: bool,
+    },
+    GitCommit {
+        sha: String,
+        message: String,
+    },
+    GitPrCreated {
+        url: String,
+    },
+    TestResults {
+        passed: u32,
+        failed: u32,
+        skipped: u32,
+    },
+    TokenUsage {
+        input: u32,
+        output: u32,
+        cache_read: u32,
+        total_cost_usd: Option<f64>,
+    },
 }
 
 /// Initial job specification sent from Queen to Drone.
@@ -255,6 +310,160 @@ mod tests {
             }
             other => panic!("unexpected variant: {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_drone_event_tool_use_roundtrip() {
+        let event = DroneEvent::ToolUse {
+            name: "bash".to_string(),
+            duration_ms: 1500,
+            tokens_used: 42,
+        };
+        let msg = DroneMessage::Event(event);
+        let json = serde_json::to_string(&msg).unwrap();
+        let decoded: DroneMessage = serde_json::from_str(&json).unwrap();
+        match decoded {
+            DroneMessage::Event(DroneEvent::ToolUse {
+                name,
+                duration_ms,
+                tokens_used,
+            }) => {
+                assert_eq!(name, "bash");
+                assert_eq!(duration_ms, 1500);
+                assert_eq!(tokens_used, 42);
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(v["type"], "event");
+    }
+
+    #[test]
+    fn test_drone_event_token_usage_roundtrip() {
+        let event = DroneEvent::TokenUsage {
+            input: 1000,
+            output: 500,
+            cache_read: 200,
+            total_cost_usd: Some(0.015),
+        };
+        let msg = DroneMessage::Event(event);
+        let json = serde_json::to_string(&msg).unwrap();
+        let decoded: DroneMessage = serde_json::from_str(&json).unwrap();
+        match decoded {
+            DroneMessage::Event(DroneEvent::TokenUsage {
+                input,
+                output,
+                cache_read,
+                total_cost_usd,
+            }) => {
+                assert_eq!(input, 1000);
+                assert_eq!(output, 500);
+                assert_eq!(cache_read, 200);
+                assert_eq!(total_cost_usd, Some(0.015));
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_drone_event_checkpoint_roundtrip() {
+        let event = DroneEvent::Checkpoint {
+            artifact_id: "chk-123".to_string(),
+            tokens_before: 50000,
+            tokens_after: 10000,
+        };
+        let msg = DroneMessage::Event(event);
+        let json = serde_json::to_string(&msg).unwrap();
+        let decoded: DroneMessage = serde_json::from_str(&json).unwrap();
+        match decoded {
+            DroneMessage::Event(DroneEvent::Checkpoint {
+                artifact_id,
+                tokens_before,
+                tokens_after,
+            }) => {
+                assert_eq!(artifact_id, "chk-123");
+                assert_eq!(tokens_before, 50000);
+                assert_eq!(tokens_after, 10000);
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_drone_event_test_results_roundtrip() {
+        let event = DroneEvent::TestResults {
+            passed: 42,
+            failed: 1,
+            skipped: 3,
+        };
+        let msg = DroneMessage::Event(event);
+        let json = serde_json::to_string(&msg).unwrap();
+        let decoded: DroneMessage = serde_json::from_str(&json).unwrap();
+        match decoded {
+            DroneMessage::Event(DroneEvent::TestResults {
+                passed,
+                failed,
+                skipped,
+            }) => {
+                assert_eq!(passed, 42);
+                assert_eq!(failed, 1);
+                assert_eq!(skipped, 3);
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_drone_event_git_commit_roundtrip() {
+        let event = DroneEvent::GitCommit {
+            sha: "abc1234".to_string(),
+            message: "fix: resolve auth issue".to_string(),
+        };
+        let msg = DroneMessage::Event(event);
+        let json = serde_json::to_string(&msg).unwrap();
+        let decoded: DroneMessage = serde_json::from_str(&json).unwrap();
+        match decoded {
+            DroneMessage::Event(DroneEvent::GitCommit { sha, message }) => {
+                assert_eq!(sha, "abc1234");
+                assert_eq!(message, "fix: resolve auth issue");
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_drone_event_stage_transition_roundtrip() {
+        let event = DroneEvent::StageTransition {
+            from: "plan".to_string(),
+            to: "implement".to_string(),
+        };
+        let msg = DroneMessage::Event(event);
+        let json = serde_json::to_string(&msg).unwrap();
+        let decoded: DroneMessage = serde_json::from_str(&json).unwrap();
+        match decoded {
+            DroneMessage::Event(DroneEvent::StageTransition { from, to }) => {
+                assert_eq!(from, "plan");
+                assert_eq!(to, "implement");
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_old_variants_still_deserialize_with_event_added() {
+        // Verify that adding Event variant doesn't break existing message parsing
+        let progress_json =
+            r#"{"type":"progress","payload":{"status":"running","detail":"compiling"}}"#;
+        let decoded: DroneMessage = serde_json::from_str(progress_json).unwrap();
+        assert!(matches!(decoded, DroneMessage::Progress(_)));
+
+        let error_json = r#"{"type":"error","payload":{"message":"something broke"}}"#;
+        let decoded: DroneMessage = serde_json::from_str(error_json).unwrap();
+        assert!(matches!(decoded, DroneMessage::Error(_)));
+
+        let auth_json = r#"{"type":"auth_request","payload":{"url":"https://example.com","message":"approve"}}"#;
+        let decoded: DroneMessage = serde_json::from_str(auth_json).unwrap();
+        assert!(matches!(decoded, DroneMessage::AuthRequest(_)));
     }
 
     #[test]

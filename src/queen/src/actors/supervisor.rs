@@ -484,6 +484,13 @@ async fn drain_protocol_messages(
                             completed.push(id.clone());
                             break; // Error is terminal
                         }
+                        DroneMessage::Event(event) => {
+                            tracing::info!(
+                                job_run_id = %id,
+                                event = ?event,
+                                "drone event"
+                            );
+                        }
                     }
                 }
                 Err(mpsc::error::TryRecvError::Empty) => break,

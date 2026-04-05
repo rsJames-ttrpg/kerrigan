@@ -16,7 +16,7 @@ impl QueenChannel {
         }
     }
 
-    fn send(&mut self, msg: &DroneMessage) -> anyhow::Result<()> {
+    pub fn send(&mut self, msg: &DroneMessage) -> anyhow::Result<()> {
         let mut line = serde_json::to_string(msg)?;
         line.push('\n');
         self.writer.write_all(line.as_bytes())?;
