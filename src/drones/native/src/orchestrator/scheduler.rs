@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::plan_parser::Task;
 
+#[derive(Debug)]
 pub struct TaskScheduler {
     tasks: Vec<Task>,
     completed: HashSet<String>,
@@ -86,7 +87,7 @@ fn validate_dag(tasks: &[Task]) -> anyhow::Result<()> {
 
     let mut queue: VecDeque<&str> = in_degree
         .iter()
-        .filter(|(_, &deg)| deg == 0)
+        .filter(|&(_, deg)| *deg == 0)
         .map(|(&id, _)| id)
         .collect();
 
