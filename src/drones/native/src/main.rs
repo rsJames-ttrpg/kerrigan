@@ -1,4 +1,5 @@
 mod drone;
+mod pipeline;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

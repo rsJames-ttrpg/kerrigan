@@ -11,6 +11,8 @@ NATIVE_DRONE_DEPS = [
     "//third-party:tracing",
     "//third-party:tracing-subscriber",
     "//third-party:toml",
+    "//third-party:globset",
+    "//third-party:thiserror",
 ]
 
 rust_binary(
