@@ -386,4 +386,82 @@ mod tests {
         assert!(summary.contains("[FAIL]"));
         assert!(summary.contains("abc123"));
     }
+
+    #[tokio::test]
+    async fn run_test_command_captures_both_streams() {
+        let dir = tempfile::tempdir().unwrap();
+        let (success, stdout, stderr) =
+            run_test_command("echo out && echo err >&2", dir.path()).await;
+        assert!(success);
+        assert_eq!(stdout.trim(), "out");
+        assert_eq!(stderr.trim(), "err");
+    }
+
+    #[test]
+    fn orchestrated_result_success_all_pass() {
+        let result = OrchestratedResult {
+            task_results: vec![TaskResult {
+                task_id: "a".into(),
+                success: true,
+                output: "ok".into(),
+                commits: vec![],
+            }],
+            fixup_iterations: 0,
+            tests_passing: true,
+            fixup_summaries: vec![],
+        };
+        assert!(result.success());
+    }
+
+    #[test]
+    fn orchestrated_result_failure_on_failed_task() {
+        let result = OrchestratedResult {
+            task_results: vec![TaskResult {
+                task_id: "a".into(),
+                success: false,
+                output: "failed".into(),
+                commits: vec![],
+            }],
+            fixup_iterations: 0,
+            tests_passing: true,
+            fixup_summaries: vec![],
+        };
+        assert!(!result.success());
+    }
+
+    #[test]
+    fn orchestrated_result_failure_on_test_fail() {
+        let result = OrchestratedResult {
+            task_results: vec![TaskResult {
+                task_id: "a".into(),
+                success: true,
+                output: "ok".into(),
+                commits: vec![],
+            }],
+            fixup_iterations: 3,
+            tests_passing: false,
+            fixup_summaries: vec!["some failure".into()],
+        };
+        assert!(!result.success());
+    }
+
+    #[test]
+    fn orchestrated_result_to_json() {
+        let result = OrchestratedResult {
+            task_results: vec![TaskResult {
+                task_id: "task-1".into(),
+                success: true,
+                output: "done".into(),
+                commits: vec!["abc".into()],
+            }],
+            fixup_iterations: 2,
+            tests_passing: true,
+            fixup_summaries: vec!["summary1".into(), "summary2".into()],
+        };
+        let json = result.to_json();
+        assert_eq!(json["fixup_iterations"], 2);
+        assert_eq!(json["tests_passing"], true);
+        assert_eq!(json["orchestrator_results"][0]["task_id"], "task-1");
+        assert_eq!(json["fixup_summaries"].as_array().unwrap().len(), 2);
+    }
 }
