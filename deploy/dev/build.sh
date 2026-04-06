@@ -10,6 +10,8 @@ buck2 build \
   root//src/queen:queen \
   root//src/creep:creep \
   root//src/creep-cli:creep-cli \
+  root//src/abathur-cli:abathur-cli \
+  root//src/drones/native:native-drone \
   root//src/drones/claude/base:claude-drone
 
 # Buck2 output paths are content-addressed. Use buck2 build --show-full-output
@@ -24,6 +26,8 @@ for target_bin in \
   "root//src/queen:queen bin/queen" \
   "root//src/creep:creep bin/creep" \
   "root//src/creep-cli:creep-cli bin/creep-cli" \
+  "root//src/abathur-cli:abathur-cli bin/abathur" \
+  "root//src/drones/native:native-drone drones/native-drone" \
   "root//src/drones/claude/base:claude-drone drones/claude-drone"; do
 
   target="${target_bin% *}"
