@@ -15,6 +15,7 @@ pub struct ResolvedConfig {
     pub stage_config: StageConfig,
     pub cache: CacheConfig,
     pub environment: EnvironmentConfig,
+    pub orchestrator: OrchestratorConfig,
 }
 
 /// Resolved cache configuration
@@ -29,6 +30,14 @@ pub struct CacheConfig {
 pub struct EnvironmentConfig {
     pub extra_path: Vec<String>,
     pub env: HashMap<String, String>,
+}
+
+/// Resolved orchestrator configuration
+#[derive(Clone)]
+pub struct OrchestratorConfig {
+    pub test_command: Option<String>,
+    pub max_fixup_iterations: u32,
+    pub max_parallel: usize,
 }
 
 impl ResolvedConfig {
@@ -135,12 +144,30 @@ impl ResolvedConfig {
             env,
         };
 
+        // Orchestrator config: job_config overrides drone.toml
+        let orchestrator = OrchestratorConfig {
+            test_command: job_config
+                .get("test_command")
+                .cloned()
+                .or(drone_toml.orchestrator.test_command.clone()),
+            max_fixup_iterations: job_config
+                .get("max_fixup_iterations")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(drone_toml.orchestrator.max_fixup_iterations),
+            max_parallel: job_config
+                .get("max_parallel")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(drone_toml.orchestrator.max_parallel)
+                .max(1),
+        };
+
         Self {
             provider,
             loop_config,
             stage_config,
             cache,
             environment,
+            orchestrator,
         }
     }
 }
@@ -389,6 +416,94 @@ max_size_mb = 512
         assert_eq!(resolved.cache.dir, PathBuf::from("/tmp/my-cache"));
         assert!(!resolved.cache.repo_cache);
         assert_eq!(resolved.cache.max_size_mb, 512);
+    }
+
+    #[test]
+    fn orchestrator_defaults_from_drone_toml() {
+        let drone = minimal_drone_config();
+        let job = HashMap::new();
+        let resolved = ResolvedConfig::resolve(&drone, &job, Stage::Implement);
+
+        assert!(resolved.orchestrator.test_command.is_none());
+        assert_eq!(resolved.orchestrator.max_fixup_iterations, 5);
+        assert_eq!(resolved.orchestrator.max_parallel, 2);
+    }
+
+    #[test]
+    fn orchestrator_from_drone_toml() {
+        let drone: DroneConfig = toml::from_str(
+            r#"
+[provider]
+kind = "anthropic"
+model = "claude-sonnet-4-20250514"
+
+[orchestrator]
+test_command = "make test"
+max_fixup_iterations = 3
+max_parallel = 4
+"#,
+        )
+        .unwrap();
+
+        let job = HashMap::new();
+        let resolved = ResolvedConfig::resolve(&drone, &job, Stage::Implement);
+
+        assert_eq!(
+            resolved.orchestrator.test_command.as_deref(),
+            Some("make test")
+        );
+        assert_eq!(resolved.orchestrator.max_fixup_iterations, 3);
+        assert_eq!(resolved.orchestrator.max_parallel, 4);
+    }
+
+    #[test]
+    fn orchestrator_job_config_overrides_drone_toml() {
+        let drone: DroneConfig = toml::from_str(
+            r#"
+[provider]
+kind = "anthropic"
+model = "claude-sonnet-4-20250514"
+
+[orchestrator]
+test_command = "make test"
+max_fixup_iterations = 3
+max_parallel = 4
+"#,
+        )
+        .unwrap();
+
+        let job = make_job_config(&[
+            ("test_command", "cargo test"),
+            ("max_fixup_iterations", "10"),
+            ("max_parallel", "8"),
+        ]);
+        let resolved = ResolvedConfig::resolve(&drone, &job, Stage::Implement);
+
+        assert_eq!(
+            resolved.orchestrator.test_command.as_deref(),
+            Some("cargo test")
+        );
+        assert_eq!(resolved.orchestrator.max_fixup_iterations, 10);
+        assert_eq!(resolved.orchestrator.max_parallel, 8);
+    }
+
+    #[test]
+    fn max_parallel_zero_clamped_to_one() {
+        let drone: DroneConfig = toml::from_str(
+            r#"
+[provider]
+kind = "anthropic"
+model = "claude-sonnet-4-20250514"
+
+[orchestrator]
+max_parallel = 0
+"#,
+        )
+        .unwrap();
+
+        let job = make_job_config(&[]);
+        let resolved = ResolvedConfig::resolve(&drone, &job, Stage::Implement);
+        assert_eq!(resolved.orchestrator.max_parallel, 1);
     }
 
     #[test]
