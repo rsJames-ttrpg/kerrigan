@@ -308,9 +308,7 @@ impl Config {
         for (name, drone_config) in &self.queen.drones {
             if let Some(max) = drone_config.max_concurrency {
                 if max <= 0 {
-                    anyhow::bail!(
-                        "queen.drones.{name}.max_concurrency must be greater than 0"
-                    );
+                    anyhow::bail!("queen.drones.{name}.max_concurrency must be greater than 0");
                 }
             }
             if let Some(ref timeout) = drone_config.drone_timeout {
@@ -322,9 +320,7 @@ impl Config {
             }
             if let Some(stall) = drone_config.stall_threshold {
                 if stall == 0 {
-                    anyhow::bail!(
-                        "queen.drones.{name}.stall_threshold must be greater than 0"
-                    );
+                    anyhow::bail!("queen.drones.{name}.stall_threshold must be greater than 0");
                 }
             }
         }
@@ -732,8 +728,9 @@ drone_timeout = "not-valid"
         );
         let err = Config::load(f.path()).unwrap_err();
         assert!(
-            err.to_string()
-                .contains("queen.drones.bad-drone.drone_timeout 'not-valid' is not a valid duration")
+            err.to_string().contains(
+                "queen.drones.bad-drone.drone_timeout 'not-valid' is not a valid duration"
+            )
         );
     }
 

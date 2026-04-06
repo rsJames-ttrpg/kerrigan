@@ -6,13 +6,13 @@ lastmod: 2026-04-06
 tags: [queen, hatchery, actors, drones, notifications]
 sources:
   - path: src/queen/src/main.rs
-    hash: fe0adecce258ca4dd3090d6dec4c7ef85fc7bd81c8b9efb8c6561d49eea035d5
+    hash: bc1bc079bbf5d652a69129f1e55014f1e26399a6c38097598ac1125e46d5ae64
   - path: src/queen/src/config.rs
-    hash: 0817c30a5d093a59f544dea8a078569aea705fd1280496cd93268a092590e6f4
+    hash: eb01cb6f0031220ac34800260175409f7270d70e585f4ca723f9c0d5e8b730e3
   - path: src/queen/src/messages.rs
     hash: 134afb9ab6df2f36fc00be9adb76f9ee5e03657045062458085cbdafaf7c0c4f
   - path: src/queen/src/actors/supervisor.rs
-    hash: a249166e0286de5e9e95bba642d71005988a39349e644f2114af7d9cf5344215
+    hash: 0885e9ea6888d9eef1e5a0124b1de5a07009042c7f53ade64954e363a5cb8b65
   - path: src/queen/src/actors/poller.rs
     hash: 7317cc684b88dd4cc9c23a4cc1858b0fc3735c415880cdb10efd52d3b610d0e8
   - path: src/queen/src/actors/heartbeat.rs
