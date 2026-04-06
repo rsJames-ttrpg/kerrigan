@@ -1,8 +1,8 @@
 # Native Drone Comprehensive Review
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking use the skill /pr-review-toolkit:review-pr to asses each step.
 
-**Goal:** Review the entire native drone implementation against all design specs, producing a structured review artifact.
+**Goal:** Review the entire native drone implementation against all design specs, producing a structured review artifact .
 
 **Architecture:** Spec-by-spec compliance review across `src/drones/native/`, `src/runtime/`, and related crates. Each task reviews one spec's requirements against the implementation, filing issues for gaps.
 
