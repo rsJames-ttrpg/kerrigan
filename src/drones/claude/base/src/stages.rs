@@ -14,10 +14,26 @@ You MUST follow this git workflow:
 
 1. Create a new branch from the current HEAD with a descriptive name
 2. Make your changes, committing frequently with clear messages
-3. Push the branch to origin
+3. ALWAYS run `git push -u origin HEAD` before `gh pr create`. The PR command will fail if you haven't pushed.
 4. Create a pull request to main with a clear title, description, and test plan
 
 Do NOT merge the PR. The operator will review and merge.
+
+## Pre-commit Hooks
+
+This repo may use pre-commit hooks that auto-fix files (trailing whitespace,
+end-of-file newlines, formatting). When a commit fails because hooks modified files:
+
+1. Run `git add -u` to re-stage the modified files
+2. Run `git commit` again with the same message
+3. Do NOT use `--no-verify` to skip hooks
+
+## CLI Usage
+
+When unsure about a command's flags or arguments, run `<command> --help` first
+rather than guessing. Common mistakes to avoid:
+- `gh pr diff` has no `--stat` flag
+- `cargo test` accepts only ONE test name filter as a positional argument
 
 ## Artifacts
 
@@ -26,6 +42,42 @@ using the Overseer MCP tools available to you (if configured). This ensures trac
 alongside the git commit."#;
 
 pub fn generate_claude_md(stage: &str, config: &Value) -> Option<String> {
+    generate_claude_md_with_extra(stage, config, "")
+}
+
+/// Generate stage-specific CLAUDE.md with optional repo-specific extra rules
+/// injected between the stage content and the base rules.
+pub fn generate_claude_md_with_extra(
+    stage: &str,
+    config: &Value,
+    extra_rules: &str,
+) -> Option<String> {
+    let base = generate_claude_md_inner(stage, config)?;
+    if extra_rules.is_empty() {
+        return Some(base);
+    }
+    // Insert extra_rules before the rules/workflow section.
+    // Stages using BASE_RULES have "## Rules" first. The review stage
+    // has "## Git Workflow" inline. Find whichever comes first.
+    let marker = base
+        .find("## Rules\n")
+        .into_iter()
+        .chain(base.find("## Git Workflow\n"))
+        .min();
+    if let Some(pos) = marker {
+        let mut result = String::with_capacity(base.len() + extra_rules.len() + 2);
+        result.push_str(&base[..pos]);
+        result.push_str(extra_rules);
+        result.push_str("\n\n");
+        result.push_str(&base[pos..]);
+        Some(result)
+    } else {
+        // No BASE_RULES found (e.g. evolve stage) — append at end
+        Some(format!("{base}\n\n{extra_rules}"))
+    }
+}
+
+fn generate_claude_md_inner(stage: &str, config: &Value) -> Option<String> {
     match stage {
         "spec" => Some(generate_spec(config)),
         "plan" => Some(generate_plan(config)),
@@ -322,5 +374,43 @@ mod tests {
         let config = json!({});
         assert!(generate_claude_md("unknown", &config).is_none());
         assert!(generate_claude_md("", &config).is_none());
+    }
+
+    #[test]
+    fn test_extra_rules_appended_to_stage_md() {
+        let config = json!({"plan_path": "docs/plans/test.md"});
+        let extra = "## Build\nUse buck2 build, not cargo build.";
+        let md = generate_claude_md_with_extra("plan", &config, extra);
+        assert!(md.is_some());
+        let content = md.unwrap();
+        let extra_pos = content.find("## Build").unwrap();
+        let rules_pos = content.find("## Rules").unwrap();
+        assert!(
+            extra_pos < rules_pos,
+            "extra_rules should appear before base rules"
+        );
+    }
+
+    #[test]
+    fn test_extra_rules_in_review_stage() {
+        let config = json!({"pr_url": "https://github.com/org/repo/pull/42"});
+        let extra = "## Build\nUse buck2.";
+        let md = generate_claude_md_with_extra("review", &config, extra);
+        assert!(md.is_some());
+        let content = md.unwrap();
+        let extra_pos = content.find("## Build").unwrap();
+        let workflow_pos = content.find("## Git Workflow").unwrap();
+        assert!(
+            extra_pos < workflow_pos,
+            "extra_rules should appear before Git Workflow in review"
+        );
+    }
+
+    #[test]
+    fn test_empty_extra_rules_no_change() {
+        let config = json!({"plan_path": "docs/plans/test.md"});
+        let with_extra = generate_claude_md_with_extra("plan", &config, "");
+        let without = generate_claude_md("plan", &config);
+        assert_eq!(with_extra, without);
     }
 }

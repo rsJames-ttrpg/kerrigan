@@ -96,7 +96,11 @@ impl DroneRunner for ClaudeDrone {
 
         // Generate stage-specific CLAUDE.md if config.stage is set
         if let Some(stage) = job.config.get("stage").and_then(|v| v.as_str()) {
-            if let Some(claude_md) = crate::stages::generate_claude_md(stage, &job.config) {
+            if let Some(claude_md) = crate::stages::generate_claude_md_with_extra(
+                stage,
+                &job.config,
+                &drone_toml.prompts.extra_rules,
+            ) {
                 tokio::fs::write(env.home.join("CLAUDE.md"), claude_md)
                     .await
                     .context("failed to write stage-specific CLAUDE.md")?;

@@ -6,11 +6,11 @@ lastmod: 2026-04-06
 tags: [drone, claude, stages, plugins]
 sources:
   - path: src/drones/claude/base/src/drone.rs
-    hash: fb58a878a0be2b39f17e48a32df3780f6333c656e361f786c23f7437848cf657
+    hash: abb4855c53c7899401987025cd9bd46265cff4f74244e463ffc26ac811d6243e
   - path: src/drones/claude/base/src/environment.rs
     hash: 6d4ca1cedb844aaa01912634ef75e5d7ae341abc8fea2aa13a849f8a8c78bdb2
   - path: src/drones/claude/base/src/stages.rs
-    hash: ccaf8af9edeaf1cabf86d84b250bbe41bb2ebd674686da5e0a7c55719963da8c
+    hash: 3e5a83b18cf6ce45a7070d69ebf8f8fa75d24df238715e0eb60e7c7772d1d1ce
 sections: [overview, setup-phase, execute-phase, stages, pr-safety-net, secret-handling, embedded-config, file-layout]
 ---
 
