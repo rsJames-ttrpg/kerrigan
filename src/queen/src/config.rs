@@ -96,6 +96,62 @@ pub struct QueenConfig {
     pub drone_dir: String,
     /// Default repo_url injected into jobs that don't specify one.
     pub default_repo_url: Option<String>,
+    /// Per-drone-type configuration, keyed by drone binary name.
+    #[serde(default)]
+    pub drones: HashMap<String, DroneTypeConfig>,
+}
+
+/// Per-drone-type configuration. All fields are optional — omitted values
+/// fall back to the corresponding global `queen.*` setting.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DroneTypeConfig {
+    pub max_concurrency: Option<i32>,
+    pub drone_timeout: Option<String>,
+    pub stall_threshold: Option<u64>,
+}
+
+/// Resolved drone config with global fallbacks applied.
+#[derive(Debug, Clone)]
+pub struct EffectiveDroneConfig {
+    /// `None` means no per-type limit — only the global limit applies.
+    pub max_concurrency: Option<i32>,
+    pub drone_timeout: String,
+    pub stall_threshold: u64,
+}
+
+impl EffectiveDroneConfig {
+    /// Resolve effective config for a drone type from the per-type map and global defaults.
+    /// This is the single resolution path used by both `QueenConfig` and the supervisor.
+    pub fn resolve(
+        drones: &HashMap<String, DroneTypeConfig>,
+        drone_type: &str,
+        default_timeout: &str,
+        default_stall: u64,
+    ) -> Self {
+        let type_config = drones.get(drone_type);
+        Self {
+            max_concurrency: type_config.and_then(|c| c.max_concurrency),
+            drone_timeout: type_config
+                .and_then(|c| c.drone_timeout.clone())
+                .unwrap_or_else(|| default_timeout.to_string()),
+            stall_threshold: type_config
+                .and_then(|c| c.stall_threshold)
+                .unwrap_or(default_stall),
+        }
+    }
+}
+
+impl QueenConfig {
+    /// Resolve effective config for a drone type.
+    /// Per-type values override globals; missing per-type values use globals.
+    pub fn effective_drone_config(&self, drone_type: &str) -> EffectiveDroneConfig {
+        EffectiveDroneConfig::resolve(
+            &self.drones,
+            drone_type,
+            &self.drone_timeout,
+            self.stall_threshold,
+        )
+    }
 }
 
 /// Configuration for a single LSP server within hatchery.toml.
@@ -265,6 +321,32 @@ impl Config {
                         anyhow::bail!("unknown notification event: '{e}'");
                     }
                 }
+            }
+        }
+        for (name, drone_config) in &self.queen.drones {
+            if let Some(max) = drone_config.max_concurrency {
+                if max <= 0 {
+                    anyhow::bail!("queen.drones.{name}.max_concurrency must be greater than 0");
+                }
+                if max > self.queen.max_concurrency {
+                    tracing::warn!(
+                        "queen.drones.{name}.max_concurrency ({max}) exceeds \
+                         queen.max_concurrency ({}); the global limit will cap it at runtime",
+                        self.queen.max_concurrency
+                    );
+                }
+            }
+            if let Some(ref timeout) = drone_config.drone_timeout
+                && crate::parse_duration(timeout).is_err()
+            {
+                anyhow::bail!(
+                    "queen.drones.{name}.drone_timeout '{timeout}' is not a valid duration"
+                );
+            }
+            if let Some(stall) = drone_config.stall_threshold
+                && stall == 0
+            {
+                anyhow::bail!("queen.drones.{name}.stall_threshold must be greater than 0");
             }
         }
         Ok(())
@@ -638,5 +720,145 @@ language_id = "typescript"
         assert_eq!(ts.args, vec!["--stdio"]);
         assert_eq!(ts.extensions, vec![".ts", ".tsx"]);
         assert_eq!(ts.language_id, "typescript");
+    }
+
+    #[test]
+    fn test_validate_drone_type_zero_concurrency() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[queen.drones.bad-drone]
+max_concurrency = 0
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("queen.drones.bad-drone.max_concurrency must be greater than 0")
+        );
+    }
+
+    #[test]
+    fn test_validate_drone_type_invalid_timeout() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[queen.drones.bad-drone]
+drone_timeout = "not-valid"
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(
+            err.to_string().contains(
+                "queen.drones.bad-drone.drone_timeout 'not-valid' is not a valid duration"
+            )
+        );
+    }
+
+    #[test]
+    fn test_validate_drone_type_zero_stall() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[queen.drones.bad-drone]
+stall_threshold = 0
+"#,
+        );
+        let err = Config::load(f.path()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("queen.drones.bad-drone.stall_threshold must be greater than 0")
+        );
+    }
+
+    #[test]
+    fn test_parse_drone_type_config() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+
+[queen.drones.claude-drone]
+max_concurrency = 2
+drone_timeout = "2h"
+stall_threshold = 300
+
+[queen.drones.native-drone]
+max_concurrency = 4
+drone_timeout = "30m"
+stall_threshold = 120
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert_eq!(config.queen.drones.len(), 2);
+
+        let claude = &config.queen.drones["claude-drone"];
+        assert_eq!(claude.max_concurrency, Some(2));
+        assert_eq!(claude.drone_timeout.as_deref(), Some("2h"));
+        assert_eq!(claude.stall_threshold, Some(300));
+
+        let native = &config.queen.drones["native-drone"];
+        assert_eq!(native.max_concurrency, Some(4));
+        assert_eq!(native.drone_timeout.as_deref(), Some("30m"));
+        assert_eq!(native.stall_threshold, Some(120));
+    }
+
+    #[test]
+    fn test_effective_drone_config_with_overrides() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+drone_timeout = "2h"
+stall_threshold = 300
+
+[queen.drones.claude-drone]
+max_concurrency = 2
+drone_timeout = "4h"
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        let effective = config.queen.effective_drone_config("claude-drone");
+
+        assert_eq!(effective.max_concurrency, Some(2));
+        assert_eq!(effective.drone_timeout, "4h");
+        // stall_threshold not overridden — falls back to global
+        assert_eq!(effective.stall_threshold, 300);
+    }
+
+    #[test]
+    fn test_effective_drone_config_unknown_type() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+drone_timeout = "2h"
+stall_threshold = 300
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        let effective = config.queen.effective_drone_config("unknown-drone");
+
+        assert!(effective.max_concurrency.is_none());
+        assert_eq!(effective.drone_timeout, "2h");
+        assert_eq!(effective.stall_threshold, 300);
+    }
+
+    #[test]
+    fn test_drones_field_defaults_to_empty() {
+        let f = write_toml(
+            r#"
+[queen]
+name = "test"
+"#,
+        );
+        let config = Config::load(f.path()).unwrap();
+        assert!(config.queen.drones.is_empty());
     }
 }

@@ -6,13 +6,13 @@ lastmod: 2026-04-06
 tags: [queen, hatchery, actors, drones, notifications]
 sources:
   - path: src/queen/src/main.rs
-    hash: fe0adecce258ca4dd3090d6dec4c7ef85fc7bd81c8b9efb8c6561d49eea035d5
+    hash: bc1bc079bbf5d652a69129f1e55014f1e26399a6c38097598ac1125e46d5ae64
   - path: src/queen/src/config.rs
-    hash: 0817c30a5d093a59f544dea8a078569aea705fd1280496cd93268a092590e6f4
+    hash: 4bec470372566db28ad14f722aba506054e15448f74c8bb7c4eb9ddb261398eb
   - path: src/queen/src/messages.rs
     hash: 134afb9ab6df2f36fc00be9adb76f9ee5e03657045062458085cbdafaf7c0c4f
   - path: src/queen/src/actors/supervisor.rs
-    hash: a249166e0286de5e9e95bba642d71005988a39349e644f2114af7d9cf5344215
+    hash: 82403576acaab8e101ab13ece68923f3b54edc3313ddc7bc249d29c424d488ac
   - path: src/queen/src/actors/poller.rs
     hash: 7317cc684b88dd4cc9c23a4cc1858b0fc3735c415880cdb10efd52d3b610d0e8
   - path: src/queen/src/actors/heartbeat.rs
@@ -65,20 +65,24 @@ On validation failure, immediately fails the run in Overseer.
 
 Maintains `active: HashMap<String, DroneHandle>` and `queue: VecDeque<SpawnRequest>`.
 
+**Concurrency control:** Two-level gating via `can_spawn()`. Global `max_concurrency` is checked first, then per-drone-type limits from `queen.drones.<type>.max_concurrency`. Per-type limits cannot exceed the global limit at runtime (validation warns on misconfiguration). Timeout and stall threshold are resolved per-type via `EffectiveDroneConfig::resolve()`, falling back to global defaults.
+
 **Select loop:**
-- Spawn request → if under `max_concurrency`, spawn drone; else queue
+- Spawn request → if under concurrency limits (global + per-type), spawn drone; else queue
 - Status query → reply with active/queued counts (for heartbeat)
-- Health tick (5s) → drain protocol messages, check drone health, dequeue
+- Health tick (5s) → drain protocol messages, check drone health, dequeue (indexed iteration skips type-blocked items to avoid head-of-line blocking)
 
 **DroneHandle:**
 ```rust
 struct DroneHandle {
     job_run_id: String,
+    drone_type: String,       // binary name, used for per-type concurrency counting
     process: Child,           // OS process
     started_at: Instant,
-    timeout: Duration,
+    timeout: Duration,        // resolved per-type or global
     last_activity: Instant,   // updated on protocol msg or stderr
     stall_notified: bool,
+    stall_threshold: Duration, // resolved per-type or global
     protocol_rx: mpsc::Receiver<DroneMessage>,
     stderr_rx: mpsc::Receiver<()>,
     stdin_tx: Option<mpsc::Sender<QueenMessage>>,
@@ -169,6 +173,9 @@ Disabled by default. When enabled, monitors completed runs and triggers heuristi
 | `queen.stall_threshold` | Stall detection (s) | 300 |
 | `queen.drone_dir` | Drone binary directory | "./drones" |
 | `queen.default_repo_url` | Fallback repo URL | None |
+| `queen.drones.<type>.max_concurrency` | Per-type concurrency limit | None (global only) |
+| `queen.drones.<type>.drone_timeout` | Per-type timeout | inherits `queen.drone_timeout` |
+| `queen.drones.<type>.stall_threshold` | Per-type stall detection (s) | inherits `queen.stall_threshold` |
 | `creep.enabled` | Enable Creep sidecar | true |
 | `creep.binary` | Creep binary path | "./creep" |
 | `creep.health_port` | Creep health check port | 9090 |
@@ -180,6 +187,20 @@ Disabled by default. When enabled, monitors completed runs and triggers heuristi
 | `notifications.backend` | "log" or "webhook" | "log" |
 | `evolution.enabled` | Enable evolution actor | false |
 | `evolution.run_interval` | Runs between analyses | 10 |
+
+**Per-drone-type config:** The `[queen.drones.<type>]` sections allow overriding concurrency, timeout, and stall threshold per drone binary name. All fields are optional — omitted values inherit from the corresponding global `queen.*` setting. Resolution is handled by `EffectiveDroneConfig::resolve()`, used by both config tests and the supervisor at runtime (single code path). Validation rejects invalid values (zero/negative concurrency, unparseable timeouts, zero stall) and warns when a per-type `max_concurrency` exceeds the global limit.
+
+```toml
+[queen.drones.claude-drone]
+max_concurrency = 2       # at most 2 claude-drone instances
+drone_timeout = "2h"
+stall_threshold = 300
+
+[queen.drones.native-drone]
+max_concurrency = 4
+drone_timeout = "30m"     # native drones are faster
+stall_threshold = 120
+```
 
 CLI flags (`--name`, `--overseer-url`, `--max-concurrency`, `--drone-dir`) and env vars (`QUEEN_NAME`, etc.) override config.
 
