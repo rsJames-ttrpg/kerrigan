@@ -157,7 +157,8 @@ impl ResolvedConfig {
             max_parallel: job_config
                 .get("max_parallel")
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(drone_toml.orchestrator.max_parallel),
+                .unwrap_or(drone_toml.orchestrator.max_parallel)
+                .max(1),
         };
 
         Self {
@@ -484,6 +485,25 @@ max_parallel = 4
         );
         assert_eq!(resolved.orchestrator.max_fixup_iterations, 10);
         assert_eq!(resolved.orchestrator.max_parallel, 8);
+    }
+
+    #[test]
+    fn max_parallel_zero_clamped_to_one() {
+        let drone: DroneConfig = toml::from_str(
+            r#"
+[provider]
+kind = "anthropic"
+model = "claude-sonnet-4-20250514"
+
+[orchestrator]
+max_parallel = 0
+"#,
+        )
+        .unwrap();
+
+        let job = make_job_config(&[]);
+        let resolved = ResolvedConfig::resolve(&drone, &job, Stage::Implement);
+        assert_eq!(resolved.orchestrator.max_parallel, 1);
     }
 
     #[test]

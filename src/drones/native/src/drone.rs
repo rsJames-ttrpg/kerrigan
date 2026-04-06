@@ -276,7 +276,11 @@ impl DroneRunner for NativeDrone {
             let tasks = parse_plan(&plan_content);
 
             if tasks.is_empty() {
-                tracing::warn!(%plan_path, "No tasks found in plan, falling back to single loop");
+                tracing::error!(%plan_path, "No tasks parsed from plan — may be malformed or use unexpected format");
+                channel.progress(
+                    "orchestrating",
+                    "WARNING: no tasks parsed from plan, falling back to single agent loop",
+                )?;
                 let (session_value, _) = run_single_loop(
                     &task,
                     &config,

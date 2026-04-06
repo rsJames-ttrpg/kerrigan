@@ -29,6 +29,7 @@ pub struct OrchestratedContext {
 
 /// Run a shell command and return (success, stdout, stderr).
 async fn run_test_command(command: &str, workspace: &Path) -> (bool, String, String) {
+    tracing::debug!(%command, workspace = %workspace.display(), "Running test command");
     let output = tokio::process::Command::new("sh")
         .args(["-c", command])
         .current_dir(workspace)
@@ -39,9 +40,14 @@ async fn run_test_command(command: &str, workspace: &Path) -> (bool, String, Str
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let exit_code = output.status.code();
+            tracing::info!(%command, ?exit_code, success = output.status.success(), "Test command completed");
             (output.status.success(), stdout, stderr)
         }
-        Err(e) => (false, String::new(), format!("failed to run command: {e}")),
+        Err(e) => {
+            tracing::error!(%command, error = %e, "Failed to spawn test command");
+            (false, String::new(), format!("failed to run command: {e}"))
+        }
     }
 }
 
@@ -71,7 +77,19 @@ async fn modified_tracked_files(workspace: &Path) -> Vec<String> {
             .filter(|l| !l.is_empty())
             .map(String::from)
             .collect(),
-        _ => vec![],
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            tracing::warn!(
+                status = ?o.status,
+                %stderr,
+                "git diff --name-only failed, treating as no modified files"
+            );
+            vec![]
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "failed to spawn git diff --name-only");
+            vec![]
+        }
     }
 }
 
@@ -149,6 +167,7 @@ pub async fn run_orchestrated(
     let mut fixup_summaries = Vec::new();
 
     if let Some(test_command) = &config.test_command {
+        let mut consecutive_agent_failures = 0u32;
         for iteration in 1..=config.max_fixup_iterations {
             event_sink.emit(RuntimeEvent::TurnStart {
                 task: format!(
@@ -212,6 +231,7 @@ pub async fn run_orchestrated(
 
             match fixup_loop.run_turn(&fixup_prompt).await {
                 Ok(turn_result) => {
+                    consecutive_agent_failures = 0;
                     tracing::info!(
                         iteration,
                         iterations = turn_result.iterations,
@@ -219,7 +239,17 @@ pub async fn run_orchestrated(
                     );
                 }
                 Err(e) => {
+                    consecutive_agent_failures += 1;
                     tracing::error!(iteration, error = %e, "Fix-up agent failed");
+                    fixup_summaries
+                        .push(format!("Fix-up agent error (iteration {iteration}): {e}"));
+                    if consecutive_agent_failures >= 2 {
+                        tracing::error!(
+                            "Fix-up agent failed {consecutive_agent_failures} consecutive times, aborting loop"
+                        );
+                        break;
+                    }
+                    continue;
                 }
             }
 
@@ -236,7 +266,7 @@ pub async fn run_orchestrated(
                     })
                     .await
                 {
-                    tracing::warn!(iteration, error = %e, "Fix-up commit failed");
+                    tracing::error!(iteration, error = %e, "Fix-up commit failed");
                 }
             }
         }
@@ -342,7 +372,12 @@ async fn summarise_test_output(
                         .collect::<Vec<_>>()
                         .join("\n")
                 })
-                .unwrap_or_else(|| test_output.to_string())
+                .unwrap_or_else(|| {
+                    tracing::warn!(
+                        "Summarisation returned Ok but no assistant text found, using raw output"
+                    );
+                    test_output.to_string()
+                })
         }
         Err(e) => {
             tracing::warn!(error = %e, "Summarisation failed, using raw output");
@@ -389,6 +424,16 @@ mod tests {
         let output = "a".repeat(100);
         let truncated = truncate_output(&output, 50);
         assert_eq!(truncated.len(), 50);
+    }
+
+    #[test]
+    fn truncate_output_multibyte() {
+        // 100 x 3-byte chars = 300 bytes; truncate to 50 bytes
+        let output = "€".repeat(100);
+        let truncated = truncate_output(&output, 50);
+        assert!(truncated.len() <= 50);
+        // Must land on a valid char boundary (no panic, valid UTF-8)
+        assert!(truncated.chars().all(|c| c == '€'));
     }
 
     #[test]
@@ -471,6 +516,18 @@ mod tests {
             fixup_summaries: vec!["some failure".into()],
         };
         assert!(!result.success());
+    }
+
+    #[test]
+    fn orchestrated_result_success_empty_tasks() {
+        let result = OrchestratedResult {
+            task_results: vec![],
+            fixup_iterations: 0,
+            tests_passing: true,
+            fixup_summaries: vec![],
+        };
+        // Vacuous truth: no tasks means all tasks passed
+        assert!(result.success());
     }
 
     #[test]
