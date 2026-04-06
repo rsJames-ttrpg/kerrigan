@@ -14,6 +14,7 @@ use crate::tools::{ToolContext, ToolRegistry};
 use super::session::{ContentBlock, Message, Role, Session};
 
 /// Configuration for the conversation loop
+#[derive(Clone)]
 pub struct LoopConfig {
     pub max_iterations: u32,
     pub max_context_tokens: u32,
@@ -35,6 +36,7 @@ impl Default for LoopConfig {
 }
 
 /// Strategy for context compaction when token limits are approached
+#[derive(Clone)]
 pub enum CompactionStrategy {
     Summarize { preserve_recent: u32 },
     Checkpoint { preserve_recent: u32 },

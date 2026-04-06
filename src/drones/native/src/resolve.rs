@@ -33,6 +33,7 @@ pub struct EnvironmentConfig {
 }
 
 /// Resolved orchestrator configuration
+#[derive(Clone)]
 pub struct OrchestratorConfig {
     pub test_command: Option<String>,
     pub max_fixup_iterations: u32,

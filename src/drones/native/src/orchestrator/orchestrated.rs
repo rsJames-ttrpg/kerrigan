@@ -14,6 +14,19 @@ use crate::resolve::OrchestratorConfig;
 use super::plan_parser::Task;
 use super::{Orchestrator, TaskResult};
 
+/// Context for orchestrated execution — groups the shared dependencies
+/// needed by `run_orchestrated()`.
+pub struct OrchestratedContext {
+    pub config: OrchestratorConfig,
+    pub event_sink: Arc<dyn EventSink>,
+    pub git_workflow: Arc<GitWorkflow>,
+    pub api_client_factory: Arc<dyn ApiClientFactory>,
+    pub tool_registry: ToolRegistry,
+    pub loop_config: LoopConfig,
+    pub system_prompt: Vec<String>,
+    pub workspace: PathBuf,
+}
+
 /// Run a shell command and return (success, stdout, stderr).
 async fn run_test_command(command: &str, workspace: &Path) -> (bool, String, String) {
     let output = tokio::process::Command::new("sh")
@@ -43,6 +56,25 @@ fn truncate_output(output: &str, max_bytes: usize) -> &str {
     }
 }
 
+/// Return the list of modified (but tracked) files in the workspace.
+/// Uses `git diff --name-only` to avoid staging untracked files.
+async fn modified_tracked_files(workspace: &Path) -> Vec<String> {
+    let output = tokio::process::Command::new("git")
+        .args(["diff", "--name-only", "HEAD"])
+        .current_dir(workspace)
+        .output()
+        .await;
+
+    match output {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect(),
+        _ => vec![],
+    }
+}
+
 /// Build a structured summary of orchestrator results for the fix-up agent.
 fn build_orchestrator_summary(results: &[TaskResult]) -> String {
     let mut summary = String::from("## Orchestrator Task Results\n\n");
@@ -63,18 +95,21 @@ fn build_orchestrator_summary(results: &[TaskResult]) -> String {
 ///
 /// Returns a structured result containing orchestrator results, fix-up metadata,
 /// and final test status for inclusion in DroneOutput.
-#[allow(clippy::too_many_arguments)]
 pub async fn run_orchestrated(
     tasks: Vec<Task>,
-    config: &OrchestratorConfig,
-    event_sink: Arc<dyn EventSink>,
-    git_workflow: Arc<GitWorkflow>,
-    api_client_factory: Arc<dyn ApiClientFactory>,
-    tool_registry: ToolRegistry,
-    loop_config: &LoopConfig,
-    system_prompt: Vec<String>,
-    workspace: PathBuf,
+    ctx: &OrchestratedContext,
 ) -> anyhow::Result<OrchestratedResult> {
+    let OrchestratedContext {
+        config,
+        event_sink,
+        git_workflow,
+        api_client_factory,
+        tool_registry,
+        loop_config,
+        system_prompt,
+        workspace,
+    } = ctx;
+
     // 1. Build and run orchestrator
     event_sink.emit(RuntimeEvent::TurnStart {
         task: format!(
@@ -163,19 +198,11 @@ pub async fn run_orchestrated(
             });
 
             let api_client = api_client_factory.create();
-            // LoopConfig doesn't implement Clone — reconstruct for each fix-up agent
-            let fixup_loop_config = LoopConfig {
-                max_iterations: loop_config.max_iterations,
-                max_context_tokens: loop_config.max_context_tokens,
-                compaction_strategy: CompactionStrategy::Summarize { preserve_recent: 4 },
-                max_tokens_per_response: loop_config.max_tokens_per_response,
-                temperature: loop_config.temperature,
-            };
             let mut fixup_loop = ConversationLoop::new(
                 api_client,
                 api_client_factory.clone(),
                 tool_registry.clone_all(),
-                fixup_loop_config,
+                loop_config.clone(),
                 event_sink.clone(),
                 system_prompt.clone(),
                 PermissionPolicy::allow_all(),
@@ -196,16 +223,21 @@ pub async fn run_orchestrated(
                 }
             }
 
-            // Commit fix-up changes
-            let commit_msg = format!("fix: test failures (fix-up iteration {iteration})");
-            if let Err(e) = git_workflow
-                .execute(&GitOperation::Commit {
-                    message: commit_msg,
-                    paths: vec![".".into()],
-                })
-                .await
-            {
-                tracing::warn!(iteration, error = %e, "Fix-up commit failed (may be no changes)");
+            // Commit only modified tracked files to avoid staging unrelated changes
+            let modified = modified_tracked_files(workspace).await;
+            if modified.is_empty() {
+                tracing::info!(iteration, "No modified files after fix-up, skipping commit");
+            } else {
+                let commit_msg = format!("fix: test failures (fix-up iteration {iteration})");
+                if let Err(e) = git_workflow
+                    .execute(&GitOperation::Commit {
+                        message: commit_msg,
+                        paths: modified,
+                    })
+                    .await
+                {
+                    tracing::warn!(iteration, error = %e, "Fix-up commit failed");
+                }
             }
         }
     } else {

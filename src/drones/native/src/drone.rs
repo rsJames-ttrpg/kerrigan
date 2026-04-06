@@ -10,7 +10,7 @@ use drone_sdk::{
 };
 use runtime::{
     api::{self, DefaultApiClientFactory},
-    conversation::loop_core::{CompactionStrategy, ConversationLoop, LoopConfig},
+    conversation::loop_core::ConversationLoop,
     event::EventSink,
     permission::PermissionPolicy,
     tools,
@@ -18,7 +18,7 @@ use runtime::{
 use serde_json::json;
 
 use crate::git_workflow::GitWorkflow;
-use crate::orchestrator::{parse_plan, run_orchestrated};
+use crate::orchestrator::{OrchestratedContext, parse_plan, run_orchestrated};
 
 use crate::cache::RepoCache;
 use crate::config::DroneConfig;
@@ -301,18 +301,17 @@ impl DroneRunner for NativeDrone {
                     env.workspace.clone(),
                 ));
 
-                let result = run_orchestrated(
-                    tasks,
-                    &config.orchestrator,
-                    bridge.clone(),
+                let ctx = OrchestratedContext {
+                    config: config.orchestrator.clone(),
+                    event_sink: bridge.clone(),
                     git_workflow,
-                    api_client_factory.clone(),
-                    registry,
-                    &config.loop_config,
+                    api_client_factory: api_client_factory.clone(),
+                    tool_registry: registry,
+                    loop_config: config.loop_config.clone(),
                     system_prompt,
-                    env.workspace.clone(),
-                )
-                .await?;
+                    workspace: env.workspace.clone(),
+                };
+                let result = run_orchestrated(tasks, &ctx).await?;
 
                 let success = result.success();
                 (result.to_json(), success)
@@ -429,19 +428,11 @@ async fn run_single_loop(
     let api_client = api::create_client(&config.provider);
 
     channel.progress("running", "starting agent loop")?;
-    // LoopConfig doesn't implement Clone — reconstruct from resolved config
-    let loop_config = LoopConfig {
-        max_iterations: config.loop_config.max_iterations,
-        max_context_tokens: config.loop_config.max_context_tokens,
-        compaction_strategy: CompactionStrategy::Summarize { preserve_recent: 4 },
-        max_tokens_per_response: config.loop_config.max_tokens_per_response,
-        temperature: config.loop_config.temperature,
-    };
     let mut conversation = ConversationLoop::new(
         api_client,
         api_client_factory.clone(),
         registry,
-        loop_config,
+        config.loop_config.clone(),
         event_sink,
         system_prompt,
         PermissionPolicy::allow_all(),
