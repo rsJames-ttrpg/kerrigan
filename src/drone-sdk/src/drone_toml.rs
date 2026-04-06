@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use anyhow::Context;
 use serde::Deserialize;
 
 /// Shared drone.toml configuration read from the target repo's workspace root.
@@ -77,14 +78,51 @@ fn default_true() -> bool {
 
 impl DroneToml {
     /// Load drone.toml from a workspace directory. Returns `Ok(default)` if
-    /// the file doesn't exist. Returns `Err` only on parse failures.
+    /// the file doesn't exist. Returns `Err` only on parse failures or validation errors.
     pub fn load(workspace: &Path) -> anyhow::Result<Self> {
         let path = workspace.join("drone.toml");
-        if !path.exists() {
-            return Ok(Self::default());
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(e) => {
+                return Err(e).context(format!("failed to read drone.toml at {}", path.display()));
+            }
+        };
+        let config: Self = toml::from_str(&content)
+            .with_context(|| format!("failed to parse drone.toml at {}", path.display()))?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    /// Validate config values after deserialization.
+    fn validate(&self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.git.default_branch.is_empty(),
+            "git.default_branch must not be empty"
+        );
+        anyhow::ensure!(
+            !self.git.branch_prefix.is_empty(),
+            "git.branch_prefix must not be empty"
+        );
+        for (drone_type, id) in &self.git.identity {
+            anyhow::ensure!(
+                !id.user_name.is_empty(),
+                "git.identity.{drone_type}.user_name must not be empty"
+            );
+            anyhow::ensure!(
+                !id.user_email.is_empty(),
+                "git.identity.{drone_type}.user_email must not be empty"
+            );
+            anyhow::ensure!(
+                !id.user_name.contains('\n'),
+                "git.identity.{drone_type}.user_name must not contain newlines"
+            );
+            anyhow::ensure!(
+                !id.user_email.contains('\n'),
+                "git.identity.{drone_type}.user_email must not contain newlines"
+            );
         }
-        let content = std::fs::read_to_string(&path)?;
-        Ok(toml::from_str(&content)?)
+        Ok(())
     }
 
     /// Get the git identity for a specific drone type, with fallback defaults.
@@ -188,6 +226,47 @@ user_email = "claude@example.com"
         let dir = std::path::PathBuf::from("/tmp/nonexistent-workspace-test");
         let config = DroneToml::load(&dir).unwrap();
         assert_eq!(config.git.default_branch, "main");
+    }
+
+    #[test]
+    fn load_invalid_toml_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("drone.toml"), "not = [valid toml").unwrap();
+        let result = DroneToml::load(dir.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_rejects_empty_identity_name() {
+        let toml_str = r#"
+[git.identity.claude]
+user_name = ""
+user_email = "claude@example.com"
+"#;
+        let config: DroneToml = toml::from_str(toml_str).unwrap();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn validate_rejects_newline_in_identity() {
+        let config = DroneToml {
+            git: GitSection {
+                identity: {
+                    let mut m = HashMap::new();
+                    m.insert(
+                        "claude".to_string(),
+                        IdentitySection {
+                            user_name: "claude\ninjection".to_string(),
+                            user_email: "claude@example.com".to_string(),
+                        },
+                    );
+                    m
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
     }
 
     #[test]

@@ -407,6 +407,19 @@ mod tests {
     }
 
     #[test]
+    fn test_extra_rules_in_evolve_stage() {
+        let config = json!({});
+        let extra = "## Custom\nSome custom rules.";
+        let md = generate_claude_md_with_extra("evolve", &config, extra);
+        assert!(md.is_some());
+        let content = md.unwrap();
+        assert!(
+            content.contains("## Custom"),
+            "extra_rules should be present in evolve stage"
+        );
+    }
+
+    #[test]
     fn test_empty_extra_rules_no_change() {
         let config = json!({"plan_path": "docs/plans/test.md"});
         let with_extra = generate_claude_md_with_extra("plan", &config, "");
