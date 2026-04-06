@@ -6,6 +6,16 @@ max_concurrency = 4
 drone_timeout = "2h"
 default_repo_url = "https://github.com/rsJames-ttrpg/kerrigan.git"
 
+[queen.drones.claude-drone]
+max_concurrency = 2
+drone_timeout = "2h"
+stall_threshold = 300
+
+[queen.drones.native-drone]
+max_concurrency = 4
+drone_timeout = "30m"
+stall_threshold = 120
+
 [creep]
 enabled = true
 
