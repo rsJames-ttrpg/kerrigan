@@ -2,7 +2,7 @@
 title: Creep File Indexer
 slug: creep
 description: Persistent gRPC sidecar — file indexing, symbol parsing, LSP integration, watch-based updates, .gitignore aware
-lastmod: 2026-04-05
+lastmod: 2026-04-06
 tags: [creep, grpc, indexing, symbols, lsp]
 sources:
   - path: src/creep/src/main.rs

@@ -2,7 +2,7 @@
 title: Drone SDK
 slug: drone-sdk
 description: Shared library for drone binaries — DroneRunner trait, JSONL protocol, harness entrypoint
-lastmod: 2026-04-05
+lastmod: 2026-04-06
 tags: [drone-sdk, protocol, drones]
 sources:
   - path: src/drone-sdk/src/runner.rs

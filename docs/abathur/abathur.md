@@ -2,7 +2,7 @@
 title: Abathur Documentation Indexer
 slug: abathur
 description: Library for markdown doc indexing with YAML frontmatter, staleness detection, and AI generation
-lastmod: 2026-04-05
+lastmod: 2026-04-06
 tags: [abathur, documentation, indexing, generation]
 sources:
   - path: src/abathur/src/config.rs

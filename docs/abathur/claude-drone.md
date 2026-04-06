@@ -2,13 +2,13 @@
 title: Claude Drone
 slug: claude-drone
 description: Self-extracting drone binary — embeds Claude Code config, stage-specific prompts, plugin system
-lastmod: 2026-04-05
+lastmod: 2026-04-06
 tags: [drone, claude, stages, plugins]
 sources:
   - path: src/drones/claude/base/src/drone.rs
-    hash: 1d23de29bf15bcd42ab30ee93c4866379418daa3850ea598514352b5d7b4c56d
+    hash: 29173bd360314f1e75882bd9c6456df864faac2513a562e6d55211a3e3046147
   - path: src/drones/claude/base/src/environment.rs
-    hash: 40f32395c9ba73f2e1e58827b20fbaee008976633763620a85aa6c5d781dab32
+    hash: c9fb307685a72aa30f7f16143bd828761bb04327bfbdaa8ea2005553aa666361
   - path: src/drones/claude/base/src/stages.rs
     hash: ccaf8af9edeaf1cabf86d84b250bbe41bb2ebd674686da5e0a7c55719963da8c
 sections: [overview, setup-phase, execute-phase, stages, pr-safety-net, secret-handling, embedded-config, file-layout]

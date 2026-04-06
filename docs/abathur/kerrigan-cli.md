@@ -2,7 +2,7 @@
 title: Kerrigan CLI
 slug: kerrigan-cli
 description: Operator console — submit jobs, monitor pipelines, approve gates, manage credentials
-lastmod: 2026-04-05
+lastmod: 2026-04-06
 tags: [kerrigan, cli, operator, pipeline]
 sources:
   - path: src/kerrigan/src/main.rs

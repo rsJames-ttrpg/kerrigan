@@ -2,7 +2,7 @@
 title: Evolution Chamber
 slug: evolution
 description: Heuristic analysis of drone sessions — cost, tool patterns, context pressure, failure rates
-lastmod: 2026-04-05
+lastmod: 2026-04-06
 tags: [evolution, analysis, metrics, recommendations]
 sources:
   - path: src/evolution/src/lib.rs

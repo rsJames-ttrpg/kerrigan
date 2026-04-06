@@ -2,7 +2,7 @@
 title: Creep CLI
 slug: creep-cli
 description: Thin gRPC client for Creep — file search, metadata, symbol lookup, workspace management, LSP diagnostics and navigation
-lastmod: 2026-04-05
+lastmod: 2026-04-06
 tags: [creep-cli, cli, grpc, lsp]
 sources:
   - path: src/creep-cli/src/main.rs

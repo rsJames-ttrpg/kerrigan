@@ -2,7 +2,7 @@
 title: Nydus Client Library
 slug: nydus
 description: Shared typed HTTP client for Overseer REST API — used by Queen, Kerrigan CLI, and Evolution
-lastmod: 2026-04-05
+lastmod: 2026-04-06
 tags: [nydus, client, http, api]
 sources:
   - path: src/nydus/src/client.rs

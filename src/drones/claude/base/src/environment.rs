@@ -244,8 +244,11 @@ const VENDORED_PLUGINS: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// Extract vendored plugins from the embedded tarball and write installed_plugins.json.
-pub async fn install_plugins(home: &Path) -> Result<()> {
+/// Extract vendored plugins from the embedded tarball.
+///
+/// Returns the list of plugin directory paths (each containing `.claude-plugin/plugin.json`)
+/// for use with `claude --plugin-dir`.
+pub async fn install_plugins(home: &Path) -> Result<Vec<PathBuf>> {
     let plugins_dir = home.join(".claude/plugins");
     fs::create_dir_all(&plugins_dir)
         .await
@@ -262,34 +265,42 @@ pub async fn install_plugins(home: &Path) -> Result<()> {
     .await
     .context("plugin extraction task panicked")??;
 
-    // Build installed_plugins.json
-    let mut plugins_map = serde_json::Map::new();
-    for &(key, rel_path, version) in VENDORED_PLUGINS {
-        let install_path = plugins_dir.join("cache").join(rel_path).join(version);
-        plugins_map.insert(
-            key.to_string(),
-            serde_json::json!([{
-                "scope": "user",
-                "installPath": install_path.to_string_lossy(),
-                "version": version,
-                "installedAt": "2026-01-01T00:00:00.000Z",
-                "lastUpdated": "2026-01-01T00:00:00.000Z",
-            }]),
-        );
+    let mut dirs = Vec::with_capacity(VENDORED_PLUGINS.len());
+    for &(_key, rel_path, version) in VENDORED_PLUGINS {
+        dirs.push(plugins_dir.join("cache").join(rel_path).join(version));
     }
 
-    let manifest = serde_json::json!({
-        "version": 2,
-        "plugins": serde_json::Value::Object(plugins_map),
-    });
-    let json = serde_json::to_string_pretty(&manifest)
-        .context("failed to serialize installed_plugins.json")?;
-    fs::write(plugins_dir.join("installed_plugins.json"), json)
-        .await
-        .context("failed to write installed_plugins.json")?;
+    tracing::info!(count = dirs.len(), "installed vendored plugins");
+    Ok(dirs)
+}
 
-    tracing::info!(count = VENDORED_PLUGINS.len(), "installed vendored plugins");
+/// Persist plugin directory paths so execute() can read them.
+pub async fn write_plugin_dirs(home: &Path, dirs: &[PathBuf]) -> Result<()> {
+    let content = dirs
+        .iter()
+        .map(|d| d.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(home.join(".plugin-dirs"), content)
+        .await
+        .context("failed to write .plugin-dirs")?;
     Ok(())
+}
+
+/// Read plugin directory paths written by setup.
+pub async fn read_plugin_dirs(home: &Path) -> Result<Vec<PathBuf>> {
+    let path = home.join(".plugin-dirs");
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let content = fs::read_to_string(&path)
+        .await
+        .context("failed to read .plugin-dirs")?;
+    Ok(content
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(PathBuf::from)
+        .collect())
 }
 
 /// Remove the drone home directory. Errors are swallowed (best-effort cleanup).

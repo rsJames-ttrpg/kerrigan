@@ -2,7 +2,7 @@
 title: Overseer Service
 slug: overseer
 description: Foundational layered monolith — HTTP + MCP over shared services, pluggable DB and object store
-lastmod: 2026-04-05
+lastmod: 2026-04-06
 tags: [overseer, api, database, mcp, service]
 sources:
   - path: src/overseer/src/main.rs

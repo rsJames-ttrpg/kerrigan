@@ -2,7 +2,7 @@
 title: Queen Hatchery Manager
 slug: queen
 description: Actor-based process manager — job polling, drone lifecycle, notifications, evolution
-lastmod: 2026-04-05
+lastmod: 2026-04-06
 tags: [queen, hatchery, actors, drones, notifications]
 sources:
   - path: src/queen/src/main.rs

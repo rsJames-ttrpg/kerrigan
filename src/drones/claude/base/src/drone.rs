@@ -69,7 +69,8 @@ impl DroneRunner for ClaudeDrone {
         }
 
         // Install Claude Code plugins into the drone home
-        environment::install_plugins(&env.home).await?;
+        let plugin_dirs = environment::install_plugins(&env.home).await?;
+        environment::write_plugin_dirs(&env.home, &plugin_dirs).await?;
 
         // Best-effort: register workspace with Creep for fast file discovery
         match tokio::process::Command::new("creep-cli")
@@ -114,6 +115,7 @@ impl DroneRunner for ClaudeDrone {
             authenticate(&claude_bin, env, channel).await?;
         }
         let extra_env = environment::read_env_vars(&env.home).await?;
+        let plugin_dirs = environment::read_plugin_dirs(&env.home).await?;
 
         // Prepend $HOME/.local/bin to PATH so hermetic toolchain wrappers
         // (installed by the SessionStart hook) are discoverable.
@@ -131,8 +133,14 @@ impl DroneRunner for ClaudeDrone {
             .arg("--settings")
             .arg(&settings_path)
             .arg("--append-system-prompt-file")
-            .arg(&claude_md_path)
-            .env("HOME", &env.home)
+            .arg(&claude_md_path);
+
+        // Explicitly load vendored plugins via --plugin-dir
+        for dir in &plugin_dirs {
+            cmd.arg("--plugin-dir").arg(dir);
+        }
+
+        cmd.env("HOME", &env.home)
             .env("PATH", &path)
             .current_dir(&env.workspace)
             .stdin(Stdio::piped())
