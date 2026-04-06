@@ -1,0 +1,24 @@
+[git]
+default_branch = "main"
+
+[git.identity.claude]
+user_name = "claude-drone"
+user_email = "claude-drone@noreply"
+
+[git.identity.native]
+user_name = "native-drone"
+user_email = "native-drone@noreply"
+
+[setup]
+commands = ["./tools/setup-hooks.sh"]
+
+[prompts]
+extra_rules = """
+## Build & Test
+
+- Use `buck2 build root//src/<crate>:<crate>` to build, NOT `cargo build`
+- Use `buck2 test root//src/<crate>:<crate>-test` to test, NOT `cargo test`
+- `cargo check` and `cargo clippy` are OK for quick feedback
+- Clippy CI-equivalent: `buck2 build 'root//src/<crate>:<crate>[clippy.txt]'`
+- Run `buck2 targets root//...` to discover available targets
+"""
