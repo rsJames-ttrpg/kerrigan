@@ -14,6 +14,48 @@ use crate::environment;
 
 pub struct ClaudeDrone;
 
+/// Run setup commands from drone.toml sequentially.
+/// Non-zero exits are logged as warnings but do not abort.
+/// Each command gets a 5-minute timeout.
+async fn run_setup_commands(commands: &[String], workspace: &Path, home: &Path) {
+    for (i, cmd) in commands.iter().enumerate() {
+        tracing::info!(command = %cmd, index = i, "running setup command");
+        let result = timeout(
+            Duration::from_secs(300),
+            Command::new("sh")
+                .args(["-c", cmd])
+                .env("HOME", home)
+                .current_dir(workspace)
+                .output(),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(output)) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if !stdout.is_empty() {
+                    tracing::info!(stdout = %stdout.trim(), "setup command output");
+                }
+                if !output.status.success() {
+                    tracing::warn!(
+                        command = %cmd,
+                        exit_code = output.status.code(),
+                        stderr = %stderr.trim(),
+                        "setup command failed, continuing"
+                    );
+                }
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(command = %cmd, error = %e, "setup command spawn failed, continuing");
+            }
+            Err(_) => {
+                tracing::warn!(command = %cmd, "setup command timed out after 5 minutes, continuing");
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl DroneRunner for ClaudeDrone {
     async fn setup(&self, job: &JobSpec) -> Result<DroneEnvironment> {
@@ -33,6 +75,23 @@ impl DroneRunner for ClaudeDrone {
             &env.home,
         )
         .await?;
+
+        // Read drone.toml from workspace and configure git identity
+        let drone_toml = drone_sdk::drone_toml::DroneToml::load(&env.workspace)?;
+        let identity = drone_toml.git_identity("claude");
+        environment::configure_git_identity(&env.home, &identity.user_name, &identity.user_email)
+            .await?;
+        tracing::info!(
+            user_name = %identity.user_name,
+            user_email = %identity.user_email,
+            "configured git identity from drone.toml"
+        );
+
+        // Run post-clone setup commands from drone.toml
+        if !drone_toml.setup.commands.is_empty() {
+            run_setup_commands(&drone_toml.setup.commands, &env.workspace, &env.home).await;
+        }
+
         environment::write_task(&env.home, &job.task).await?;
 
         // Generate stage-specific CLAUDE.md if config.stage is set
@@ -742,4 +801,50 @@ fn extract_url(line: &str) -> Option<String> {
     let rest = &line[start..];
     let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
     Some(rest[..end].to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[tokio::test]
+    async fn test_run_setup_commands() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = dir.path();
+        let home = dir.path();
+
+        let script = workspace.join("setup.sh");
+        tokio::fs::write(&script, "#!/bin/sh\ntouch marker.txt\n")
+            .await
+            .unwrap();
+        tokio::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+            .await
+            .unwrap();
+
+        let commands = vec!["./setup.sh".to_string()];
+        run_setup_commands(&commands, workspace, home).await;
+
+        assert!(workspace.join("marker.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn test_run_setup_commands_failure_continues() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = dir.path();
+        let home = dir.path();
+
+        let script = workspace.join("second.sh");
+        tokio::fs::write(&script, "#!/bin/sh\ntouch second_ran.txt\n")
+            .await
+            .unwrap();
+        tokio::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
+            .await
+            .unwrap();
+
+        let commands = vec!["false".to_string(), "./second.sh".to_string()];
+        run_setup_commands(&commands, workspace, home).await;
+
+        assert!(workspace.join("second_ran.txt").exists());
+    }
 }

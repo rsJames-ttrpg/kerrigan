@@ -20,6 +20,7 @@ CLAUDE_DRONE_DEPS = [
     "//third-party:serde",
     "//third-party:serde_json",
     "//third-party:tar",
+    "//third-party:tempfile",
     "//third-party:tokio",
     "//third-party:tracing",
     "//third-party:tracing-subscriber",

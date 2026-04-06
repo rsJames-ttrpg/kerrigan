@@ -151,6 +151,20 @@ pub async fn configure_github_auth(home: &Path, pat: &str) -> Result<()> {
     Ok(())
 }
 
+/// Write git user identity to .gitconfig.
+/// Appends to any existing content (e.g. credential helper already written).
+pub async fn configure_git_identity(home: &Path, name: &str, email: &str) -> Result<()> {
+    let gitconfig_path = home.join(".gitconfig");
+    let existing = fs::read_to_string(&gitconfig_path)
+        .await
+        .unwrap_or_default();
+    let identity = format!("[user]\n    name = {name}\n    email = {email}\n");
+    fs::write(&gitconfig_path, format!("{existing}{identity}"))
+        .await
+        .context("failed to write git identity to .gitconfig")?;
+    Ok(())
+}
+
 /// Write environment variables to a file that the drone reads during execute.
 pub async fn write_env_vars(home: &Path, vars: &[(String, String)]) -> Result<()> {
     let content = vars
@@ -377,5 +391,30 @@ mod tests {
         let path = PathBuf::from("/tmp/drone-does-not-exist-12345");
         // Should not panic or return an error
         cleanup(&path).await;
+    }
+
+    #[tokio::test]
+    async fn test_configure_git_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+
+        // Simulate existing .gitconfig from configure_github_auth
+        fs::write(
+            home.join(".gitconfig"),
+            "[credential]\n    helper = store\n",
+        )
+        .await
+        .unwrap();
+
+        configure_git_identity(home, "claude-drone", "claude-drone@noreply")
+            .await
+            .unwrap();
+
+        let content = fs::read_to_string(home.join(".gitconfig")).await.unwrap();
+        assert!(content.contains("[user]"));
+        assert!(content.contains("name = claude-drone"));
+        assert!(content.contains("email = claude-drone@noreply"));
+        // credential section preserved
+        assert!(content.contains("[credential]"));
     }
 }

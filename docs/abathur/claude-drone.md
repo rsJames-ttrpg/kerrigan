@@ -6,9 +6,9 @@ lastmod: 2026-04-06
 tags: [drone, claude, stages, plugins]
 sources:
   - path: src/drones/claude/base/src/drone.rs
-    hash: 29173bd360314f1e75882bd9c6456df864faac2513a562e6d55211a3e3046147
+    hash: fb58a878a0be2b39f17e48a32df3780f6333c656e361f786c23f7437848cf657
   - path: src/drones/claude/base/src/environment.rs
-    hash: c9fb307685a72aa30f7f16143bd828761bb04327bfbdaa8ea2005553aa666361
+    hash: 6d4ca1cedb844aaa01912634ef75e5d7ae341abc8fea2aa13a849f8a8c78bdb2
   - path: src/drones/claude/base/src/stages.rs
     hash: ccaf8af9edeaf1cabf86d84b250bbe41bb2ebd674686da5e0a7c55719963da8c
 sections: [overview, setup-phase, execute-phase, stages, pr-safety-net, secret-handling, embedded-config, file-layout]
@@ -27,12 +27,14 @@ Implements `DroneRunner` from `drone-sdk`.
 1. **Create isolated home** — `/tmp/drone-{id}/` with `.claude/` subdirectories. Job run ID validated (alphanumeric + `-_` only) to prevent path traversal.
 2. **Configure secrets** — GitHub PAT written to `.git-credentials` and `.config/gh/hosts.yml` BEFORE clone (so HTTPS auth works).
 3. **Clone repo** — `git clone --depth 1`, respects branch from job config.
-4. **Write task** — Task text saved to `{home}/.task`.
-5. **Generate stage CLAUDE.md** — If `config.stage` is set, overwrites base CLAUDE.md with stage-specific instructions. Stage persisted to `{home}/.stage`.
-6. **Configure MCP** — Rewrites `OVERSEER_MCP_URL_PLACEHOLDER` in settings.json with actual Overseer URL.
-7. **Environment vars** — Extracts `buildbuddy_api_key` → `BUCK2_RE_HTTP_HEADERS`, writes to `.drone-env`.
-8. **Install plugins** — Extracts `drone-plugins.tar`, generates `installed_plugins.json` manifest for 6 vendored plugins.
-9. **Register with Creep** — Best-effort `creep-cli register {workspace}` for fast file discovery.
+4. **Configure git identity** — Reads `drone.toml` from workspace root (`DroneToml::load`). Writes `[user]` section to `.gitconfig`, appending after any existing credential helper config. Defaults to `claude-drone / claude-drone@noreply` if not configured.
+5. **Run setup commands** — Runs `drone.toml` `[setup] commands` sequentially via `sh -c`. Non-zero exits are logged as warnings but do not abort setup. Each command has a 5-minute timeout.
+6. **Write task** — Task text saved to `{home}/.task`.
+7. **Generate stage CLAUDE.md** — If `config.stage` is set, overwrites base CLAUDE.md with stage-specific instructions. Stage persisted to `{home}/.stage`.
+8. **Configure MCP** — Rewrites `OVERSEER_MCP_URL_PLACEHOLDER` in settings.json with actual Overseer URL.
+9. **Environment vars** — Extracts `buildbuddy_api_key` → `BUCK2_RE_HTTP_HEADERS`, writes to `.drone-env`.
+10. **Install plugins** — Extracts `drone-plugins.tar`, generates `installed_plugins.json` manifest for 6 vendored plugins.
+11. **Register with Creep** — Best-effort `creep-cli register {workspace}` for fast file discovery.
 
 ## Execute Phase
 
