@@ -96,6 +96,44 @@ pub struct QueenConfig {
     pub drone_dir: String,
     /// Default repo_url injected into jobs that don't specify one.
     pub default_repo_url: Option<String>,
+    /// Per-drone-type configuration, keyed by drone binary name.
+    #[serde(default)]
+    pub drones: HashMap<String, DroneTypeConfig>,
+}
+
+/// Per-drone-type configuration. All fields are optional — omitted values
+/// fall back to the corresponding global `queen.*` setting.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DroneTypeConfig {
+    pub max_concurrency: Option<i32>,
+    pub drone_timeout: Option<String>,
+    pub stall_threshold: Option<u64>,
+}
+
+/// Resolved drone config with global fallbacks applied.
+#[derive(Debug, Clone)]
+pub struct EffectiveDroneConfig {
+    /// `None` means no per-type limit — only the global limit applies.
+    pub max_concurrency: Option<i32>,
+    pub drone_timeout: String,
+    pub stall_threshold: u64,
+}
+
+impl QueenConfig {
+    /// Resolve effective config for a drone type.
+    /// Per-type values override globals; missing per-type values use globals.
+    pub fn effective_drone_config(&self, drone_type: &str) -> EffectiveDroneConfig {
+        let type_config = self.drones.get(drone_type);
+        EffectiveDroneConfig {
+            max_concurrency: type_config.and_then(|c| c.max_concurrency),
+            drone_timeout: type_config
+                .and_then(|c| c.drone_timeout.clone())
+                .unwrap_or_else(|| self.drone_timeout.clone()),
+            stall_threshold: type_config
+                .and_then(|c| c.stall_threshold)
+                .unwrap_or(self.stall_threshold),
+        }
+    }
 }
 
 /// Configuration for a single LSP server within hatchery.toml.
@@ -639,4 +677,5 @@ language_id = "typescript"
         assert_eq!(ts.extensions, vec![".ts", ".tsx"]);
         assert_eq!(ts.language_id, "typescript");
     }
+
 }
