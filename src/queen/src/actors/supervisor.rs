@@ -12,7 +12,7 @@ use tokio::process::Child;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
-use crate::config::DroneTypeConfig;
+use crate::config::{DroneTypeConfig, EffectiveDroneConfig};
 use crate::messages::{SpawnRequest, StatusQuery, StatusResponse};
 use crate::notifier::{Notifier, QueenEvent};
 use nydus::NydusClient;
@@ -32,15 +32,15 @@ fn can_spawn(
     if active.len() as i32 >= max_concurrency {
         return false;
     }
-    if let Some(type_config) = drones.get(drone_type) {
-        if let Some(type_limit) = type_config.max_concurrency {
-            let type_count = active
-                .values()
-                .filter(|d| d.drone_type == drone_type)
-                .count() as i32;
-            if type_count >= type_limit {
-                return false;
-            }
+    if let Some(type_config) = drones.get(drone_type)
+        && let Some(type_limit) = type_config.max_concurrency
+    {
+        let type_count = active
+            .values()
+            .filter(|d| d.drone_type == drone_type)
+            .count() as i32;
+        if type_count >= type_limit {
+            return false;
         }
     }
     true
@@ -52,15 +52,16 @@ fn resolve_timeout_stall(
     default_timeout: Duration,
     default_stall: Duration,
 ) -> (Duration, Duration) {
-    let type_config = drones.get(drone_type);
-    let timeout = type_config
-        .and_then(|c| c.drone_timeout.as_ref())
-        .and_then(|t| crate::parse_duration(t).ok())
-        .unwrap_or(default_timeout);
-    let stall = type_config
-        .and_then(|c| c.stall_threshold)
-        .map(Duration::from_secs)
-        .unwrap_or(default_stall);
+    let effective = EffectiveDroneConfig::resolve(
+        drones,
+        drone_type,
+        // Convert default_timeout back to string for the resolver — it will be re-parsed.
+        // This round-trip is acceptable because the default was already validated at startup.
+        &format!("{}s", default_timeout.as_secs()),
+        default_stall.as_secs(),
+    );
+    let timeout = crate::parse_duration(&effective.drone_timeout).unwrap_or(default_timeout);
+    let stall = Duration::from_secs(effective.stall_threshold);
     (timeout, stall)
 }
 
@@ -757,4 +758,162 @@ async fn shutdown_all(client: &NydusClient, active: &mut HashMap<String, DroneHa
         }
     }
     // ShuttingDown notification is sent from main.rs only
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a minimal DroneHandle stub for testing can_spawn().
+    /// Only `drone_type` matters for concurrency checks.
+    fn stub_handle(drone_type: &str) -> DroneHandle {
+        let (_proto_tx, protocol_rx) = mpsc::channel(1);
+        let (_stderr_tx, stderr_rx) = mpsc::channel(1);
+        // We need a real Child, but can_spawn only inspects the HashMap — it never
+        // touches the handle's process. Use a no-op `true` process.
+        let process = tokio::process::Command::new("true")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn `true`");
+        let now = Instant::now();
+        DroneHandle {
+            job_run_id: String::new(),
+            drone_type: drone_type.to_string(),
+            process,
+            started_at: now,
+            timeout: Duration::from_secs(3600),
+            last_activity: now,
+            stall_notified: false,
+            stall_threshold: Duration::from_secs(300),
+            protocol_rx,
+            stderr_rx,
+            stdin_tx: None,
+        }
+    }
+
+    #[test]
+    fn can_spawn_under_global_limit() {
+        let active = HashMap::new();
+        let drones = HashMap::new();
+        assert!(can_spawn(&active, 4, &drones, "claude-drone"));
+    }
+
+    #[tokio::test]
+    async fn can_spawn_at_global_limit() {
+        let mut active = HashMap::new();
+        for i in 0..4 {
+            active.insert(format!("run-{i}"), stub_handle("claude-drone"));
+        }
+        let drones = HashMap::new();
+        assert!(!can_spawn(&active, 4, &drones, "claude-drone"));
+    }
+
+    #[tokio::test]
+    async fn can_spawn_per_type_limit_blocks() {
+        let mut active = HashMap::new();
+        active.insert("run-0".into(), stub_handle("claude-drone"));
+        active.insert("run-1".into(), stub_handle("claude-drone"));
+        let mut drones = HashMap::new();
+        drones.insert(
+            "claude-drone".into(),
+            DroneTypeConfig {
+                max_concurrency: Some(2),
+                drone_timeout: None,
+                stall_threshold: None,
+            },
+        );
+        // Global limit (4) not reached, but per-type limit (2) is.
+        assert!(!can_spawn(&active, 4, &drones, "claude-drone"));
+    }
+
+    #[tokio::test]
+    async fn can_spawn_per_type_limit_allows_other_type() {
+        let mut active = HashMap::new();
+        active.insert("run-0".into(), stub_handle("claude-drone"));
+        active.insert("run-1".into(), stub_handle("claude-drone"));
+        let mut drones = HashMap::new();
+        drones.insert(
+            "claude-drone".into(),
+            DroneTypeConfig {
+                max_concurrency: Some(2),
+                drone_timeout: None,
+                stall_threshold: None,
+            },
+        );
+        // claude-drone at its limit, but native-drone can still spawn.
+        assert!(can_spawn(&active, 4, &drones, "native-drone"));
+    }
+
+    #[test]
+    fn can_spawn_unknown_type_uses_global_only() {
+        let active = HashMap::new();
+        let mut drones = HashMap::new();
+        drones.insert(
+            "claude-drone".into(),
+            DroneTypeConfig {
+                max_concurrency: Some(1),
+                drone_timeout: None,
+                stall_threshold: None,
+            },
+        );
+        // "unknown-drone" has no per-type config — only global limit applies.
+        assert!(can_spawn(&active, 4, &drones, "unknown-drone"));
+    }
+
+    #[test]
+    fn resolve_timeout_stall_uses_per_type_override() {
+        let mut drones = HashMap::new();
+        drones.insert(
+            "claude-drone".into(),
+            DroneTypeConfig {
+                max_concurrency: None,
+                drone_timeout: Some("4h".into()),
+                stall_threshold: Some(600),
+            },
+        );
+        let (timeout, stall) = resolve_timeout_stall(
+            &drones,
+            "claude-drone",
+            Duration::from_secs(7200),
+            Duration::from_secs(300),
+        );
+        assert_eq!(timeout, Duration::from_secs(4 * 3600));
+        assert_eq!(stall, Duration::from_secs(600));
+    }
+
+    #[test]
+    fn resolve_timeout_stall_falls_back_to_defaults() {
+        let drones = HashMap::new();
+        let (timeout, stall) = resolve_timeout_stall(
+            &drones,
+            "unknown-drone",
+            Duration::from_secs(7200),
+            Duration::from_secs(300),
+        );
+        assert_eq!(timeout, Duration::from_secs(7200));
+        assert_eq!(stall, Duration::from_secs(300));
+    }
+
+    #[test]
+    fn resolve_timeout_stall_partial_override() {
+        let mut drones = HashMap::new();
+        drones.insert(
+            "claude-drone".into(),
+            DroneTypeConfig {
+                max_concurrency: None,
+                drone_timeout: Some("30m".into()),
+                stall_threshold: None, // falls back to default
+            },
+        );
+        let (timeout, stall) = resolve_timeout_stall(
+            &drones,
+            "claude-drone",
+            Duration::from_secs(7200),
+            Duration::from_secs(300),
+        );
+        assert_eq!(timeout, Duration::from_secs(30 * 60));
+        assert_eq!(stall, Duration::from_secs(300));
+    }
 }

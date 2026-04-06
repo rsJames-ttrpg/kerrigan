@@ -119,20 +119,38 @@ pub struct EffectiveDroneConfig {
     pub stall_threshold: u64,
 }
 
+impl EffectiveDroneConfig {
+    /// Resolve effective config for a drone type from the per-type map and global defaults.
+    /// This is the single resolution path used by both `QueenConfig` and the supervisor.
+    pub fn resolve(
+        drones: &HashMap<String, DroneTypeConfig>,
+        drone_type: &str,
+        default_timeout: &str,
+        default_stall: u64,
+    ) -> Self {
+        let type_config = drones.get(drone_type);
+        Self {
+            max_concurrency: type_config.and_then(|c| c.max_concurrency),
+            drone_timeout: type_config
+                .and_then(|c| c.drone_timeout.clone())
+                .unwrap_or_else(|| default_timeout.to_string()),
+            stall_threshold: type_config
+                .and_then(|c| c.stall_threshold)
+                .unwrap_or(default_stall),
+        }
+    }
+}
+
 impl QueenConfig {
     /// Resolve effective config for a drone type.
     /// Per-type values override globals; missing per-type values use globals.
     pub fn effective_drone_config(&self, drone_type: &str) -> EffectiveDroneConfig {
-        let type_config = self.drones.get(drone_type);
-        EffectiveDroneConfig {
-            max_concurrency: type_config.and_then(|c| c.max_concurrency),
-            drone_timeout: type_config
-                .and_then(|c| c.drone_timeout.clone())
-                .unwrap_or_else(|| self.drone_timeout.clone()),
-            stall_threshold: type_config
-                .and_then(|c| c.stall_threshold)
-                .unwrap_or(self.stall_threshold),
-        }
+        EffectiveDroneConfig::resolve(
+            &self.drones,
+            drone_type,
+            &self.drone_timeout,
+            self.stall_threshold,
+        )
     }
 }
 
@@ -310,18 +328,25 @@ impl Config {
                 if max <= 0 {
                     anyhow::bail!("queen.drones.{name}.max_concurrency must be greater than 0");
                 }
-            }
-            if let Some(ref timeout) = drone_config.drone_timeout {
-                if crate::parse_duration(timeout).is_err() {
-                    anyhow::bail!(
-                        "queen.drones.{name}.drone_timeout '{timeout}' is not a valid duration"
+                if max > self.queen.max_concurrency {
+                    tracing::warn!(
+                        "queen.drones.{name}.max_concurrency ({max}) exceeds \
+                         queen.max_concurrency ({}); the global limit will cap it at runtime",
+                        self.queen.max_concurrency
                     );
                 }
             }
-            if let Some(stall) = drone_config.stall_threshold {
-                if stall == 0 {
-                    anyhow::bail!("queen.drones.{name}.stall_threshold must be greater than 0");
-                }
+            if let Some(ref timeout) = drone_config.drone_timeout
+                && crate::parse_duration(timeout).is_err()
+            {
+                anyhow::bail!(
+                    "queen.drones.{name}.drone_timeout '{timeout}' is not a valid duration"
+                );
+            }
+            if let Some(stall) = drone_config.stall_threshold
+                && stall == 0
+            {
+                anyhow::bail!("queen.drones.{name}.stall_threshold must be greater than 0");
             }
         }
         Ok(())
