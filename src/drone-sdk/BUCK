@@ -7,6 +7,8 @@ SDK_DEPS = [
     "//third-party:serde_json",
     "//third-party:tokio",
     "//third-party:tracing",
+    "//third-party:toml",
+    "//third-party:tempfile",
 ]
 
 rust_library(
