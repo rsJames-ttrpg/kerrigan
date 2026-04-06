@@ -6,15 +6,13 @@ lastmod: 2026-04-06
 tags: [drone, agent, orchestrator, pipeline, git, config]
 sources:
   - path: src/drones/native/src/main.rs
-    hash: 36ed7de78c9ef1a982aacd57685eca50de48c4e01e02b3220051ee400ee92d6d
+    hash: 8cb947a1a1383087c5881c81dccd99802baad3b9c71ce87abadf26a0746fd1b4
   - path: src/drones/native/src/drone.rs
-    hash: 55683cef0ea8e3f21754b430191492434ad8d58025b10559df99fd256cff227b
-  - path: src/drones/native/src/config.rs
-    hash: 00ea37999b4c01b99482cc29f872fc61e34293515f7dcaf8703268676b24f9d3
+    hash: 63d2d496842b768647cc783385e796cf8c48ebcb81ad8dc0d007b86294d04ab0
   - path: src/drones/native/src/pipeline.rs
     hash: b53aaa3ee2ac7ffbb47f4208157f091a271de031e28c4a4e0f603b93f8f20386
   - path: src/drones/native/src/resolve.rs
-    hash: 12a2a0c00c8fd6701e6290df04012772b0b5fdc5553f424d4e8de857d79b8ccf
+    hash: 65405c3f155e0f1d30b1ef990c7997252abd5a9bcef1c0b03ad0a7c4eedcfa89
   - path: src/drones/native/src/cache.rs
     hash: 2561cdcce1bceac046892f36b8005a2f78886aaa33eed6b3669e969e8c36b998
   - path: src/drones/native/src/health.rs
@@ -69,7 +67,7 @@ The `NativeDrone` struct implements `DroneRunner` with three phases:
 ### Setup
 
 1. Validates `job_run_id` — alphanumeric, hyphens, underscores only
-2. Loads `drone.toml` from `$DRONE_CONFIG` env var (default: `"drone.toml"`)
+2. Loads `drone.toml` from `$DRONE_CONFIG_DIR` env var (default: `"."`) via `DroneToml::load()` from `drone-sdk`
 3. Parses job config — flattens nested JSON objects with dot notation (e.g., `secrets.github_pat`)
 4. Resolves pipeline stage from `config.stage` field (defaults to `Freeform`)
 5. Merges config layers via `ResolvedConfig::resolve()`
@@ -105,14 +103,14 @@ Returns `DroneEnvironment { home, workspace }`.
 
 ## Configuration
 
-The `DroneConfig` struct is deserialized from TOML (`drone.toml`). All sections except `[provider]` have defaults.
+Configuration is loaded via `DroneToml::load()` from the `drone-sdk` crate — the same struct used by the claude drone. All sections have defaults (including `[provider]`, which is `Option` and defaults to `None`).
 
 ```toml
-[provider]
-kind = "anthropic"          # or "openai-compat"
+[provider]                      # optional section — defaults to None
+kind = "anthropic"              # or "openai-compat"
 model = "claude-sonnet-4-20250514"
-api_key = "sk-..."          # optional, can come from job spec secrets
-base_url = "https://..."    # optional
+api_key = "sk-..."              # optional, can come from job spec secrets
+base_url = "https://..."        # optional
 
 [runtime]
 max_tokens = 8192           # per-response token limit
@@ -135,6 +133,20 @@ branch_prefix = "kerrigan/"
 auto_commit = true
 pr_on_complete = true
 protected_paths = ["CLAUDE.md", ".buckconfig"]
+
+[git.identity.claude]           # per-drone-type git identity
+user_name = "claude-drone"
+user_email = "claude-drone@noreply"
+
+[git.identity.native]
+user_name = "native-drone"
+user_email = "native-drone@noreply"
+
+[setup]
+commands = ["./tools/setup-hooks.sh"]  # post-clone setup commands
+
+[prompts]
+extra_rules = "Use buck2 build, not cargo build."
 
 [tools]
 sandbox = true
@@ -172,7 +184,7 @@ required = true
 timeout_secs = 60
 ```
 
-Provider mapping: `kind = "anthropic"` produces `ProviderConfig::Anthropic`; anything else produces `ProviderConfig::OpenAiCompat` (defaults to `http://localhost:11434/v1` for local inference).
+Provider mapping: `kind = "anthropic"` produces `ProviderConfig::Anthropic`; anything else produces `ProviderConfig::OpenAiCompat` (defaults to `http://localhost:11434/v1` for local inference). If `[provider]` is omitted entirely, defaults to Anthropic with `claude-sonnet-4-20250514`.
 
 ## Config Resolution
 
@@ -394,7 +406,7 @@ Rules:
 # Build
 buck2 build root//src/drones/native:native-drone
 
-# Test (146 tests)
+# Test (137 tests)
 cd src/drones/native && cargo test
 
 # Buck2 test

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use drone_sdk::{
+    drone_toml::DroneToml,
     harness::QueenChannel,
     protocol::{DroneEnvironment, DroneEvent, DroneMessage, DroneOutput, GitRefs, JobSpec},
     runner::DroneRunner,
@@ -21,7 +22,6 @@ use crate::git_workflow::GitWorkflow;
 use crate::orchestrator::{OrchestratedContext, parse_plan, run_orchestrated};
 
 use crate::cache::RepoCache;
-use crate::config::DroneConfig;
 use crate::event_bridge::DroneEventBridge;
 use crate::exit_conditions;
 use crate::health;
@@ -96,14 +96,8 @@ impl DroneRunner for NativeDrone {
         Self::validate_job_id(&job.job_run_id)?;
 
         // 2. Load drone.toml config
-        let config_path =
-            std::env::var("DRONE_CONFIG").unwrap_or_else(|_| "drone.toml".to_string());
-        let drone_toml = if std::path::Path::new(&config_path).exists() {
-            DroneConfig::load(std::path::Path::new(&config_path))?
-        } else {
-            tracing::warn!("No drone.toml found at {config_path}, using defaults");
-            DroneConfig::default()
-        };
+        let config_dir = std::env::var("DRONE_CONFIG_DIR").unwrap_or_else(|_| ".".to_string());
+        let drone_toml = DroneToml::load(std::path::Path::new(&config_dir))?;
 
         // 3. Parse job config and resolve stage
         let job_config = Self::parse_job_config(&job.config);
@@ -166,9 +160,9 @@ impl DroneRunner for NativeDrone {
         let state_path = home.join("drone_state.json");
         tokio::fs::write(&state_path, serde_json::to_string_pretty(&state)?).await?;
 
-        // Also persist drone.toml path for reload in execute
+        // Also persist drone.toml directory for reload in execute
         let config_meta = serde_json::json!({
-            "drone_toml_path": config_path,
+            "drone_config_dir": config_dir,
         });
         tokio::fs::write(
             home.join("config_meta.json"),
@@ -207,14 +201,8 @@ impl DroneRunner for NativeDrone {
         let config_meta: serde_json::Value = serde_json::from_str(
             &tokio::fs::read_to_string(env.home.join("config_meta.json")).await?,
         )?;
-        let config_path = config_meta["drone_toml_path"]
-            .as_str()
-            .unwrap_or("drone.toml");
-        let drone_toml = if std::path::Path::new(config_path).exists() {
-            DroneConfig::load(std::path::Path::new(config_path))?
-        } else {
-            DroneConfig::default()
-        };
+        let config_dir = config_meta["drone_config_dir"].as_str().unwrap_or(".");
+        let drone_toml = DroneToml::load(std::path::Path::new(config_dir))?;
         let config = ResolvedConfig::resolve(&drone_toml, &job_config, stage);
 
         // 2. Create event bridge
@@ -401,9 +389,9 @@ impl DroneRunner for NativeDrone {
             if let Ok(state) = serde_json::from_str::<serde_json::Value>(&state_json) {
                 let repo_url = state["repo_url"].as_str().unwrap_or("");
                 if !repo_url.is_empty() {
-                    let config_path =
-                        std::env::var("DRONE_CONFIG").unwrap_or_else(|_| "drone.toml".into());
-                    if let Ok(drone_toml) = DroneConfig::load(std::path::Path::new(&config_path)) {
+                    let config_dir =
+                        std::env::var("DRONE_CONFIG_DIR").unwrap_or_else(|_| ".".into());
+                    if let Ok(drone_toml) = DroneToml::load(std::path::Path::new(&config_dir)) {
                         let cache = RepoCache::new(drone_toml.cache.dir.clone());
                         let _ = cache.cleanup_worktree(repo_url, &env.workspace).await;
                     }

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use serde::Deserialize;
@@ -10,11 +10,27 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize, Default)]
 pub struct DroneToml {
     #[serde(default)]
+    pub provider: Option<ProviderSection>,
+    #[serde(default)]
+    pub runtime: RuntimeSection,
+    #[serde(default)]
+    pub cache: CacheSection,
+    #[serde(default)]
     pub git: GitSection,
     #[serde(default)]
     pub setup: SetupSection,
     #[serde(default)]
     pub prompts: PromptsSection,
+    #[serde(default)]
+    pub tools: ToolsSection,
+    #[serde(default)]
+    pub mcp: HashMap<String, McpSection>,
+    #[serde(default)]
+    pub environment: EnvironmentSection,
+    #[serde(default)]
+    pub orchestrator: OrchestratorSection,
+    #[serde(default)]
+    pub health_checks: Vec<CustomHealthCheck>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,6 +80,167 @@ pub struct PromptsSection {
     pub extra_rules: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct ProviderSection {
+    pub kind: String,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    pub model: String,
+    #[serde(default)]
+    pub api_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct RuntimeSection {
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
+    #[serde(default = "default_max_iterations")]
+    pub max_iterations: u32,
+    #[serde(default)]
+    pub temperature: Option<f32>,
+    #[serde(default = "default_timeout")]
+    pub timeout_secs: u64,
+    #[serde(default = "default_compaction_strategy")]
+    pub compaction_strategy: String,
+    #[serde(default = "default_compaction_threshold")]
+    pub compaction_threshold_tokens: u32,
+    #[serde(default = "default_compaction_preserve")]
+    pub compaction_preserve_recent: u32,
+}
+
+impl Default for RuntimeSection {
+    fn default() -> Self {
+        Self {
+            max_tokens: default_max_tokens(),
+            max_iterations: default_max_iterations(),
+            temperature: None,
+            timeout_secs: default_timeout(),
+            compaction_strategy: default_compaction_strategy(),
+            compaction_threshold_tokens: default_compaction_threshold(),
+            compaction_preserve_recent: default_compaction_preserve(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct CacheSection {
+    #[serde(default = "default_cache_dir")]
+    pub dir: PathBuf,
+    #[serde(default = "default_true")]
+    pub repo_cache: bool,
+    #[serde(default = "default_true")]
+    pub tool_cache: bool,
+    #[serde(default = "default_cache_size")]
+    pub max_size_mb: u64,
+}
+
+impl Default for CacheSection {
+    fn default() -> Self {
+        Self {
+            dir: default_cache_dir(),
+            repo_cache: true,
+            tool_cache: true,
+            max_size_mb: default_cache_size(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ToolsSection {
+    #[serde(default = "default_true")]
+    pub sandbox: bool,
+    #[serde(default)]
+    pub allowed: Vec<String>,
+    #[serde(default)]
+    pub denied: Vec<String>,
+    #[serde(default)]
+    pub external: HashMap<String, ExternalToolSection>,
+}
+
+impl Default for ToolsSection {
+    fn default() -> Self {
+        Self {
+            sandbox: true,
+            allowed: vec![],
+            denied: vec![],
+            external: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ExternalToolSection {
+    pub binary: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub description: String,
+    #[serde(default)]
+    pub input_schema_path: Option<String>,
+    #[serde(default = "default_permission")]
+    pub permission: String,
+    #[serde(default = "default_output_format")]
+    pub output_format: String,
+    #[serde(default)]
+    pub embedded: bool,
+    #[serde(default = "default_tool_timeout")]
+    pub timeout_secs: u64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct McpSection {
+    pub kind: String,
+    pub url: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct EnvironmentSection {
+    #[serde(default)]
+    pub extra_path: Vec<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+}
+
+impl Default for EnvironmentSection {
+    fn default() -> Self {
+        Self {
+            extra_path: vec![],
+            env: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct CustomHealthCheck {
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default = "default_true")]
+    pub required: bool,
+    #[serde(default = "default_health_timeout")]
+    pub timeout_secs: u64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct OrchestratorSection {
+    #[serde(default)]
+    pub test_command: Option<String>,
+    #[serde(default = "default_max_fixup_iterations")]
+    pub max_fixup_iterations: u32,
+    #[serde(default = "default_max_parallel")]
+    pub max_parallel: usize,
+}
+
+impl Default for OrchestratorSection {
+    fn default() -> Self {
+        Self {
+            test_command: None,
+            max_fixup_iterations: default_max_fixup_iterations(),
+            max_parallel: default_max_parallel(),
+        }
+    }
+}
+
 fn default_branch() -> String {
     "main".to_string()
 }
@@ -74,6 +251,62 @@ fn default_prefix() -> String {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_max_tokens() -> u32 {
+    8192
+}
+
+fn default_max_iterations() -> u32 {
+    50
+}
+
+fn default_timeout() -> u64 {
+    7200
+}
+
+fn default_compaction_strategy() -> String {
+    "checkpoint".into()
+}
+
+fn default_compaction_threshold() -> u32 {
+    80000
+}
+
+fn default_compaction_preserve() -> u32 {
+    6
+}
+
+fn default_cache_dir() -> PathBuf {
+    PathBuf::from("/var/cache/kerrigan/drone")
+}
+
+fn default_cache_size() -> u64 {
+    2048
+}
+
+fn default_permission() -> String {
+    "read-only".into()
+}
+
+fn default_output_format() -> String {
+    "markdown".into()
+}
+
+fn default_tool_timeout() -> u64 {
+    30
+}
+
+fn default_health_timeout() -> u64 {
+    30
+}
+
+fn default_max_fixup_iterations() -> u32 {
+    5
+}
+
+fn default_max_parallel() -> usize {
+    2
 }
 
 impl DroneToml {
@@ -267,6 +500,176 @@ user_email = "claude@example.com"
             ..Default::default()
         };
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn parse_full_native_config() {
+        let toml_str = r#"
+[provider]
+kind = "anthropic"
+model = "claude-sonnet-4-20250514"
+api_key = "sk-test-key"
+base_url = "https://api.anthropic.com"
+
+[runtime]
+max_tokens = 4096
+max_iterations = 30
+temperature = 0.7
+timeout_secs = 3600
+compaction_strategy = "summarize"
+compaction_threshold_tokens = 60000
+compaction_preserve_recent = 4
+
+[cache]
+dir = "/tmp/drone-cache"
+repo_cache = true
+tool_cache = false
+max_size_mb = 1024
+
+[git]
+default_branch = "develop"
+branch_prefix = "drone/"
+auto_commit = false
+pr_on_complete = true
+protected_paths = ["CLAUDE.md", ".buckconfig"]
+
+[git.identity.claude]
+user_name = "claude-bot"
+user_email = "claude@myorg.com"
+
+[tools]
+sandbox = true
+allowed = ["read_file", "write_file"]
+denied = ["bash"]
+
+[tools.external.creep]
+binary = "creep-cli"
+args = ["search"]
+description = "File indexing search"
+permission = "read-only"
+output_format = "json"
+embedded = true
+timeout_secs = 10
+
+[mcp.overseer]
+kind = "http"
+url = "http://localhost:3100/mcp"
+
+[environment]
+extra_path = ["/usr/local/bin"]
+
+[environment.env]
+RUST_LOG = "debug"
+
+[orchestrator]
+test_command = "cargo test --workspace"
+max_fixup_iterations = 3
+max_parallel = 4
+
+[[health_checks]]
+name = "cargo-check"
+command = "cargo"
+args = ["check"]
+required = true
+timeout_secs = 60
+
+[setup]
+commands = ["./tools/setup-hooks.sh"]
+
+[prompts]
+extra_rules = "Use buck2 build"
+"#;
+        let config: DroneToml = toml::from_str(toml_str).unwrap();
+
+        let provider = config.provider.as_ref().unwrap();
+        assert_eq!(provider.kind, "anthropic");
+        assert_eq!(provider.model, "claude-sonnet-4-20250514");
+        assert_eq!(provider.api_key.as_deref(), Some("sk-test-key"));
+
+        assert_eq!(config.runtime.max_tokens, 4096);
+        assert_eq!(config.runtime.max_iterations, 30);
+        assert_eq!(config.runtime.temperature, Some(0.7));
+        assert_eq!(config.runtime.compaction_strategy, "summarize");
+
+        assert_eq!(config.cache.dir, PathBuf::from("/tmp/drone-cache"));
+        assert!(!config.cache.tool_cache);
+        assert_eq!(config.cache.max_size_mb, 1024);
+
+        assert_eq!(config.git.default_branch, "develop");
+        let claude_id = config.git_identity("claude");
+        assert_eq!(claude_id.user_name, "claude-bot");
+
+        assert!(config.tools.sandbox);
+        assert_eq!(config.tools.allowed, vec!["read_file", "write_file"]);
+        assert_eq!(config.tools.denied, vec!["bash"]);
+        let creep = &config.tools.external["creep"];
+        assert_eq!(creep.binary, "creep-cli");
+        assert!(creep.embedded);
+
+        assert_eq!(config.mcp["overseer"].kind, "http");
+        assert_eq!(config.mcp["overseer"].url, "http://localhost:3100/mcp");
+
+        assert_eq!(config.environment.extra_path, vec!["/usr/local/bin"]);
+        assert_eq!(config.environment.env["RUST_LOG"], "debug");
+
+        assert_eq!(
+            config.orchestrator.test_command.as_deref(),
+            Some("cargo test --workspace")
+        );
+        assert_eq!(config.orchestrator.max_fixup_iterations, 3);
+        assert_eq!(config.orchestrator.max_parallel, 4);
+
+        assert_eq!(config.health_checks.len(), 1);
+        assert_eq!(config.health_checks[0].name, "cargo-check");
+
+        assert_eq!(config.setup.commands, vec!["./tools/setup-hooks.sh"]);
+        assert!(config.prompts.extra_rules.contains("buck2 build"));
+    }
+
+    #[test]
+    fn parse_no_provider_uses_none() {
+        let config: DroneToml = toml::from_str("").unwrap();
+        assert!(config.provider.is_none());
+        assert_eq!(config.runtime.max_tokens, 8192);
+        assert_eq!(config.runtime.max_iterations, 50);
+        assert_eq!(config.cache.dir, PathBuf::from("/var/cache/kerrigan/drone"));
+        assert!(config.tools.sandbox);
+        assert!(config.mcp.is_empty());
+        assert!(config.health_checks.is_empty());
+        assert_eq!(config.orchestrator.max_fixup_iterations, 5);
+        assert_eq!(config.orchestrator.max_parallel, 2);
+    }
+
+    #[test]
+    fn parse_repo_drone_toml_format() {
+        let toml_str = r#"
+[git]
+default_branch = "main"
+
+[git.identity.claude]
+user_name = "claude-drone"
+user_email = "claude-drone@noreply"
+
+[git.identity.native]
+user_name = "native-drone"
+user_email = "native-drone@noreply"
+
+[setup]
+commands = ["./tools/setup-hooks.sh"]
+
+[prompts]
+extra_rules = """
+## Build & Test
+Use buck2 build, not cargo build.
+"""
+"#;
+        let config: DroneToml = toml::from_str(toml_str).unwrap();
+        assert!(config.provider.is_none());
+        assert_eq!(config.git.default_branch, "main");
+        assert_eq!(config.setup.commands, vec!["./tools/setup-hooks.sh"]);
+        assert!(config.prompts.extra_rules.contains("buck2 build"));
+        let claude = config.git_identity("claude");
+        assert_eq!(claude.user_name, "claude-drone");
     }
 
     #[test]

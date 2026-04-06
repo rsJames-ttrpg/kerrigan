@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use runtime::api::ProviderConfig;
 use runtime::conversation::loop_core::{CompactionStrategy, LoopConfig};
 
-use crate::config::{CacheSection, DroneConfig};
 use crate::pipeline::{Stage, StageConfig};
+use drone_sdk::drone_toml::{CacheSection, DroneToml, ProviderSection};
 
 /// Fully resolved configuration after merging all layers:
 /// compiled defaults → drone.toml → job spec overrides → stage defaults
@@ -40,6 +40,25 @@ pub struct OrchestratorConfig {
     pub max_parallel: usize,
 }
 
+/// Convert a ProviderSection from drone.toml into a runtime ProviderConfig.
+fn provider_config_from(provider: &ProviderSection) -> ProviderConfig {
+    match provider.kind.as_str() {
+        "anthropic" => ProviderConfig::Anthropic {
+            api_key: provider.api_key.clone().unwrap_or_default(),
+            model: provider.model.clone(),
+            base_url: provider.base_url.clone(),
+        },
+        _ => ProviderConfig::OpenAiCompat {
+            base_url: provider
+                .base_url
+                .clone()
+                .unwrap_or_else(|| "http://localhost:11434/v1".into()),
+            api_key: provider.api_key.clone(),
+            model: provider.model.clone(),
+        },
+    }
+}
+
 impl ResolvedConfig {
     /// Merge all config layers: drone.toml base, job spec overrides, and stage defaults.
     ///
@@ -49,12 +68,19 @@ impl ResolvedConfig {
     /// 3. drone.toml values
     /// 4. Compiled defaults (via serde defaults)
     pub fn resolve(
-        drone_toml: &DroneConfig,
+        drone_toml: &DroneToml,
         job_config: &HashMap<String, String>,
         stage: Stage,
     ) -> Self {
         // Start from drone.toml provider config
-        let mut provider = drone_toml.to_provider_config();
+        let mut provider = match &drone_toml.provider {
+            Some(p) => provider_config_from(p),
+            None => ProviderConfig::Anthropic {
+                api_key: String::new(),
+                model: "claude-sonnet-4-20250514".to_string(),
+                base_url: None,
+            },
+        };
 
         // Override model from job spec
         if let Some(model) = job_config.get("model") {
@@ -187,7 +213,7 @@ impl From<&CacheSection> for CacheConfig {
 mod tests {
     use super::*;
 
-    fn minimal_drone_config() -> DroneConfig {
+    fn minimal_drone_config() -> DroneToml {
         toml::from_str(
             r#"
 [provider]
@@ -276,7 +302,7 @@ api_key = "sk-base"
 
     #[test]
     fn protected_paths_merge_from_drone_toml_and_stage() {
-        let drone: DroneConfig = toml::from_str(
+        let drone: DroneToml = toml::from_str(
             r#"
 [provider]
 kind = "anthropic"
@@ -339,7 +365,7 @@ protected_paths = [".buckconfig", "Cargo.lock"]
 
     #[test]
     fn environment_env_overrides_from_job_spec() {
-        let drone: DroneConfig = toml::from_str(
+        let drone: DroneToml = toml::from_str(
             r#"
 [provider]
 kind = "anthropic"
@@ -362,7 +388,7 @@ BASE_VAR = "base"
 
     #[test]
     fn compaction_strategy_summarize() {
-        let drone: DroneConfig = toml::from_str(
+        let drone: DroneToml = toml::from_str(
             r#"
 [provider]
 kind = "anthropic"
@@ -398,7 +424,7 @@ compaction_preserve_recent = 8
 
     #[test]
     fn cache_config_from_drone_toml() {
-        let drone: DroneConfig = toml::from_str(
+        let drone: DroneToml = toml::from_str(
             r#"
 [provider]
 kind = "anthropic"
@@ -431,7 +457,7 @@ max_size_mb = 512
 
     #[test]
     fn orchestrator_from_drone_toml() {
-        let drone: DroneConfig = toml::from_str(
+        let drone: DroneToml = toml::from_str(
             r#"
 [provider]
 kind = "anthropic"
@@ -458,7 +484,7 @@ max_parallel = 4
 
     #[test]
     fn orchestrator_job_config_overrides_drone_toml() {
-        let drone: DroneConfig = toml::from_str(
+        let drone: DroneToml = toml::from_str(
             r#"
 [provider]
 kind = "anthropic"
@@ -489,7 +515,7 @@ max_parallel = 4
 
     #[test]
     fn max_parallel_zero_clamped_to_one() {
-        let drone: DroneConfig = toml::from_str(
+        let drone: DroneToml = toml::from_str(
             r#"
 [provider]
 kind = "anthropic"

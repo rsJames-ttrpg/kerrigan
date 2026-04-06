@@ -1,7 +1,7 @@
 ---
 title: Drone SDK
 slug: drone-sdk
-description: Shared library for drone binaries — DroneRunner trait, JSONL protocol, harness entrypoint
+description: Shared library for drone binaries — DroneRunner trait, JSONL protocol, harness entrypoint, unified DroneToml config
 lastmod: 2026-04-06
 tags: [drone-sdk, protocol, drones]
 sources:
@@ -11,7 +11,9 @@ sources:
     hash: 9cd847e1a364d8d319de0a6944ac5005e7cc67915f25c64fa2d4facf7ebb92fc
   - path: src/drone-sdk/src/harness.rs
     hash: 15e8c7c69b6f5dc902d67676b09967318c336289eca916a4ec40ebfb7f242afc
-sections: [drone-runner-trait, protocol, harness, types]
+  - path: src/drone-sdk/src/drone_toml.rs
+    hash: ae99f57cb463537071da509a244c496797f5724edcb4c48f568bd89a7de065f4
+sections: [drone-runner-trait, protocol, harness, types, drone-toml]
 ---
 
 # Drone SDK
@@ -107,3 +109,29 @@ pub struct DroneEnvironment {
     pub workspace: PathBuf,  // cloned repo directory
 }
 ```
+
+## DroneToml
+
+Unified per-repo configuration struct loaded from `drone.toml` in the workspace root. Used by both the claude drone and native drone.
+
+```rust
+pub struct DroneToml {
+    pub provider: Option<ProviderSection>,  // LLM provider (optional)
+    pub runtime: RuntimeSection,            // loop config, compaction, timeouts
+    pub cache: CacheSection,               // repo cache dir and limits
+    pub git: GitSection,                   // branch, prefix, protected paths, identity
+    pub setup: SetupSection,               // post-clone commands
+    pub prompts: PromptsSection,           // extra prompt rules
+    pub tools: ToolsSection,               // sandbox, allowed/denied, external tools
+    pub mcp: HashMap<String, McpSection>,  // MCP server connections
+    pub environment: EnvironmentSection,   // PATH, env vars
+    pub orchestrator: OrchestratorSection, // test command, parallelism
+    pub health_checks: Vec<CustomHealthCheck>,
+}
+```
+
+All fields `#[serde(default)]`. A minimal or absent `drone.toml` produces sensible defaults. `provider` is `Option` — `None` when the section is omitted.
+
+**Loading:** `DroneToml::load(workspace_dir)` reads `{dir}/drone.toml`. Returns defaults if the file is missing, errors on parse failure. Runs validation (identity fields non-empty, no newlines).
+
+**Identity:** `git_identity(drone_type)` returns `IdentitySection` for a drone type (e.g., `"claude"`, `"native"`), falling back to `{type}-drone / {type}-drone@noreply`.
